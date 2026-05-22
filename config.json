@@ -1,0 +1,125 @@
+{
+  "max_pages": 10,
+  "default_pages": 4,
+  "default_image_preset": "landscape_2k",
+  "image_presets": {
+    "square_1k": {
+      "label": "1024x1024 · 1:1 正方形",
+      "width": 1024,
+      "height": 1024,
+      "size": "1024x1024",
+      "resolution": ""
+    },
+    "landscape_1k": {
+      "label": "1536x1024 · 3:2 横图",
+      "width": 1536,
+      "height": 1024,
+      "size": "1536x1024",
+      "resolution": ""
+    },
+    "portrait_1k": {
+      "label": "1024x1536 · 2:3 竖图",
+      "width": 1024,
+      "height": 1536,
+      "size": "1024x1536",
+      "resolution": ""
+    },
+    "square_2k": {
+      "label": "2048x2048 · 1:1 2K 正方形",
+      "width": 2048,
+      "height": 2048,
+      "size": "2048x2048",
+      "resolution": ""
+    },
+    "landscape_2k": {
+      "label": "2048x1152 · 16:9 2K 横图",
+      "width": 2048,
+      "height": 1152,
+      "size": "2048x1152",
+      "resolution": ""
+    },
+    "landscape_4k": {
+      "label": "3840x2160 · 16:9 4K 横图",
+      "width": 3840,
+      "height": 2160,
+      "size": "3840x2160",
+      "resolution": ""
+    },
+    "portrait_4k": {
+      "label": "2160x3840 · 9:16 4K 竖图",
+      "width": 2160,
+      "height": 3840,
+      "size": "2160x3840",
+      "resolution": ""
+    }
+  },
+  "image_width": 2048,
+  "image_height": 1152,
+  "generation_mode": "openai",
+  "api_base_url": "https://anyaigc.com/v1",
+  "chat_api_base_url": "https://anyaigc.com/v1",
+  "chat_model": "gpt-5.5",
+  "chat_temperature": 0.3,
+  "chat_max_tokens": 5000,
+  "image_model": "gpt-image-2",
+  "image_size": "2048x1152",
+  "image_resolution": "",
+  "image_quality": "medium",
+  "image_background": "opaque",
+  "image_output_format": "png",
+  "image_response_format": "url",
+  "image_moderation": "low",
+  "image_n": 1,
+  "use_style_refs_for_first_stage": true,
+  "request_timeout_seconds": 600,
+  "request_retry_count": 4,
+  "request_retry_initial_delay_seconds": 6,
+  "stage1_concurrency": 2,
+  "stage2_concurrency": 1,
+  "output_dir": "output",
+  "active_chat_config_id": "chat_ab40f06a",
+  "active_image_config_id": "image_11ac17b8",
+  "enable_design_grammar": true,
+  "min_distinct_layout_families": 3,
+  "max_adjacent_layout_repeat": 1,
+  "stage1_reference_strategy": "hybrid",
+  "enable_page_evaluation": true,
+  "page_evaluation_retry_count": 1,
+  "prompt_compression_mode": "compressed",
+  "prompt_max_chars": 1800,
+  "model_configs": {
+    "chat": [
+      {
+        "id": "chat_gpt_55",
+        "name": "GPT-5.5 内容规划",
+        "base_url": "https://anyaigc.com/v1",
+        "api_key": "",
+        "model": "gpt-5.5",
+        "temperature": 0.3,
+        "max_tokens": 5000,
+        "enabled": true
+      },
+      {
+        "name": "次元",
+        "base_url": "https://token.memoh.net/v1",
+        "api_key": "sk-2f7b72c22e174e4f2bf622b9c768d64725d917c0eb61f18b9fd3d935bee1960e",
+        "model": "gpt-5.5",
+        "enabled": true,
+        "temperature": 0.3,
+        "max_tokens": 4864,
+        "id": "chat_ab40f06a"
+      }
+    ],
+    "image": [
+      {
+        "name": "新的生图模型",
+        "base_url": "https://anyaigc.com/v1",
+        "api_key": "sk-dUQNr0K9z9WcToHUX4W4HbVruyshrGVwEiK9JscjTIXJp2qD",
+        "model": "gpt-image-2",
+        "enabled": true,
+        "output_format": "png",
+        "id": "image_11ac17b8"
+      }
+    ]
+  }
+}

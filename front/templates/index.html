@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PPT 制作系统</title>
+    <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-topbar">
+        <div class="topbar-brand">
+          <div class="brand-mark">P</div>
+          <div>
+            <h1>PPT 制作系统</h1>
+            <p id="configText">读取配置中...</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="status-pill" id="modeText">读取中</span>
+          <button class="secondary-button compact-button" id="settingsButton" type="button" title="模型配置">设置</button>
+          <button class="primary-button topbar-create-button" type="submit" form="jobForm" id="submitButton">
+            <span class="button-icon">＋</span>
+            <span>创建任务</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace-shell">
+        <aside class="history-panel">
+          <div class="panel-head history-head">
+            <div>
+              <h2>任务</h2>
+              <p>每条任务都保留自己的参数与输出结果。</p>
+            </div>
+          </div>
+          <div class="panel-scroll history-scroll">
+            <div class="history-toolbar">
+              <button class="new-task-pill" id="newTaskButton" type="button" title="开启新任务（Ctrl + J）">
+                <span class="new-task-pill-icon" aria-hidden="true">⊕</span>
+                <span class="new-task-pill-label">开启新任务</span>
+                <span class="new-task-pill-shortcut">Ctrl + J</span>
+              </button>
+            </div>
+            <div class="history-list" id="historyList"></div>
+          </div>
+        </aside>
+
+        <section class="control-panel">
+          <div class="panel-head">
+            <div>
+              <h2>参数</h2>
+              <p>这里显示当前任务的内容与生成参数。</p>
+            </div>
+          </div>
+
+          <div class="panel-scroll">
+            <form id="jobForm">
+              <div class="field">
+                <div class="field-head">
+                  <span>汇报内容</span>
+                  <button class="secondary-button compact-button" id="editContentButton" type="button">打开编辑</button>
+                </div>
+                <button class="content-preview-card" id="contentPreviewCard" type="button">
+                  <strong id="contentPreviewTitle">未填写内容</strong>
+                  <p id="contentPreviewText">点击打开二级窗口，粘贴或编辑完整汇报内容。</p>
+                </button>
+                <textarea
+                  name="content"
+                  id="content"
+                  rows="12"
+                  placeholder="粘贴完整汇报内容，系统会自动拆页并生成每页参考图。"
+                  required
+                  hidden
+                ></textarea>
+              </div>
+
+              <div class="grid-2">
+                <label class="field">
+                  <span>指定页数</span>
+                  <input name="page_count" id="pageCount" type="number" min="1" value="4" required />
+                </label>
+                <label class="field">
+                  <span>图像尺寸</span>
+                  <select name="image_preset" id="imagePreset" required></select>
+                </label>
+              </div>
+
+              <div class="grid-1">
+                <label class="field">
+                  <span>图像质量</span>
+                  <select name="image_quality" id="imageQuality" required>
+                    <option value="low">low</option>
+                    <option value="medium" selected>medium</option>
+                    <option value="high">high</option>
+                    <option value="auto">auto</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="grid-1">
+                <label class="toggle-field" for="includeCoverPage">
+                  <span class="toggle-copy">
+                    <strong>生成 PPT 首页图</strong>
+                    <small>勾选时第 1 页可作为首页建立视觉基调；不勾选则直接从正文页开始生成。</small>
+                  </span>
+                  <input name="include_cover_page" id="includeCoverPage" type="checkbox" checked />
+                </label>
+              </div>
+
+              <div class="grid-1">
+                <label class="field">
+                  <span>参考风格图</span>
+                  <input name="style_images" id="styleImages" type="file" accept="image/*" multiple />
+                  <p class="field-tip" id="styleImagesHint">切换到已有任务时，已上传的参考图不会自动回填；如需重跑，请重新选择文件。</p>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>风格补充</span>
+                <input
+                  name="style_notes"
+                  id="styleNotes"
+                  type="text"
+                  placeholder="例如：蓝白科技线稿、低透明、边界清晰、toB 商务汇报"
+                />
+              </label>
+            </form>
+          </div>
+        </section>
+
+        <section class="result-panel">
+          <div class="result-workspace">
+            <div class="panel-head result-head">
+              <div>
+                <h2>生成结果</h2>
+                <p id="jobMeta">等待提交任务</p>
+                <div id="resultLinks" hidden></div>
+              </div>
+              <div class="result-actions">
+                <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
+                <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续</button>
+                <button class="secondary-button" id="clearButton" type="button" title="清空结果">清空</button>
+              </div>
+            </div>
+
+            <div class="panel-scroll result-scroll">
+              <div class="progress" id="progress">
+                <div class="progress-bar"></div>
+              </div>
+
+              <div class="delivery-result" id="deliveryResult"></div>
+
+              <div class="stage-timeline" id="stageTimeline"></div>
+
+              <div class="preview-viewer" id="previewViewer">
+                <div class="thumb-list" id="thumbList"></div>
+                <figure class="main-preview">
+                  <img id="mainPreviewImage" alt="PPT 主预览" />
+                  <figcaption id="mainPreviewCaption">等待生成</figcaption>
+                </figure>
+              </div>
+
+              <div class="pages-grid" id="pagesGrid"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <dialog class="content-dialog" id="contentDialog">
+      <div class="content-dialog-shell">
+        <div class="settings-head">
+          <div>
+            <h2>编辑汇报内容</h2>
+            <p>这里放完整正文，左侧主界面只显示摘要预览。</p>
+          </div>
+          <button class="icon-button" id="closeContentButton" type="button" title="关闭">×</button>
+        </div>
+
+        <label class="field">
+          <span>汇报内容</span>
+          <textarea
+            id="contentEditor"
+            rows="18"
+            placeholder="粘贴完整汇报内容，系统会自动拆页并生成每页参考图。"
+          ></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button class="secondary-button" id="cancelContentButton" type="button">取消</button>
+          <button class="primary-button" id="saveContentButton" type="button">
+            <span>保存内容</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="settings-dialog" id="settingsDialog">
+      <div class="settings-shell">
+        <div class="settings-head">
+          <div>
+            <h2>模型配置</h2>
+            <p>管理 OpenAI-compatible 对话模型与生图模型。</p>
+          </div>
+          <button class="icon-button" id="closeSettingsButton" type="button" title="关闭">×</button>
+        </div>
+
+        <div class="settings-tabs">
+          <button class="tab-button is-active" type="button" data-model-type="chat">对话模型</button>
+          <button class="tab-button" type="button" data-model-type="image">生图模型</button>
+        </div>
+
+        <div class="settings-body">
+          <div class="model-list" id="modelList"></div>
+
+          <form class="model-form" id="modelForm" novalidate>
+            <input type="hidden" id="modelConfigId" />
+            <label class="field">
+              <span>配置名称</span>
+              <input id="modelName" />
+            </label>
+            <label class="field">
+              <span>Base URL</span>
+              <input id="modelBaseUrl" placeholder="https://anyaigc.com/v1" />
+            </label>
+            <div class="grid-2">
+              <label class="field">
+                <span>API Key</span>
+                <input id="modelApiKey" type="password" placeholder="sk-..." autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>模型名</span>
+                <input id="modelNameValue" list="modelSuggestions" />
+                <datalist id="modelSuggestions">
+                  <option value="gpt-5.5"></option>
+                  <option value="gpt-5.4"></option>
+                  <option value="gpt-image-2"></option>
+                </datalist>
+              </label>
+            </div>
+            <div class="grid-2 chat-fields">
+              <label class="field">
+                <span>Temperature</span>
+                <input id="modelTemperature" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label class="field">
+                <span>Max tokens</span>
+                <input id="modelMaxTokens" type="number" min="512" step="256" />
+              </label>
+            </div>
+            <div class="grid-1 image-fields">
+              <label class="field">
+                <span>输出格式</span>
+                <input id="modelOutputFormat" placeholder="png" />
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">
+                <span>保存配置</span>
+              </button>
+            </div>
+            <p class="form-message" id="modelFormMessage"></p>
+          </form>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="image-lightbox" id="imageLightbox">
+      <div class="image-lightbox-shell">
+        <div class="image-lightbox-head">
+          <p id="imageLightboxCaption">图片预览</p>
+          <button class="icon-button" id="imageLightboxClose" type="button" title="关闭">×</button>
+        </div>
+        <div class="image-lightbox-body">
+          <img id="imageLightboxPreview" alt="放大预览" />
+        </div>
+      </div>
+    </dialog>
+
+    <template id="pageTemplate">
+      <article class="page-card">
+        <div class="page-card-head">
+          <h3></h3>
+          <span></span>
+        </div>
+        <div class="page-meta-tags">
+          <span class="meta-tag layout-tag"></span>
+          <span class="meta-tag mode-tag"></span>
+          <span class="meta-tag profile-tag"></span>
+        </div>
+        <div class="image-pair">
+          <figure>
+            <img alt="带文字 PPT 参考图" />
+            <figcaption>带文字参考图</figcaption>
+          </figure>
+          <figure>
+            <img alt="去文字元素图" />
+            <figcaption>去文字元素图</figcaption>
+          </figure>
+        </div>
+        <details>
+          <summary>查看第一页生成 Prompt</summary>
+          <pre></pre>
+        </details>
+      </article>
+    </template>
+
+    <script src="/static/image_lightbox.js?v={{ asset_version }}"></script>
+    <script src="/static/generation_result.js?v={{ asset_version }}"></script>
+    <script src="/static/app.js?v={{ asset_version }}"></script>
+  </body>
+</html>

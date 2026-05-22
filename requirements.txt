@@ -1,0 +1,4 @@
+requests
+flask
+rembg[gpu]
+python-pptx
