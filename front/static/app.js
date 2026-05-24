@@ -14,7 +14,10 @@ const pageCount = document.querySelector("#pageCount");
 const imagePreset = document.querySelector("#imagePreset");
 const imageQuality = document.querySelector("#imageQuality");
 const includeCoverPage = document.querySelector("#includeCoverPage");
+const reuseStyleRefsJobId = document.querySelector("#reuseStyleRefsJobId");
 const styleImages = document.querySelector("#styleImages");
+const styleImagesHint = document.querySelector("#styleImagesHint");
+const styleRefGallery = document.querySelector("#styleRefGallery");
 const styleNotes = document.querySelector("#styleNotes");
 const previewViewer = document.querySelector("#previewViewer");
 const thumbList = document.querySelector("#thumbList");
@@ -63,6 +66,7 @@ let jobEventSource = null;
 let historyEventSource = null;
 let historyItems = [];
 let selectedHistoryJobId = "";
+let styleReferenceHydrationKey = "";
 
 imageLightbox?.bindRoot(document);
 
@@ -114,6 +118,100 @@ function defaultIncludeCoverPageValue() {
   return config?.default_include_cover_page !== false;
 }
 
+function formatStyleImageHint(message) {
+  if (styleImagesHint) {
+    styleImagesHint.textContent = message;
+  }
+}
+
+function clearStyleReferenceBinding() {
+  styleReferenceHydrationKey = "";
+  styleImages.value = "";
+  if (reuseStyleRefsJobId) {
+    reuseStyleRefsJobId.value = "";
+  }
+  if (styleRefGallery) {
+    styleRefGallery.hidden = true;
+    styleRefGallery.innerHTML = "";
+  }
+  formatStyleImageHint("支持查看历史任务时自动回填参考图；也可以重新选择本地文件覆盖。");
+}
+
+function renderStyleReferenceGallery(items, sourceLabel = "") {
+  if (!styleRefGallery) {
+    return;
+  }
+  const safeItems = Array.isArray(items) ? items.filter((item) => item?.url) : [];
+  if (!safeItems.length) {
+    styleRefGallery.hidden = true;
+    styleRefGallery.innerHTML = "";
+    return;
+  }
+  styleRefGallery.hidden = false;
+  styleRefGallery.innerHTML = safeItems
+    .map((item) => {
+      return `
+        <figure class="style-ref-card">
+          <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name || "参考风格图")}" />
+          <figcaption>${escapeHtml(item.name || "参考风格图")}</figcaption>
+        </figure>
+      `;
+    })
+    .join("");
+  const sourceText = sourceLabel ? `${sourceLabel}，` : "";
+  formatStyleImageHint(`${sourceText}当前共绑定 ${safeItems.length} 张参考风格图；你也可以重新选择本地文件覆盖。`);
+}
+
+function getStyleReferenceImages(job) {
+  const items = job?.job_meta?.style_reference_images;
+  return Array.isArray(items) ? items : [];
+}
+
+function buildStyleReferenceHydrationKey(job) {
+  const items = getStyleReferenceImages(job);
+  const itemNames = items.map((item) => `${item.name || ""}:${item.url || ""}`).join("|");
+  return `${job?.job_id || ""}::${itemNames}`;
+}
+
+async function buildFileFromStyleReference(item, index) {
+  const res = await fetch(item.url);
+  if (!res.ok) {
+    throw new Error(`读取参考图失败：${item.name || item.url}`);
+  }
+  const blob = await res.blob();
+  const fileName = String(item.name || `style_ref_${index + 1}.png`);
+  const mimeType = blob.type || "image/png";
+  return new File([blob], fileName, {type: mimeType, lastModified: Date.now()});
+}
+
+async function hydrateStyleImagesFromJob(job) {
+  const items = getStyleReferenceImages(job);
+  const hydrationKey = buildStyleReferenceHydrationKey(job);
+  if (!items.length) {
+    clearStyleReferenceBinding();
+    return;
+  }
+  if (reuseStyleRefsJobId) {
+    reuseStyleRefsJobId.value = String(job?.job_id || "");
+  }
+  renderStyleReferenceGallery(items, "已回填历史任务参考图");
+  if (styleReferenceHydrationKey === hydrationKey) {
+    return;
+  }
+  styleReferenceHydrationKey = hydrationKey;
+  try {
+    const files = await Promise.all(items.map(buildFileFromStyleReference));
+    const transfer = new DataTransfer();
+    for (const file of files) {
+      transfer.items.add(file);
+    }
+    styleImages.files = transfer.files;
+    formatStyleImageHint(`已自动回填 ${files.length} 张历史参考图，重新提交任务时会继续使用这些文件。`);
+  } catch (error) {
+    formatStyleImageHint(`已展示历史参考图预览，但浏览器未能写回文件选择器：${error.message}`);
+  }
+}
+
 function resetFormToDefaults() {
   if (!config) {
     return;
@@ -125,7 +223,7 @@ function resetFormToDefaults() {
   imageQuality.value = config.image_quality || "medium";
   includeCoverPage.checked = defaultIncludeCoverPageValue();
   styleNotes.value = "";
-  styleImages.value = "";
+  clearStyleReferenceBinding();
   syncContentPreview();
   updatePresetSummary();
 }
@@ -150,7 +248,6 @@ function applyJobParamsToForm(job, historyItem = null) {
   }
   includeCoverPage.checked = Boolean(nextIncludeCoverPage);
   styleNotes.value = nextStyleNotes;
-  styleImages.value = "";
   syncContentPreview();
   updatePresetSummary();
 }
@@ -423,6 +520,22 @@ function renderGenerationResult(job) {
     return;
   }
   renderResultLinks(job);
+}
+
+function syncStyleReferenceSelectionHint() {
+  const fileCount = styleImages?.files?.length || 0;
+  if (!fileCount) {
+    return;
+  }
+  if (styleRefGallery) {
+    styleRefGallery.hidden = true;
+    styleRefGallery.innerHTML = "";
+  }
+  styleReferenceHydrationKey = "";
+  if (reuseStyleRefsJobId) {
+    reuseStyleRefsJobId.value = "";
+  }
+  formatStyleImageHint(`当前已选择 ${fileCount} 张本地参考图，提交任务时会以上传内容为准。`);
 }
 
 function findPreviewPage(job) {
@@ -900,6 +1013,7 @@ async function selectHistoryJob(jobId) {
     return;
   }
   applyJobParamsToForm(data, selectedItem);
+  await hydrateStyleImagesFromJob(data);
   renderJob(data);
   if (data.status === "queued" || data.status === "running" || data.status === "stopping") {
     setLoading(true);
@@ -1296,6 +1410,7 @@ document.querySelectorAll(".tab-button").forEach((button) => {
   });
 });
 imagePreset.addEventListener("change", updatePresetSummary);
+styleImages.addEventListener("change", syncStyleReferenceSelectionHint);
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {
     event.preventDefault();

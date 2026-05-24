@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ppt_system.style_runtime import classify_background_tone
+
 try:
     from ppt_system.design_grammar import ALLOWED_LAYOUT_FAMILIES, validate_layout_family
 except ImportError:
@@ -20,21 +22,6 @@ _ABSTRACT_FAMILY_PATTERN = re.compile(
     r"^(grid_\w+|timeline_\w+|hub_and_spoke|split_\w+|compare_\w+|process_\w+|hero_\w+)$",
     re.IGNORECASE,
 )
-
-_BRIGHTNESS_KEYWORDS = {
-    "light": {"白", "浅", "亮", "light", "bright", "白底", "浅色", "明亮"},
-    "dark": {"黑", "深", "暗", "dark", "深色", "暗色", "黑底"},
-    "neutral": {"灰", "中性", "gray", "grey", "中灰"},
-}
-
-
-def _classify_brightness(text: str) -> str:
-    lower = text.lower()
-    for label, keywords in _BRIGHTNESS_KEYWORDS.items():
-        for kw in keywords:
-            if kw in lower:
-                return label
-    return "unknown"
 
 
 def _check_layout_repeat(page: dict, previous_pages: list[dict], max_repeat: int) -> list[str]:
@@ -55,13 +42,17 @@ def _check_layout_repeat(page: dict, previous_pages: list[dict], max_repeat: int
 
 def _check_primitive_coverage(page: dict, style_guide: dict) -> list[str]:
     issues: list[str] = []
-    prompt = (page.get("image_prompt") or page.get("prompt") or "").lower()
-    primitives = style_guide.get("element_primitives", [])
-    if not primitives:
+    prompt = _normalize_visual_text(page.get("image_prompt") or page.get("prompt") or "")
+    expected_terms = _collect_expected_visual_terms(page, style_guide)
+    if not expected_terms:
         return issues
-    missing = [p for p in primitives if p.lower() not in prompt]
-    if len(missing) > len(primitives) * 0.6:
-        issues.append(f"prompt 未覆盖大部分元素原语，缺失 {len(missing)}/{len(primitives)}")
+
+    matched = [term for term in expected_terms if _matches_visual_term(term, prompt)]
+    match_ratio = len(matched) / len(expected_terms)
+    if match_ratio < 0.4:
+        issues.append(
+            f"prompt 对本页视觉元素计划覆盖不足，命中 {len(matched)}/{len(expected_terms)}"
+        )
     return issues
 
 
@@ -71,9 +62,9 @@ def _check_background_tone(page: dict, style_guide: dict) -> list[str]:
     expected_tone = style_core.get("background_tone", "")
     if not expected_tone:
         return issues
-    expected_label = _classify_brightness(expected_tone)
+    expected_label = classify_background_tone(expected_tone)
     prompt = page.get("image_prompt") or page.get("prompt") or ""
-    prompt_label = _classify_brightness(prompt)
+    prompt_label = classify_background_tone(prompt)
     if expected_label != "unknown" and prompt_label != "unknown" and expected_label != prompt_label:
         issues.append(f"背景明度偏离 style_core.background_tone: 期望 '{expected_label}'，prompt 倾向 '{prompt_label}'")
     return issues
@@ -125,6 +116,72 @@ def _check_prompt_compression(page: dict, style_guide: dict) -> list[str]:
     if ratio < 0.3:
         issues.append(f"压缩后 prompt 丢失关键风格约束（锚点命中率 {ratio:.0%}）")
     return issues
+
+
+def _collect_expected_visual_terms(page: dict, style_guide: dict) -> list[str]:
+    raw_terms: list[str] = []
+    element_plan = page.get("element_plan", {})
+    if isinstance(element_plan, dict):
+        primitives = element_plan.get("primitives", [])
+        icon_topics = element_plan.get("icon_topics", [])
+        diagram_type = element_plan.get("diagram_type", "")
+        if isinstance(primitives, list):
+            raw_terms.extend(str(item).strip() for item in primitives if str(item).strip())
+        if isinstance(icon_topics, list):
+            raw_terms.extend(str(item).strip() for item in icon_topics if str(item).strip())
+        if str(diagram_type).strip():
+            raw_terms.append(str(diagram_type).strip())
+
+    if not raw_terms:
+        primitives = style_guide.get("element_primitives", [])
+        if isinstance(primitives, list):
+            raw_terms.extend(str(item).strip() for item in primitives if str(item).strip())
+
+    unique_terms: list[str] = []
+    seen: set[str] = set()
+    for term in raw_terms:
+        norm = _normalize_visual_text(term)
+        if norm and norm not in seen:
+            unique_terms.append(term)
+            seen.add(norm)
+    return unique_terms
+
+
+def _matches_visual_term(term: str, prompt: str) -> bool:
+    norm_term = _normalize_visual_text(term)
+    if not norm_term:
+        return False
+    if norm_term in prompt:
+        return True
+
+    for variant in _expand_visual_variants(norm_term):
+        if variant and variant in prompt:
+            return True
+    return False
+
+
+def _expand_visual_variants(term: str) -> list[str]:
+    variants: list[str] = []
+    if "_" in term:
+        ascii_tokens = [item for item in term.split("_") if len(item) >= 3]
+        variants.extend(ascii_tokens)
+
+    max_suffix_len = min(6, len(term))
+    for suffix_len in range(2, max_suffix_len + 1):
+        variants.append(term[-suffix_len:])
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for variant in variants:
+        if variant not in seen:
+            deduped.append(variant)
+            seen.add(variant)
+    return deduped
+
+
+def _normalize_visual_text(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return re.sub(r"[\s\-_/:：，,；;（）()【】\[\]·]+", "", text)
 
 
 def evaluate_page(page: dict, style_guide: dict, previous_pages: list[dict]) -> dict:

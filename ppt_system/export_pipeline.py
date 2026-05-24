@@ -4,14 +4,15 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from ppt_system.composer import compose_pptx
-from ppt_system.image_ops import enhance_image, make_transparent
-from ppt_system.splitter import split_transparent_png
+from ppt_system.direct_project_script import generate_direct_project_text_script
+from ppt_system.openai_chat_provider import OpenAIChatProvider
+from ppt_system.style_runtime import apply_text_theme, resolve_text_palette
 from ppt_system.text_layout import (
     build_fallback_boxes_for_family,
     build_layout_slots_by_family,
     build_text_boxes_from_slots,
 )
+from ppt_system.text_script_runtime import execute_generated_text_script
 
 
 StageLogger = Callable[[str], None]
@@ -22,11 +23,6 @@ StopChecker = Callable[[], bool]
 def _log(stage_logger: StageLogger | None, message: str) -> None:
     if stage_logger:
         stage_logger(message)
-
-
-def _log_page(page_logger: PageLogger | None, page_no: int, message: str) -> None:
-    if page_logger:
-        page_logger(page_no, message)
 
 
 def _ensure_not_stopped(stop_checker: StopChecker | None) -> None:
@@ -50,10 +46,15 @@ def _build_body_text(page: dict[str, Any]) -> str:
     return ""
 
 
-def rebuild_page_texts(page: dict[str, Any], image_width: int, image_height: int) -> list[dict[str, Any]]:
+def rebuild_page_texts(
+    page: dict[str, Any],
+    image_width: int,
+    image_height: int,
+    style_guide: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     texts = page.get("texts", [])
     if isinstance(texts, list) and texts:
-        return texts
+        return apply_text_theme(texts, style_guide)
 
     title = str(page.get("title", "")).strip() or f"第 {page.get('page_no', '?')} 页"
     body = _build_body_text(page)
@@ -67,8 +68,9 @@ def rebuild_page_texts(page: dict[str, Any], image_width: int, image_height: int
         slots = build_layout_slots_by_family(layout_family, image_width, image_height)
         rebuilt = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
     if rebuilt and len(rebuilt) > 1:
-        return rebuilt
-    return build_fallback_boxes_for_family(layout_family, title, body, image_width, image_height)
+        return apply_text_theme(rebuilt, style_guide)
+    fallback = build_fallback_boxes_for_family(layout_family, title, body, image_width, image_height)
+    return apply_text_theme(fallback, style_guide)
 
 
 def resolve_job_artifact_path(job_dir: Path, image_ref: str) -> Path:
@@ -83,7 +85,6 @@ def resolve_job_artifact_path(job_dir: Path, image_ref: str) -> Path:
     normalized = value.lstrip("/\\")
     parts = Path(normalized).parts
     if len(parts) >= 3 and parts[0] == "runs":
-        # Web 层暴露给前端的是 /runs/<job_id>/...，这里统一还原回任务目录中的真实文件。
         return job_dir / Path(*parts[2:])
     return job_dir / normalized
 
@@ -99,10 +100,18 @@ def build_project_from_web_job(
     raw_pages = list(job.get("pages", []))
     if not raw_pages:
         raise ValueError("任务中缺少页面规划结果，无法导出 PPT")
+    plan = job.get("plan", {})
+    style_guide = plan.get("style_guide", {}) if isinstance(plan, dict) else {}
+    text_palette = resolve_text_palette(style_guide)
 
     element_map = {
         int(item["page_no"]): item
         for item in job.get("element_pages", [])
+        if str(item.get("image", "")).strip()
+    }
+    reference_map = {
+        int(item["page_no"]): item
+        for item in job.get("reference_pages", [])
         if str(item.get("image", "")).strip()
     }
     project_pages: list[dict[str, Any]] = []
@@ -115,18 +124,27 @@ def build_project_from_web_job(
         element_item = element_map.get(page_no)
         if not element_item:
             raise ValueError(f"第 {page_no} 页缺少去文字元素图，无法继续导出")
+        reference_item = reference_map.get(page_no)
+        if not reference_item:
+            raise ValueError(f"第 {page_no} 页缺少参考图，无法继续导出")
 
         visual_path = resolve_job_artifact_path(job_dir, str(element_item["image"]))
+        reference_path = resolve_job_artifact_path(job_dir, str(reference_item["image"]))
         if not visual_path.exists():
             raise FileNotFoundError(f"第 {page_no} 页元素图不存在：{visual_path}")
+        if not reference_path.exists():
+            raise FileNotFoundError(f"第 {page_no} 页参考图不存在：{reference_path}")
 
+        rebuilt_texts = rebuild_page_texts(raw_page, image_width, image_height, style_guide)
         project_pages.append(
             {
                 "page_no": page_no,
                 "title": str(raw_page.get("title", f"第 {page_no} 页")),
                 "summary": str(raw_page.get("summary", "")),
+                "bullets": list(raw_page.get("bullets", [])) if isinstance(raw_page.get("bullets"), list) else [],
                 "visual_image": str(visual_path),
-                "texts": rebuild_page_texts(raw_page, image_width, image_height),
+                "reference_image": str(reference_path),
+                "texts": rebuilt_texts,
                 "layout_family": str(raw_page.get("layout_family", "")),
             }
         )
@@ -141,7 +159,7 @@ def build_project_from_web_job(
         "default_font": {
             "font_name": "Microsoft YaHei",
             "font_size": 24,
-            "color": "FFFFFF",
+            "color": text_palette["default"],
             "bold": False,
             "italic": False,
             "align": "LEFT",
@@ -150,109 +168,40 @@ def build_project_from_web_job(
     }
 
 
-def prepare_project_assets(
-    project: dict[str, Any],
-    work_dir: Path,
-    *,
-    alpha_threshold: int = 8,
-    min_area: int = 8,
-    padding: int = 0,
-    skip_enhance: bool = False,
-    skip_transparent: bool = False,
-    stage_logger: StageLogger | None = None,
-    page_logger: PageLogger | None = None,
-    stop_checker: StopChecker | None = None,
-) -> dict[str, Any]:
-    work_dir.mkdir(parents=True, exist_ok=True)
-    page_summaries: list[dict[str, Any]] = []
-
-    for page in sorted(project.get("pages", []), key=lambda item: int(item.get("page_no", 0))):
-        _ensure_not_stopped(stop_checker)
-
-        page_no = int(page["page_no"])
-        page_dir = work_dir / f"page_{page_no:02d}"
-        assets_dir = page_dir / "assets"
-        manifest_path = assets_dir / "assets.json"
-
-        if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            _log_page(page_logger, page_no, f"复用已有切分结果，共 {int(manifest.get('count', 0))} 个元素")
-            page_summaries.append(
-                {
-                    "page_no": page_no,
-                    "asset_count": int(manifest.get("count", 0)),
-                    "assets_manifest": str(manifest_path),
-                }
-            )
-            continue
-
-        page_dir.mkdir(parents=True, exist_ok=True)
-        visual_path = Path(str(page["visual_image"]))
-        enhanced_path = page_dir / "01_enhanced.png"
-        transparent_path = page_dir / "02_transparent.png"
-
-        _log(stage_logger, f"开始处理第 {page_no} 页导出素材")
-        if skip_enhance:
-            enhanced_path = visual_path
-            _log_page(page_logger, page_no, "跳过图像增强")
-        else:
-            _log_page(page_logger, page_no, "执行图像增强")
-            enhance_image(visual_path, enhanced_path)
-
-        _ensure_not_stopped(stop_checker)
-
-        if skip_transparent:
-            transparent_path = enhanced_path
-            _log_page(page_logger, page_no, "跳过去背景处理")
-        else:
-            _log_page(page_logger, page_no, "执行背景透明化")
-            make_transparent(enhanced_path, transparent_path)
-
-        _ensure_not_stopped(stop_checker)
-
-        _log_page(page_logger, page_no, "执行连通域切分")
-        manifest = split_transparent_png(
-            image_path=transparent_path,
-            out_dir=assets_dir,
-            alpha_threshold=alpha_threshold,
-            min_area=min_area,
-            padding=padding,
-        )
-        _log_page(page_logger, page_no, f"切分完成，共 {int(manifest.get('count', 0))} 个元素")
-        page_summaries.append(
-            {
-                "page_no": page_no,
-                "asset_count": int(manifest.get("count", 0)),
-                "assets_manifest": str(manifest_path),
-            }
-        )
-
-    return {
-        "page_count": len(page_summaries),
-        "pages": page_summaries,
-    }
-
-
 def export_project_to_pptx(
     project: dict[str, Any],
     work_dir: Path,
     output_pptx: Path,
     *,
+    script_refine_rounds: int = 1,
     alpha_threshold: int = 8,
     min_area: int = 8,
     padding: int = 0,
+    merge_distance: int = 6,
+    filter_decorative_fragments: bool = True,
     skip_enhance: bool = False,
     skip_transparent: bool = False,
+    chat_provider: OpenAIChatProvider | None = None,
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
+    **_: Any,
 ) -> dict[str, Any]:
-    assets_summary = prepare_project_assets(
+    if chat_provider is None:
+        raise RuntimeError("当前主路径必须提供 chat_provider，已不再支持 legacy/builtin 回退。")
+
+    _log(stage_logger, "开始执行主路径：参考图+元素图首轮直出，随后真实 PPT 导出回看")
+    direct_result = generate_direct_project_text_script(
+        chat_provider,
         project,
         work_dir,
+        output_pptx,
+        refine_rounds=script_refine_rounds,
         alpha_threshold=alpha_threshold,
         min_area=min_area,
         padding=padding,
+        merge_distance=merge_distance,
+        filter_decorative_fragments=filter_decorative_fragments,
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
         stage_logger=stage_logger,
@@ -260,13 +209,17 @@ def export_project_to_pptx(
         stop_checker=stop_checker,
     )
     _ensure_not_stopped(stop_checker)
-    _log(stage_logger, "开始组装可编辑 PPTX")
-    compose_pptx(project, work_dir, output_pptx)
-    _log(stage_logger, f"PPTX 已导出：{output_pptx.name}")
+    generated_script_path = Path(str(direct_result["script_path"]))
+    _log(stage_logger, f"文字脚本已生成：{generated_script_path.name}")
+    execute_generated_text_script(generated_script_path)
+    _log(stage_logger, f"文字脚本执行完成：{output_pptx.name}")
     return {
         "output_pptx": str(output_pptx),
         "work_dir": str(work_dir),
-        "assets": assets_summary,
+        "assets": direct_result["assets"],
+        "text_layout_strategy": "direct_office_refine",
+        "text_script_path": str(generated_script_path),
+        "page_results": direct_result["pages"],
     }
 
 
@@ -280,14 +233,11 @@ def export_web_job_to_pptx(
     work_dir: Path,
     output_pptx: Path,
     project_path: Path,
-    alpha_threshold: int = 8,
-    min_area: int = 8,
-    padding: int = 0,
-    skip_enhance: bool = False,
-    skip_transparent: bool = False,
+    chat_provider: OpenAIChatProvider | None = None,
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     project = build_project_from_web_job(
         job,
@@ -304,14 +254,11 @@ def export_web_job_to_pptx(
         project,
         work_dir,
         output_pptx,
-        alpha_threshold=alpha_threshold,
-        min_area=min_area,
-        padding=padding,
-        skip_enhance=skip_enhance,
-        skip_transparent=skip_transparent,
+        chat_provider=chat_provider,
         stage_logger=stage_logger,
         page_logger=page_logger,
         stop_checker=stop_checker,
+        **kwargs,
     )
     job_id = str(job.get("job_id") or job_dir.name)
     return {

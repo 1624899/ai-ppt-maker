@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Pt
+
+from ppt_system.composer_runtime import (
+    resolve_asset_geometry,
+    resolve_font_size_pt,
+    resolve_text_geometry,
+    should_render_text_item,
+)
+from ppt_system.text_style_runtime import apply_run_font_family, scale_font_size_pt
 
 
 EMU_PER_INCH = 914400
@@ -18,11 +27,16 @@ def _emu(value: float) -> int:
 
 
 def add_text_box(slide, text_item: dict[str, Any], scale_x: float, scale_y: float, default_font: dict[str, Any]) -> None:
-    left = _emu(float(text_item["left"]) * scale_x)
-    top = _emu(float(text_item["top"]) * scale_y)
-    width = _emu(float(text_item["width"]) * scale_x)
-    height = _emu(float(text_item["height"]) * scale_y)
-    box = slide.shapes.add_textbox(left, top, width, height)
+    geometry = resolve_text_geometry(text_item, scale_x, scale_y)
+    if geometry is None or not should_render_text_item(text_item):
+        return
+
+    box = slide.shapes.add_textbox(
+        geometry.left,
+        geometry.top,
+        geometry.width,
+        geometry.height,
+    )
 
     # 文字框无填充、无线条，保证只留下可编辑文字。
     box.fill.background()
@@ -34,7 +48,9 @@ def add_text_box(slide, text_item: dict[str, Any], scale_x: float, scale_y: floa
     frame.margin_right = 0
     frame.margin_top = 0
     frame.margin_bottom = 0
-    frame.word_wrap = True
+    frame.word_wrap = _should_wrap_text(text_item, default_font)
+    # 保持实际导出的 PPT 与脚本设定字号一致，不交给 Office 自动缩放。
+    frame.auto_size = MSO_AUTO_SIZE.NONE
 
     paragraph = frame.paragraphs[0]
     paragraph.alignment = getattr(PP_ALIGN, str(text_item.get("align", default_font.get("align", "LEFT"))).upper())
@@ -42,12 +58,40 @@ def add_text_box(slide, text_item: dict[str, Any], scale_x: float, scale_y: floa
     run.text = str(text_item.get("text", ""))
 
     font = run.font
-    font.name = str(text_item.get("font_name", default_font.get("font_name", "Microsoft YaHei")))
-    font.size = Pt(float(text_item.get("font_size", default_font.get("font_size", 24))))
+    resolved_font_name = str(text_item.get("font_name", default_font.get("font_name", "Microsoft YaHei")))
+    apply_run_font_family(run, resolved_font_name)
+    font_scale = float(default_font.get("render_font_scale", 1.0) or 1.0)
+    font.size = Pt(scale_font_size_pt(resolve_font_size_pt(text_item, default_font), scale=font_scale))
     font.bold = bool(text_item.get("bold", default_font.get("bold", False)))
     font.italic = bool(text_item.get("italic", default_font.get("italic", False)))
     color = str(text_item.get("color", default_font.get("color", "FFFFFF"))).lstrip("#")
     font.color.rgb = RGBColor.from_string(color)
+
+
+def _should_wrap_text(text_item: dict[str, Any], default_font: dict[str, Any]) -> bool:
+    text = str(text_item.get("text", ""))
+    if "\n" in text:
+        return True
+    try:
+        font_size = resolve_font_size_pt(text_item, default_font)
+        width = float(text_item.get("width", 0))
+        if _estimate_text_width(text, font_size) <= width * 1.05:
+            return False
+        return float(text_item.get("height", 0)) > font_size * 2.4
+    except (TypeError, ValueError):
+        return True
+
+
+def _estimate_text_width(text: str, font_size: float) -> float:
+    units = 0.0
+    for char in str(text):
+        if char.isspace():
+            units += 0.35
+        elif unicodedata.east_asian_width(char) in {"F", "W"}:
+            units += 1.0
+        else:
+            units += 0.55
+    return units * float(font_size)
 
 
 def compose_pptx(project: dict[str, Any], work_dir: Path, output_pptx: Path) -> None:
@@ -69,12 +113,15 @@ def compose_pptx(project: dict[str, Any], work_dir: Path, output_pptx: Path) -> 
 
         for asset in assets["assets"]:
             asset_path = page_dir / "assets" / str(asset["file"])
+            geometry = resolve_asset_geometry(asset, scale_x, scale_y)
+            if geometry is None:
+                continue
             slide.shapes.add_picture(
                 str(asset_path),
-                _emu(float(asset["left"]) * scale_x),
-                _emu(float(asset["top"]) * scale_y),
-                width=_emu(float(asset["width"]) * scale_x),
-                height=_emu(float(asset["height"]) * scale_y),
+                geometry.left,
+                geometry.top,
+                width=geometry.width,
+                height=geometry.height,
             )
 
         for text_item in page.get("texts", []):
@@ -82,4 +129,3 @@ def compose_pptx(project: dict[str, Any], work_dir: Path, output_pptx: Path) -> 
 
     output_pptx.parent.mkdir(parents=True, exist_ok=True)
     prs.save(output_pptx)
-

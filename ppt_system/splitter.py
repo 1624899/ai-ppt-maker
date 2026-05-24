@@ -8,6 +8,9 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from ppt_system.component_filter import filter_decorative_components
+from ppt_system.component_postprocess import absorb_overlapping_fragments, merge_related_components
+
 
 def find_components(mask: np.ndarray) -> list[dict[str, Any]]:
     height, width = mask.shape
@@ -79,11 +82,34 @@ def split_transparent_png(
     alpha_threshold: int = 8,
     min_area: int = 8,
     padding: int = 0,
+    merge_distance: int = 6,
+    filter_decorative_fragments: bool = True,
 ) -> dict[str, Any]:
     image = Image.open(image_path).convert("RGBA")
     alpha = np.array(image.getchannel("A"))
     mask = alpha > alpha_threshold
-    components = find_components(mask)
+    raw_components = find_components(mask)
+    components = raw_components
+    if int(merge_distance) > 0:
+        components = merge_related_components(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+            merge_distance=merge_distance,
+        )
+    components = absorb_overlapping_fragments(
+        components,
+        image_width=image.width,
+        image_height=image.height,
+    )
+    merged_component_count = len(components)
+    removed_components: list[dict[str, Any]] = []
+    if filter_decorative_fragments:
+        components, removed_components = filter_decorative_components(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, int | str]] = []
@@ -143,6 +169,11 @@ def split_transparent_png(
         "alpha_threshold": alpha_threshold,
         "min_area": min_area,
         "padding": padding,
+        "merge_distance": int(merge_distance),
+        "filter_decorative_fragments": bool(filter_decorative_fragments),
+        "raw_component_count": len(raw_components),
+        "merged_component_count": merged_component_count,
+        "filtered_out_count": len(removed_components),
         "count": len(records),
         "assets": records,
     }
@@ -151,4 +182,3 @@ def split_transparent_png(
         encoding="utf-8",
     )
     return manifest
-

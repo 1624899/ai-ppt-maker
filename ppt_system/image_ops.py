@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageFilter
+
+from ppt_system.background_removal import remove_background
+
+
+@dataclass(frozen=True)
+class TransparentImageResult:
+    output_path: Path
+    strategy: str
+    warning: str | None = None
 
 
 def enhance_image(input_path: Path, output_path: Path) -> Path:
@@ -20,26 +30,17 @@ def enhance_image(input_path: Path, output_path: Path) -> Path:
     return output_path
 
 
-def make_transparent(input_path: Path, output_path: Path, fallback_bg_threshold: int = 245) -> Path:
+def make_transparent(
+    input_path: Path,
+    output_path: Path,
+    fallback_bg_threshold: int = 245,
+) -> TransparentImageResult:
     image = Image.open(input_path).convert("RGBA")
-    alpha = image.getchannel("A")
-    if alpha.getextrema()[0] < 255:
-        image.save(output_path)
-        return output_path
-
-    try:
-        from rembg import remove
-    except ImportError:
-        data = image.load()
-        for y in range(image.height):
-            for x in range(image.width):
-                r, g, b, a = data[x, y]
-                if r >= fallback_bg_threshold and g >= fallback_bg_threshold and b >= fallback_bg_threshold:
-                    data[x, y] = (r, g, b, 0)
-        image.save(output_path)
-        return output_path
-
-    removed = remove(image)
-    removed.save(output_path)
-    return output_path
-
+    result = remove_background(image, fallback_bg_threshold=fallback_bg_threshold)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    result.image.save(output_path)
+    return TransparentImageResult(
+        output_path=output_path,
+        strategy=result.strategy,
+        warning=result.warning,
+    )

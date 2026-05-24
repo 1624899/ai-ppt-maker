@@ -5,6 +5,50 @@ from typing import Any
 from ppt_system.design_grammar import compress_style_for_prompt, build_prompt_anchor
 
 
+def build_reference_prompt_by_mode(
+    page: dict[str, Any],
+    style_notes: str,
+    image_width: int,
+    image_height: int,
+    *,
+    prompt_mode: str,
+    style_guide: dict[str, Any] | None = None,
+    has_reference_images: bool = False,
+) -> str:
+    normalized_mode = str(prompt_mode).strip().lower() or "baseline"
+    if normalized_mode == "baseline":
+        existing_prompt = str(page.get("image_prompt", "")).strip()
+        if existing_prompt:
+            return existing_prompt
+        return build_reference_prompt(
+            page,
+            style_notes,
+            image_width,
+            image_height,
+            style_guide=style_guide,
+            has_reference_images=has_reference_images,
+        )
+    if normalized_mode == "compact":
+        return build_compact_reference_prompt(
+            page,
+            style_notes,
+            image_width,
+            image_height,
+            style_guide=style_guide,
+            has_reference_images=has_reference_images,
+        )
+    if normalized_mode == "slot_brief":
+        return build_slot_brief_reference_prompt(
+            page,
+            style_notes,
+            image_width,
+            image_height,
+            style_guide=style_guide,
+            has_reference_images=has_reference_images,
+        )
+    raise ValueError(f"未知的一阶段提示词模式：{prompt_mode}")
+
+
 def build_reference_prompt(
     page: dict[str, Any],
     style_notes: str,
@@ -89,6 +133,94 @@ def build_reference_prompt(
             *text_lines,
         ])
     return merged
+
+
+def build_compact_reference_prompt(
+    page: dict[str, Any],
+    style_notes: str,
+    image_width: int,
+    image_height: int,
+    *,
+    style_guide: dict[str, Any] | None = None,
+    has_reference_images: bool = False,
+) -> str:
+    style_guide = style_guide or {}
+    title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
+    summary = str(page.get("summary", "")).strip()
+    layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
+    bullets = collect_page_bullets(page)
+    slots = collect_page_slots(page)
+    anchor = build_style_anchor(style_guide)
+
+    lines = [
+        f"生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字必须清晰可读。",
+    ]
+    if has_reference_images:
+        lines.append(
+            "如果提供了参考图，请把它们当成同一套 PPT 的视觉母版：优先继承背景明度、留白比例、描边粗细、圆角、卡片密度、图标语言和配色比例。"
+        )
+        lines.append("不要复制任一参考图的具体构图，但要让新页面看起来明显属于同一套模板体系。")
+    else:
+        lines.append("整体保持高级企业汇报 / 咨询信息图气质，结构清晰、边界明确、留白充足。")
+    lines.append(f"页面主题：{title}")
+    if summary:
+        lines.append(f"核心表达：{summary}")
+    if bullets:
+        lines.append("必须体现的要点：")
+        lines.extend(f"- {bullet}" for bullet in bullets[:5])
+    if slots:
+        lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
+    lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排由你自主决定。")
+    if anchor:
+        lines.append(f"统一视觉锚点：{anchor}")
+    if style_notes:
+        lines.append(f"补充风格说明：{style_notes}")
+    lines.append("不要乱码，不要堆满装饰，优先让信息关系清楚。")
+    return "\n".join(lines)
+
+
+def build_slot_brief_reference_prompt(
+    page: dict[str, Any],
+    style_notes: str,
+    image_width: int,
+    image_height: int,
+    *,
+    style_guide: dict[str, Any] | None = None,
+    has_reference_images: bool = False,
+) -> str:
+    style_guide = style_guide or {}
+    title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
+    summary = str(page.get("summary", "")).strip()
+    layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
+    bullets = collect_page_bullets(page)
+    slots = collect_page_slots(page)
+    anchor = build_style_anchor(style_guide)
+
+    lines = [
+        f"请生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字清晰可读。",
+    ]
+    if has_reference_images:
+        lines.append("优先学习参考图的版芯比例、留白、背景纹理、线条样式、卡片层级和色彩节奏，再围绕本页内容重新设计。")
+        lines.append("不要照搬某一张参考图的具体版式，只需要保持同系列视觉一致性。")
+    else:
+        lines.append("围绕本页内容重新组织页面，保持咨询信息图式的理性与秩序。")
+    lines.append(f"页面标题：{title}")
+    if summary:
+        lines.append(f"页面任务：{summary}")
+    if bullets:
+        lines.append("页面必须覆盖这些信息：")
+        lines.extend(f"- {bullet}" for bullet in bullets[:5])
+    if slots:
+        lines.append("请围绕以下语义分区组织页面，而不是机械照抄固定构图：")
+        lines.extend(f"{index + 1}. {slot}" for index, slot in enumerate(slots[:5]))
+    lines.append(f"版式只需大致接近 {layout_family}，无需强行复刻具体卡片数量或指定图标。")
+    lines.append("你可以自主决定最适合的视觉重心、流程方向、卡片分组和图标组合。")
+    if anchor:
+        lines.append(f"统一视觉锚点：{anchor}")
+    if style_notes:
+        lines.append(f"补充风格说明：{style_notes}")
+    lines.append("整体要像成熟企业汇报模板，结构清楚、留白充足、边界明确。")
+    return "\n".join(lines)
 
 
 def merge_prompt_with_style_lock(
@@ -206,3 +338,45 @@ def normalize_list(items: Any) -> list[str]:
     if not isinstance(items, list):
         return []
     return [str(item).strip() for item in items if str(item).strip()]
+
+
+def collect_page_bullets(page: dict[str, Any]) -> list[str]:
+    bullets = page.get("bullets", [])
+    if isinstance(bullets, list):
+        cleaned = [str(item).strip() for item in bullets if str(item).strip()]
+        if cleaned:
+            return cleaned
+
+    texts = page.get("texts", [])
+    if not isinstance(texts, list):
+        return []
+    for item in texts:
+        if str(item.get("role", "")).strip() != "body":
+            continue
+        lines = []
+        for raw_line in str(item.get("text", "")).splitlines():
+            line = raw_line.strip().lstrip("•").strip()
+            if line:
+                lines.append(line)
+        if lines:
+            return lines
+    return []
+
+
+def collect_page_slots(page: dict[str, Any]) -> list[str]:
+    slots = page.get("layout_slots", [])
+    if not isinstance(slots, list):
+        return []
+    return [str(slot).strip() for slot in slots if str(slot).strip()]
+
+
+def build_style_anchor(style_guide: dict[str, Any] | None = None) -> str:
+    style_guide = style_guide or {}
+    prompt_anchor = str(style_guide.get("prompt_anchor", "")).strip()
+    if prompt_anchor:
+        return prompt_anchor
+
+    style_core = style_guide.get("style_core", {})
+    if not isinstance(style_core, dict):
+        return ""
+    return build_prompt_anchor({"style_core": style_core})

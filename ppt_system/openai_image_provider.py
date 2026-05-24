@@ -8,6 +8,12 @@ from typing import Any
 import requests
 from requests import RequestException
 
+from ppt_system.http_retry_policy import (
+    build_transport_error_message,
+    is_retryable_status_code,
+    transport_retry_budget,
+)
+
 
 class OpenAIImageProvider:
     def __init__(self, config: dict[str, Any], profile: dict[str, Any] | None = None) -> None:
@@ -25,7 +31,10 @@ class OpenAIImageProvider:
         self.moderation = str(config.get("image_moderation", "low")).strip()
         self.n = int(config.get("image_n", 1))
         self.timeout = int(config.get("request_timeout_seconds", 600))
+        self.total_timeout = int(config.get("request_total_timeout_seconds", 180))
         self.retry_count = int(config.get("request_retry_count", 3))
+        self.transport_retry_count = int(config.get("request_transport_retry_count", 1))
+        self.ambiguous_transport_retry_count = int(config.get("request_ambiguous_retry_count", 0))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
 
         if not self.api_key:
@@ -153,25 +162,41 @@ class OpenAIImageProvider:
 
     def _post_with_retry(self, url: str, **kwargs: Any) -> requests.Response:
         last_response: requests.Response | None = None
-        for attempt in range(self.retry_count + 1):
+        response_attempt = 0
+        transport_attempt = 0
+        deadline = time.monotonic() + max(1, self.total_timeout)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f"图像接口请求超时：单次生图流程超过 {self.total_timeout} 秒，已停止自动重试")
+
             self._rewind_files(kwargs.get("files"))
             try:
-                response = requests.post(url, timeout=self.timeout, **kwargs)
+                request_timeout = max(1.0, min(float(self.timeout), remaining))
+                response = requests.post(url, timeout=request_timeout, **kwargs)
                 last_response = response
-                if not self._should_retry(response) or attempt >= self.retry_count:
+                if not self._should_retry(response) or response_attempt >= self.retry_count:
                     return response
 
                 retry_after = response.headers.get("Retry-After", "").strip()
                 if retry_after.isdigit():
                     delay = float(retry_after)
                 else:
-                    delay = self.retry_initial_delay * (2**attempt)
-                time.sleep(delay)
+                    delay = self.retry_initial_delay * (2**response_attempt)
+                response_attempt += 1
+                self._sleep_with_deadline(delay, deadline)
             except RequestException as exc:
-                if attempt >= self.retry_count:
-                    raise RuntimeError(f"图像接口请求异常：{exc}") from exc
-                delay = self.retry_initial_delay * (2**attempt)
-                time.sleep(delay)
+                retry_budget = transport_retry_budget(
+                    exc,
+                    transport_retry_count=self.transport_retry_count,
+                    ambiguous_transport_retry_count=self.ambiguous_transport_retry_count,
+                )
+                if transport_attempt >= retry_budget:
+                    raise RuntimeError(build_transport_error_message(exc)) from exc
+                delay = self.retry_initial_delay * (2**transport_attempt)
+                transport_attempt += 1
+                self._sleep_with_deadline(delay, deadline)
+                continue
 
         return last_response
 
@@ -187,9 +212,7 @@ class OpenAIImageProvider:
 
     @staticmethod
     def _should_retry(response: requests.Response) -> bool:
-        if response.status_code in {408, 409, 425, 429, 500, 502, 503, 504, 524}:
-            return True
-        return False
+        return is_retryable_status_code(response.status_code)
 
     def _save_response_image(self, response_json: dict[str, Any], output_path: Path) -> dict[str, Any]:
         data = response_json.get("data", [])
@@ -201,7 +224,7 @@ class OpenAIImageProvider:
         if image.get("b64_json"):
             output_path.write_bytes(base64.b64decode(image["b64_json"]))
         elif image.get("url"):
-            image_response = requests.get(image["url"], timeout=self.timeout)
+            image_response = requests.get(image["url"], timeout=min(self.timeout, self.total_timeout))
             image_response.raise_for_status()
             output_path.write_bytes(image_response.content)
         else:
@@ -228,6 +251,12 @@ class OpenAIImageProvider:
         except ValueError:
             body = response.text
         raise RuntimeError(f"图像接口请求失败：HTTP {response.status_code}，{body}")
+
+    def _sleep_with_deadline(self, delay: float, deadline: float) -> None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"图像接口请求超时：单次生图流程超过 {self.total_timeout} 秒，已停止自动重试")
+        time.sleep(min(delay, remaining))
 
 
 def image_mime_type(path: Path) -> str:

@@ -494,6 +494,33 @@ textarea {
   line-height: 1.6;
 }
 
+.style-ref-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.style-ref-card {
+  margin: 0;
+  border: 1px solid #e4e9f4;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  box-shadow: var(--shadow-soft);
+}
+
+.style-ref-card img {
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+.style-ref-card figcaption {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .toggle-field {
   display: flex;
   align-items: center;
@@ -1045,6 +1072,10 @@ button {
   flex-wrap: wrap;
 }
 
+.delivery-actions:empty {
+  display: none;
+}
+
 .delivery-action {
   text-decoration: none;
 }
@@ -1184,6 +1215,17 @@ button {
 .stage-status.is-error::before {
   background: var(--danger);
   box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.14);
+}
+
+.stage-status.is-interrupted {
+  border-color: rgba(214, 164, 69, 0.24);
+  background: linear-gradient(180deg, #fffdf7 0%, #fff5dd 100%);
+  color: #8a6518;
+}
+
+.stage-status.is-interrupted::before {
+  background: #d6a445;
+  box-shadow: 0 0 0 3px rgba(214, 164, 69, 0.16);
 }
 
 .stage-body {

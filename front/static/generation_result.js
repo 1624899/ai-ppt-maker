@@ -10,7 +10,33 @@
     })[char]);
   }
 
-  function normalizeStatus(job, exportStage) {
+  function getStageLabel(stageKey) {
+    const map = {
+      queued: "等待执行",
+      planning: "模型规划",
+      reference_generation: "参考图生成",
+      elements_generation: "元素图生成",
+      ppt_export: "PPT 组装",
+      completed: "全部完成",
+    };
+    return map[stageKey] || "处理中";
+  }
+
+  function getActiveStage(job) {
+    const stages = Array.isArray(job?.stages) ? job.stages : [];
+    const currentStageKey = String(job?.current_stage || "").trim();
+    if (!currentStageKey) {
+      return {};
+    }
+    return stages.find((stage) => stage.key === currentStageKey) || {
+      key: currentStageKey,
+      label: getStageLabel(currentStageKey),
+      status: job?.status || "pending",
+      summary: "",
+    };
+  }
+
+  function normalizeStatus(job, activeStage, exportStage) {
     if (job?.status === "completed") {
       return "completed";
     }
@@ -21,6 +47,15 @@
       return "interrupted";
     }
     if (job?.status === "stopping") {
+      return "running";
+    }
+    if (job?.status === "running") {
+      return "running";
+    }
+    if (activeStage?.status === "running") {
+      return "running";
+    }
+    if (activeStage?.status === "completed" && exportStage?.status !== "completed") {
       return "running";
     }
     return exportStage?.status || "pending";
@@ -37,7 +72,7 @@
     return map[status] || "处理中";
   }
 
-  function getStageSummary(job, exportStage) {
+  function getStageSummary(job, activeStage, exportStage) {
     if (job?.status === "completed") {
       return exportStage?.summary || "可编辑 PPTX 已组装完成";
     }
@@ -49,6 +84,21 @@
     }
     if (job?.status === "stopping") {
       return "已收到停止请求，等待当前页处理完成后暂停";
+    }
+    if (activeStage?.key === "queued") {
+      return "任务已创建，等待开始执行整条生成与导出链路";
+    }
+    if (activeStage?.key === "planning") {
+      return "正在进行模型规划，完成后会继续生成参考图、元素图，并自动进入 PPT 组装";
+    }
+    if (activeStage?.key === "reference_generation") {
+      return "正在生成带文字参考图，完成后会继续生成去文字元素图";
+    }
+    if (activeStage?.key === "elements_generation") {
+      return "正在生成去文字元素图，完成后会自动进入 CLI 后处理与 PPT 组装";
+    }
+    if (activeStage?.key === "ppt_export") {
+      return activeStage?.summary || exportStage?.summary || "正在执行图像后处理并导出 PPTX";
     }
     return exportStage?.summary || "等待进入 CLI 后处理与 PPT 组装";
   }
@@ -76,11 +126,27 @@
     return actions;
   }
 
-  function buildMetrics(job, exportResult, exportStage) {
+  function getDeliveryType(job, exportResult, activeStage) {
+    if (exportResult?.pptx_url) {
+      return "可编辑 PPTX";
+    }
+    if (activeStage?.key === "ppt_export") {
+      return "PPT 组装中";
+    }
+    if (job?.status === "interrupted") {
+      return "已暂停";
+    }
+    if (job?.status === "error") {
+      return "导出失败";
+    }
+    return "前置生成中";
+  }
+
+  function buildMetrics(job, exportResult, activeStage) {
     const assetPages = Array.isArray(exportResult?.assets?.pages) ? exportResult.assets.pages : [];
     const pageCount = Number(exportResult?.page_count || job?.reference_pages?.length || job?.pages?.length || 0);
-    const currentStage = exportStage?.label || "PPT 组装";
-    const deliveryType = exportResult?.pptx_url ? "可编辑 PPTX" : "等待导出";
+    const currentStage = activeStage?.label || getStageLabel(job?.current_stage);
+    const deliveryType = getDeliveryType(job, exportResult, activeStage);
     const assetCount = sumAssetCount(assetPages);
     return [
       {label: "最终交付", value: deliveryType},
@@ -93,13 +159,14 @@
   function buildGenerationResultTask(job) {
     const exportStage = (job?.stages || []).find((stage) => stage.key === "ppt_export") || {};
     const exportResult = job?.result?.export || {};
-    const status = normalizeStatus(job, exportStage);
+    const activeStage = getActiveStage(job);
+    const status = normalizeStatus(job, activeStage, exportStage);
     return {
       status,
       title: "最终交付",
       description: "前端内容规划与生图完成后，系统会自动进入 CLI 后处理组装层，最终直接交付可编辑 PPTX。",
-      summary: getStageSummary(job, exportStage),
-      metrics: buildMetrics(job, exportResult, exportStage),
+      summary: getStageSummary(job, activeStage, exportStage),
+      metrics: buildMetrics(job, exportResult, activeStage),
       actions: buildActions(exportResult),
     };
   }

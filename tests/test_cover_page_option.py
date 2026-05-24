@@ -43,7 +43,7 @@ class CoverPageOptionTests(unittest.TestCase):
             generation_options={"include_cover_page": False},
         )
 
-        self.assertEqual(plan["pages"][0]["reference_mode"], "generation")
+        self.assertEqual(plan["pages"][0]["reference_mode"], "edit_with_refs")
         self.assertEqual(plan["pages"][0]["difference_from_previous"], "正文开篇，直接进入核心内容")
 
     def test_enable_cover_page_keeps_first_page_cover_strategy(self) -> None:

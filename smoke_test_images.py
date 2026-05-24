@@ -23,7 +23,7 @@ def save_image_from_response(payload: dict, output_path: Path) -> None:
         output_path.write_bytes(base64.b64decode(image["b64_json"]))
         return
     if image.get("url"):
-        response = requests.get(image["url"], timeout=180)
+        response = requests.get(image["url"], timeout=360)
         response.raise_for_status()
         output_path.write_bytes(response.content)
         return
@@ -57,7 +57,7 @@ def run_generation(base_url: str, api_key: str, output_dir: Path) -> None:
             "Content-Type": "application/json",
         },
         json=payload,
-        timeout=300,
+        timeout=360,
     )
     body = print_response("generations", response)
     save_image_from_response(body, output_dir / "generation_test.png")
@@ -77,11 +77,12 @@ def run_edit(base_url: str, api_key: str, output_dir: Path) -> None:
     }
     with TEST_IMAGE.open("rb") as handle:
         response = requests.post(
+
             f"{base_url.rstrip('/')}/images/edits",
             headers={"Authorization": f"Bearer {api_key}"},
             data=payload,
             files={"image": (TEST_IMAGE.name, handle, "image/png")},
-            timeout=300,
+            timeout=360,
         )
     body = print_response("edits", response)
     save_image_from_response(body, output_dir / "edit_test.png")

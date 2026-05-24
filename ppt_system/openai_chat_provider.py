@@ -18,6 +18,7 @@ class OpenAIChatProvider:
         self.model = str(profile.get("model", config.get("chat_model", "gpt-5.5")))
         self.temperature = float(profile.get("temperature", config.get("chat_temperature", 0.3)))
         self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
+        self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
         self.timeout = int(config.get("request_timeout_seconds", 600))
         self.retry_count = int(config.get("request_retry_count", 3))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
@@ -37,6 +38,8 @@ class OpenAIChatProvider:
             "max_tokens": self.max_tokens,
             "response_format": {"type": "json_object"},
         }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         response = self._post_with_retry(payload)
         self._raise_for_error(response)
         body = response.json()
@@ -81,6 +84,12 @@ class OpenAIChatProvider:
         except ValueError:
             body = response.text
         raise RuntimeError(f"对话模型请求失败：HTTP {response.status_code}，{body}")
+
+    @staticmethod
+    def _resolve_reasoning_effort(config: dict[str, Any], profile: dict[str, Any]) -> str:
+        raw_value = profile.get("reasoning_effort", config.get("chat_reasoning_effort", ""))
+        resolved = str(raw_value or "").strip().lower()
+        return resolved if resolved in {"low", "medium", "high"} else ""
 
 
 def should_retry(response: requests.Response) -> bool:

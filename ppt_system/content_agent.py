@@ -17,9 +17,10 @@ from ppt_system.design_grammar import (
     validate_layout_family,
 )
 from ppt_system.generation_options import default_generation_options
-from ppt_system.generation_prompts import build_reference_prompt, merge_prompt_with_style_lock
+from ppt_system.generation_prompts import build_reference_prompt_by_mode
 from ppt_system.openai_chat_provider import OpenAIChatProvider
-from ppt_system.planner import infer_reference_mode, infer_style_type
+from ppt_system.planner import infer_style_type
+from ppt_system.style_runtime import apply_text_theme
 from ppt_system.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
 
 
@@ -297,6 +298,7 @@ def build_planning_prompt(
         **(generation_options or {}),
     }
     include_cover_page = bool(generation_options.get("include_cover_page", True))
+    resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     prompt_anchor = style_guide.get("prompt_anchor", "")
     style_core = style_guide.get("style_core", {})
     layout_families = style_guide.get("layout_families", [])
@@ -326,6 +328,7 @@ def build_planning_prompt(
 画幅：16:9
 像素参考：{image_width}x{image_height}
 首页图策略：{"第 1 页允许作为 PPT 首页图/封面页，用于建立视觉基调" if include_cover_page else "不生成单独首页图；第 1 页必须直接进入正文内容"}
+第一阶段提示策略：系统会在参考图生成阶段使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里不要求你为每页写成长篇最终 prompt。
 
 统一风格锚点：
 {prompt_anchor}
@@ -365,7 +368,7 @@ JSON 格式必须如下：
       "style_constraints": "本页特别的风格约束",
       "reference_mode": "generation",
       "prompt_profile": "compressed",
-      "image_prompt": "完整中文生图提示词，必须生成带文字的 PPT 单页效果图；文字清晰可读；按本页标题和要点排版；保持 16:9；边界清晰；高级；不要乱码。"
+      "image_prompt": "可选：1 到 3 句中文视觉重点说明，用来补充本页视觉侧重点，不是最终完整生图提示词。"
     }}
   ]
 }}
@@ -378,14 +381,13 @@ JSON 格式必须如下：
 5. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
 6. 不允许复用参考图的具体构图，每页必须有 difference_from_previous。
 7. layout_slots 是语义槽位，描述本页信息分区的含义，不是固定像素坐标。
-8. 每页都要有独立 image_prompt，不能复用同一句。
-9. image_prompt 要包含该页标题、正文要点、布局、视觉元素、风格、清晰边界和 16:9。
-10. 文字要出现在图中，因为这是第一阶段带文字参考图。
-11. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
-12. 如果存在参考风格图，image_prompt 需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
-13. 避免主动引入与参考图明显冲突的视觉风格，尤其不要偏离整体背景明度、版式秩序和信息图语言。
-14. reference_mode 只能填写 "generation" 或 "edit_with_refs"。普通内容页填 "generation"；仅封面页或风格锚点页填 "edit_with_refs"。
-15. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
+8. image_prompt 可以为空；如果填写，也只写本页独有的视觉重点，避免重复整套固定风格。
+9. 文字要出现在图中，因为这是第一阶段带文字参考图。
+10. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
+11. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
+12. 避免主动引入与参考图明显冲突的视觉风格，尤其不要偏离整体背景明度、版式秩序和信息图语言。
+13. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
+14. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
 """.strip()
 
 
@@ -405,6 +407,7 @@ def normalize_content_plan(
         **(generation_options or {}),
     }
     include_cover_page = bool(generation_options.get("include_cover_page", True))
+    resolved_prompt_mode = "slot_brief" if has_reference_images else "compact"
     fallback_pages = build_text_layouts(
         content,
         page_count=page_count,
@@ -475,16 +478,7 @@ def normalize_content_plan(
                 difference_from_previous = f"从 {prev_family} 切换到 {layout_family}，重新生成具体构图"
 
         style_constraints = str(raw.get("style_constraints", "")).strip()
-        reference_mode = str(raw.get("reference_mode", "")).strip()
-        if reference_mode not in ("generation", "edit_with_refs"):
-            reference_mode = infer_reference_mode(
-                index,
-                page_count,
-                has_reference_images,
-                include_cover_page=include_cover_page,
-            )
-        elif not include_cover_page and index == 0:
-            reference_mode = "generation"
+        reference_mode = "edit_with_refs" if has_reference_images else "generation"
         prompt_profile = str(raw.get("prompt_profile", "compressed")).strip()
 
         texts = fallback.get("texts", [])
@@ -498,6 +492,7 @@ def normalize_content_plan(
             rebuilt_texts = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
             if rebuilt_texts and len(rebuilt_texts) > 1:
                 texts = rebuilt_texts
+        texts = apply_text_theme(texts, style_guide)
 
         page = {
             "page_no": index + 1,
@@ -514,23 +509,19 @@ def normalize_content_plan(
             "prompt_profile": prompt_profile,
             "texts": texts,
         }
-        image_prompt = str(raw.get("image_prompt", "")).strip()
-        if image_prompt:
-            page["image_prompt"] = merge_prompt_with_style_lock(
-                image_prompt,
-                style_guide=style_guide,
-                has_reference_images=has_reference_images,
-                page=page,
-            )
-        else:
-            page["image_prompt"] = build_reference_prompt(
-                page,
-                style_notes or style_type,
-                image_width,
-                image_height,
-                style_guide=style_guide,
-                has_reference_images=has_reference_images,
-            )
+        planner_image_prompt = str(raw.get("image_prompt", "")).strip()
+        page["planner_image_prompt"] = planner_image_prompt
+        if planner_image_prompt:
+            page["image_prompt"] = planner_image_prompt
+        page["image_prompt"] = build_reference_prompt_by_mode(
+            page,
+            style_notes or style_type,
+            image_width,
+            image_height,
+            prompt_mode=resolved_prompt_mode,
+            style_guide=style_guide,
+            has_reference_images=has_reference_images,
+        )
         pages.append(page)
 
     return {

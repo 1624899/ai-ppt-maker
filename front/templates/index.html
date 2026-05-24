@@ -111,8 +111,10 @@
               <div class="grid-1">
                 <label class="field">
                   <span>参考风格图</span>
+                  <input name="reuse_style_refs_from_job_id" id="reuseStyleRefsJobId" type="hidden" value="" />
                   <input name="style_images" id="styleImages" type="file" accept="image/*" multiple />
-                  <p class="field-tip" id="styleImagesHint">切换到已有任务时，已上传的参考图不会自动回填；如需重跑，请重新选择文件。</p>
+                  <p class="field-tip" id="styleImagesHint">支持查看历史任务时自动回填参考图；也可以重新选择本地文件覆盖。</p>
+                  <div class="style-ref-gallery" id="styleRefGallery" hidden></div>
                 </label>
               </div>
 
