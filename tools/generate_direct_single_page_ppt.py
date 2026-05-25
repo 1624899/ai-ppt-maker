@@ -14,7 +14,6 @@ from ppt_system.direct_page_script import (  # noqa: E402
     generate_direct_single_page_ppt,
     normalize_output_pptx_name,
 )
-from ppt_system.model_cache_runtime import configure_model_cache_environment  # noqa: E402
 from ppt_system.model_config import get_active_model_config, read_config  # noqa: E402
 from ppt_system.openai_chat_provider import OpenAIChatProvider  # noqa: E402
 
@@ -46,7 +45,6 @@ def main() -> None:
     if int(args.request_retry_count) >= 0:
         config["request_retry_count"] = int(args.request_retry_count)
 
-    configure_model_cache_environment(project_root=BASE_DIR, config=config)
     chat_profile = get_active_model_config(config, "chat")
     provider = OpenAIChatProvider(config, chat_profile)
 

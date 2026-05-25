@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from ppt_system.direct_page_script import generate_direct_single_page_ppt
-from ppt_system.model_cache_runtime import configure_model_cache_environment
 from ppt_system.model_config import get_active_model_config, read_config
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.direct_page_script import normalize_output_pptx_name
@@ -52,7 +51,6 @@ def main() -> None:
         config["request_timeout_seconds"] = int(args.request_timeout_seconds)
     if int(args.request_retry_count) >= 0:
         config["request_retry_count"] = int(args.request_retry_count)
-    configure_model_cache_environment(project_root=Path(__file__).resolve().parent, config=config)
     chat_profile = get_active_model_config(config, "chat")
     provider = OpenAIChatProvider(config, chat_profile)
 

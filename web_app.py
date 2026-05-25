@@ -32,7 +32,6 @@ from ppt_system.model_config import (
     upsert_model_config,
     write_config,
 )
-from ppt_system.model_cache_runtime import configure_model_cache_environment
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.openai_image_provider import OpenAIImageProvider
 from ppt_system.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
@@ -41,7 +40,6 @@ from ppt_system.stage_resume import has_expected_outputs, reconcile_completed_st
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
 JOBS_DB_PATH = ROOT / "output" / "jobs.sqlite3"
-configure_model_cache_environment(project_root=ROOT)
 init_job_db(JOBS_DB_PATH)
 JOB_EXECUTOR = ThreadPoolExecutor(max_workers=2)
 JOB_STATUS_LOCK = threading.Lock()

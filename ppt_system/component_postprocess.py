@@ -11,6 +11,7 @@ def merge_related_components(
     image_width: int,
     image_height: int,
     merge_distance: int,
+    minimum_fragment_group_size: int = 3,
 ) -> list[dict[str, Any]]:
     distance = max(0, int(merge_distance))
     if distance <= 0 or len(components) <= 1:
@@ -39,9 +40,12 @@ def merge_related_components(
 
     merged: list[dict[str, Any]] = []
     for group in anchor_groups:
-        merged.append(_merge_component_group(group["members"]))
+        merged.append(_merge_component_group(group["members"], contains_anchor=True))
     for group in fragment_groups:
-        merged.append(_merge_component_group(group))
+        if len(group) >= max(2, int(minimum_fragment_group_size)):
+            merged.append(_merge_component_group(group, contains_anchor=False))
+        else:
+            merged.extend(group)
     return merged
 
 
@@ -119,6 +123,8 @@ def _attach_fragment_to_anchor_group(
     best_group_index: int | None = None
     best_score: tuple[int, int] | None = None
     for index, group in enumerate(anchor_groups):
+        if _should_keep_fragment_separate_from_anchor(fragment, group["anchor"]):
+            continue
         gap_x, gap_y = _bbox_gap(fragment, group["anchor"])
         if gap_x > attach_distance or gap_y > attach_distance:
             continue
@@ -132,6 +138,47 @@ def _attach_fragment_to_anchor_group(
 
     anchor_groups[best_group_index]["members"].append(fragment)
     return True
+
+
+def _should_keep_fragment_separate_from_anchor(
+    fragment: dict[str, Any],
+    anchor: dict[str, Any],
+) -> bool:
+    fragment_left = int(fragment["left"])
+    fragment_top = int(fragment["top"])
+    fragment_right = int(fragment["right"])
+    fragment_bottom = int(fragment["bottom"])
+    anchor_left = int(anchor["left"])
+    anchor_top = int(anchor["top"])
+    anchor_right = int(anchor["right"])
+    anchor_bottom = int(anchor["bottom"])
+
+    fully_inside = (
+        fragment_left >= anchor_left
+        and fragment_top >= anchor_top
+        and fragment_right <= anchor_right
+        and fragment_bottom <= anchor_bottom
+    )
+    if not fully_inside:
+        return False
+
+    anchor_width = max(1, anchor_right - anchor_left)
+    anchor_height = max(1, anchor_bottom - anchor_top)
+    fragment_width = max(1, fragment_right - fragment_left)
+    fragment_height = max(1, fragment_bottom - fragment_top)
+    inset_left = fragment_left - anchor_left
+    inset_top = fragment_top - anchor_top
+    inset_right = anchor_right - fragment_right
+    inset_bottom = anchor_bottom - fragment_bottom
+    min_inset = min(inset_left, inset_top, inset_right, inset_bottom)
+    inset_threshold = max(8, min(anchor_width, anchor_height) // 18)
+    fragment_area = int(fragment["area"])
+    fragment_bbox_area = max(1, fragment_width * fragment_height)
+    fragment_density = fragment_area / fragment_bbox_area
+    meaningful_area = fragment_area >= max(48, int(int(anchor["area"]) * 0.003))
+    compact_shape = max(fragment_width, fragment_height) <= max(72, min(anchor_width, anchor_height) // 2)
+
+    return min_inset >= inset_threshold and meaningful_area and (fragment_density >= 0.08 or compact_shape)
 
 
 def _group_fragments(
@@ -254,12 +301,18 @@ def _can_join_fragment_group(
     return width <= max_group_span and height <= max_group_span
 
 
-def _merge_component_group(group: list[dict[str, Any]]) -> dict[str, Any]:
+def _merge_component_group(
+    group: list[dict[str, Any]],
+    *,
+    contains_anchor: bool | None = None,
+) -> dict[str, Any]:
     left = min(int(item["left"]) for item in group)
     top = min(int(item["top"]) for item in group)
     right = max(int(item["right"]) for item in group)
     bottom = max(int(item["bottom"]) for item in group)
     merged_mask = np.zeros((bottom - top, right - left), dtype=bool)
+    merged_component_count = 0
+    merged_contains_anchor = False if contains_anchor is None else bool(contains_anchor)
 
     for component in group:
         offset_left = int(component["left"]) - left
@@ -267,6 +320,9 @@ def _merge_component_group(group: list[dict[str, Any]]) -> dict[str, Any]:
         component_mask = np.asarray(component["mask"], dtype=bool)
         height, width = component_mask.shape
         merged_mask[offset_top : offset_top + height, offset_left : offset_left + width] |= component_mask
+        merged_component_count += max(1, int(component.get("component_count", 1)))
+        if bool(component.get("contains_anchor", False)):
+            merged_contains_anchor = True
 
     return {
         "left": left,
@@ -275,6 +331,8 @@ def _merge_component_group(group: list[dict[str, Any]]) -> dict[str, Any]:
         "bottom": bottom,
         "area": int(merged_mask.sum()),
         "mask": merged_mask,
+        "component_count": merged_component_count,
+        "contains_anchor": merged_contains_anchor,
     }
 
 

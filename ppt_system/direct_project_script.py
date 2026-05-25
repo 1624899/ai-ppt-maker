@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from ppt_system.asset_alignment_runtime import analyze_global_asset_alignment, analyze_text_asset_overlaps
 from ppt_system.direct_page_script import (
     _refine_direct_page_script,
     _request_direct_page_script,
@@ -44,9 +45,12 @@ def prepare_direct_project_assets(
     *,
     alpha_threshold: int = 8,
     min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
+    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
     stage_logger: StageLogger | None = None,
@@ -77,9 +81,12 @@ def prepare_direct_project_assets(
             image_height=image_height,
             alpha_threshold=alpha_threshold,
             min_area=min_area,
+            min_width=min_width,
+            min_height=min_height,
             padding=padding,
             merge_distance=merge_distance,
             filter_decorative_fragments=filter_decorative_fragments,
+            split_mode=split_mode,
             skip_enhance=skip_enhance,
             skip_transparent=skip_transparent,
         )
@@ -96,6 +103,7 @@ def prepare_direct_project_assets(
                     "asset_strategy": "direct_split_elements",
                     "merge_distance": int(merge_distance),
                     "filter_decorative_fragments": bool(filter_decorative_fragments),
+                    "split_mode": str(split_mode),
                 },
             }
         )
@@ -115,9 +123,12 @@ def generate_direct_project_text_script(
     refine_rounds: int = 1,
     alpha_threshold: int = 8,
     min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
+    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
     stage_logger: StageLogger | None = None,
@@ -130,9 +141,12 @@ def generate_direct_project_text_script(
         work_dir,
         alpha_threshold=alpha_threshold,
         min_area=min_area,
+        min_width=min_width,
+        min_height=min_height,
         padding=padding,
         merge_distance=merge_distance,
         filter_decorative_fragments=filter_decorative_fragments,
+        split_mode=split_mode,
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
         stage_logger=stage_logger,
@@ -165,6 +179,7 @@ def generate_direct_project_text_script(
             slide_width_inch=float(project.get("slide_width_inch", 13.333333)),
             page_no=page_no,
         )
+        single_page_project["asset_adjustments"] = {str(page_no): {}}
         _log_page(page_logger, page_no, "开始直出首轮文字脚本")
         current_script = _request_direct_page_script(
             provider,
@@ -173,6 +188,7 @@ def generate_direct_project_text_script(
             image_width=image_width,
             image_height=image_height,
         )
+        current_asset_adjustments: dict[str, Any] = {}
 
         page_result = {
             "page_no": page_no,
@@ -217,22 +233,80 @@ def generate_direct_project_text_script(
             )
             page_result["comparison_paths"].append(str(comparison_path))
             _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
-            candidate_script = _refine_direct_page_script(
+            refine_result = _refine_direct_page_script(
                 provider,
                 reference_image=reference_image,
                 rendered_preview=rendered_preview,
                 image_width=image_width,
                 image_height=image_height,
                 page_script=current_script,
+                asset_adjustments=current_asset_adjustments,
                 round_index=round_index,
             )
-            if candidate_script == current_script:
+            candidate_script = refine_result.page_script
+            candidate_adjustments = refine_result.asset_adjustments
+            if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:
                 _log_page(page_logger, page_no, "修正轮未返回更优脚本，保留当前结果")
                 break
             current_script = candidate_script
+            current_asset_adjustments = candidate_adjustments
+            single_page_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
             page_result["refine_rounds_applied"] = int(page_result["refine_rounds_applied"]) + 1
 
-        page_scripts.append({"page_no": page_no, "script": current_script})
+        page_scripts.append(
+            {
+                "page_no": page_no,
+                "script": current_script,
+                "asset_adjustments": dict(current_asset_adjustments),
+            }
+        )
+        if page_result["office_preview_paths"]:
+            manifest_path = page_dir / "assets" / "assets.json"
+            overlap_report = analyze_text_asset_overlaps(
+                manifest_path=manifest_path,
+                page_script=current_script,
+                current_adjustments=current_asset_adjustments,
+            )
+            page_result["text_asset_overlap"] = {
+                "total_boxes": int(overlap_report.total_boxes),
+                "overlap_box_count": int(overlap_report.overlap_box_count),
+                "overlap_ratio": float(overlap_report.overlap_ratio),
+                "max_overlap_pixels": int(overlap_report.max_overlap_pixels),
+                "overlapping_box_indices": list(overlap_report.overlapping_box_indices),
+            }
+            alignment_decision = analyze_global_asset_alignment(
+                reference_image=reference_image,
+                manifest_path=manifest_path,
+                page_script=current_script,
+                current_adjustments=current_asset_adjustments,
+            )
+            page_result["asset_alignment_decision"] = {
+                "should_apply": bool(alignment_decision.should_apply),
+                "dx": int(alignment_decision.dx),
+                "dy": int(alignment_decision.dy),
+                "baseline_iou": float(alignment_decision.baseline_iou),
+                "shifted_iou": float(alignment_decision.shifted_iou),
+                "confidence": float(alignment_decision.confidence),
+                "reason": alignment_decision.reason,
+            }
+            should_trigger_third_round = (
+                overlap_report.overlap_ratio >= 0.25
+                or overlap_report.overlap_box_count >= 2
+                or overlap_report.max_overlap_pixels >= 120
+            )
+            if should_trigger_third_round and alignment_decision.should_apply:
+                page_scripts[-1]["asset_adjustments"] = alignment_decision.suggested_adjustments
+                _log_page(
+                    page_logger,
+                    page_no,
+                    f"已应用第三轮元素对齐：dx={alignment_decision.dx}, dy={alignment_decision.dy}",
+                )
+            elif should_trigger_third_round:
+                _log_page(
+                    page_logger,
+                    page_no,
+                    f"检测到文字与元素重叠，但未形成稳定全局偏移，跳过第三轮全局对齐：{alignment_decision.reason}",
+                )
         page_results.append(page_result)
 
     script_path = work_dir / "generated_text_layout.py"

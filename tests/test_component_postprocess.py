@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from ppt_system.component_postprocess import absorb_overlapping_fragments
+from ppt_system.component_postprocess import absorb_overlapping_fragments, merge_related_components
 
 
 def _component(left: int, top: int, width: int, height: int, area: int) -> dict[str, object]:
@@ -19,6 +19,53 @@ def _component(left: int, top: int, width: int, height: int, area: int) -> dict[
 
 
 class ComponentPostprocessTests(unittest.TestCase):
+    def test_merge_related_components_keeps_meaningful_inner_fragment_separate(self) -> None:
+        components = [
+            _component(10, 10, 80, 80, 4200),
+            _component(34, 34, 18, 18, 180),
+        ]
+
+        merged = merge_related_components(
+            components,
+            image_width=100,
+            image_height=100,
+            merge_distance=6,
+        )
+
+        self.assertEqual(len(merged), 2)
+
+    def test_merge_related_components_keeps_two_nearby_fragment_components_separate(self) -> None:
+        components = [
+            _component(10, 10, 8, 8, 64),
+            _component(22, 10, 8, 8, 64),
+        ]
+
+        merged = merge_related_components(
+            components,
+            image_width=100,
+            image_height=100,
+            merge_distance=6,
+        )
+
+        self.assertEqual(len(merged), 2)
+
+    def test_merge_related_components_merges_compact_fragment_cluster(self) -> None:
+        components = [
+            _component(10, 10, 6, 6, 36),
+            _component(19, 10, 6, 6, 36),
+            _component(14, 18, 6, 6, 36),
+        ]
+
+        merged = merge_related_components(
+            components,
+            image_width=100,
+            image_height=100,
+            merge_distance=6,
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(int(merged[0]["area"]), 108)
+
     def test_absorb_overlapping_fragments_merges_tiny_edge_fragment_into_large_component(self) -> None:
         components = [
             _component(0, 80, 100, 15, 1500),

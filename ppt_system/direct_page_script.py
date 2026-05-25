@@ -107,27 +107,24 @@ def build_direct_page_refine_prompt(
     asset_adjustments: dict[str, Any],
     round_index: int,
 ) -> str:
-    """构建基于真实 PPT 渲染图的单页脚本修正提示词。"""
+    """构建基于真实 PPT 渲染图的单页文字修正提示词。"""
     payload = {
         "canvas": {"width": int(image_width), "height": int(image_height)},
         "refine_round": int(round_index) + 1,
         "current_page_script": str(page_script),
-        "current_asset_adjustments": normalize_asset_adjustments(asset_adjustments),
     }
     return (
         "第一张图是完整参考图，第二张图是当前 PPT 的真实导出渲染图。"
-        "请直接修正 page_script，并在必要时修正 asset_adjustments，让第二张图尽量贴近第一张图。"
+        "请直接修正 page_script，让第二张图尽量贴近第一张图。"
         "重点检查：字号、位置、宽高、对齐、换行、是否压线、是否偏离元素中心、文本是否过大或过小。"
-        "如果元素图因为白底定位不准而整体偏移，允许你移动元素贴图。"
-        "优先使用 asset_adjustments.global 做整页元素整体平移；只有少数元素需要单独修正时，才使用 asset_adjustments.asset_map。"
-        "不要输出新的图形、背景或边框，只允许修正文字框和现有元素贴图的位置尺寸。"
+        "本轮只修文字，不要修改元素贴图位置与尺寸；元素偏移会在后续规则检测触发的第三轮单独处理。"
+        "不要输出新的图形、背景或边框。"
         "如果参考图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
         "只允许写参考图里肉眼可见的真实文字，不要把图标、流程图轮廓、装饰符号、窗口按钮脑补成文字。"
         "允许的文字调用只有 add_text / add_center_text / add_runs。"
         '输出必须是严格 JSON，格式为 {"page_script":"...","asset_adjustments":{...}}。'
-        'asset_adjustments 允许格式示例：{"global":{"dx":0,"dy":0,"dw":0,"dh":0},"asset_map":{"3":{"dx":-4,"dy":2},"7":{"left":820,"top":360,"width":580,"height":96}}}。'
-        "如果无需调整元素贴图，请返回空对象 {}。"
+        "asset_adjustments 固定返回空对象 {}。"
         "返回完整 page_script 和完整 asset_adjustments，不要只返回 diff。"
         f"\n页面信息：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
@@ -176,9 +173,12 @@ def prepare_direct_page_assets(
     image_height: int,
     alpha_threshold: int = 8,
     min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
+    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
 ) -> dict[str, Any]:
@@ -203,9 +203,12 @@ def prepare_direct_page_assets(
         assets_dir,
         alpha_threshold=int(alpha_threshold),
         min_area=int(min_area),
+        min_width=int(min_width),
+        min_height=int(min_height),
         padding=int(padding),
         merge_distance=int(merge_distance),
         filter_decorative_fragments=bool(filter_decorative_fragments),
+        split_mode=str(split_mode),
     )
     if int(manifest.get("count", 0)) <= 0:
         raise RuntimeError(f"第 {page_no} 页元素分割结果为空，无法继续导出。")
@@ -307,7 +310,7 @@ def _refine_direct_page_script(
     asset_adjustments: dict[str, Any],
     round_index: int,
 ) -> DirectPageRefineResult:
-    """基于真实 PPT 渲染图请求模型修正单页脚本。"""
+    """基于真实 PPT 渲染图请求模型修正单页文字脚本。"""
     prompt = build_direct_page_refine_prompt(
         image_width=image_width,
         image_height=image_height,
@@ -318,7 +321,7 @@ def _refine_direct_page_script(
     messages = [
         {
             "role": "system",
-            "content": "你是 PPT 单页导出修正助手。你根据参考图与真实导出图修正 page_script 和 asset_adjustments，只输出 JSON。",
+            "content": "你是 PPT 单页文字修正助手。你根据参考图与真实导出图只修正 page_script，asset_adjustments 必须返回空对象，只输出 JSON。",
         },
         {
             "role": "user",
@@ -332,7 +335,7 @@ def _refine_direct_page_script(
     result = provider.complete_json(messages)
     raw_script = str(result.get("page_script", "")).strip()
     resolved_script = normalize_page_script(raw_script) if raw_script else page_script
-    resolved_adjustments = normalize_asset_adjustments(result.get("asset_adjustments"))
+    resolved_adjustments = normalize_asset_adjustments(asset_adjustments)
     return DirectPageRefineResult(
         page_script=resolved_script,
         asset_adjustments=resolved_adjustments,
