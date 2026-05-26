@@ -8,6 +8,30 @@ from ppt_system.alpha_matte_refinement import BackgroundModel, refine_alpha_matt
 
 
 class AlphaMatteRefinementTests(unittest.TestCase):
+    def test_refine_alpha_matte_preserves_enclosed_light_fill_inside_dark_outline(self) -> None:
+        source = np.full((9, 9, 4), 255, dtype=np.uint8)
+        source[1:8, 1:8, :3] = np.array([244, 248, 255], dtype=np.uint8)
+        source[1, 1:8, :3] = np.array([30, 80, 220], dtype=np.uint8)
+        source[7, 1:8, :3] = np.array([30, 80, 220], dtype=np.uint8)
+        source[1:8, 1, :3] = np.array([30, 80, 220], dtype=np.uint8)
+        source[1:8, 7, :3] = np.array([30, 80, 220], dtype=np.uint8)
+
+        removed = np.array(source, copy=True)
+        removed[:, :, 3] = 0
+        removed[1, 1:8, 3] = 255
+        removed[7, 1:8, 3] = 255
+        removed[1:8, 1, 3] = 255
+        removed[1:8, 7, 3] = 255
+
+        refined = refine_alpha_matte(
+            source,
+            removed,
+            background=BackgroundModel(color=np.array([255, 255, 255], dtype=np.int16), tolerance=12),
+        )
+
+        self.assertGreater(refined[4, 4, 3], 0)
+        self.assertEqual(refined[0, 0, 3], 0)
+
     def test_refine_alpha_matte_bridges_single_pixel_gap_in_thin_line(self) -> None:
         source = np.full((3, 5, 4), 255, dtype=np.uint8)
         source[1, 0:5, :3] = np.array([30, 80, 220], dtype=np.uint8)

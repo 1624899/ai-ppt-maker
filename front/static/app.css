@@ -9,6 +9,7 @@
   --muted: #697896;
   --accent: #1f5eff;
   --accent-strong: #183fb8;
+  --accent-2: #19c29a;
   --accent-soft: #edf3ff;
   --success: #2d8a57;
   --success-soft: #ecf8f0;
@@ -108,11 +109,16 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 
 .topbar-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.topbar-brand > div:last-child {
+  min-width: 0;
 }
 
 .brand-mark {
@@ -685,6 +691,11 @@ button {
   background: rgba(0, 0, 0, 0.68);
 }
 
+.settings-dialog::backdrop {
+  background: rgba(8, 15, 30, 0.62);
+  backdrop-filter: blur(6px);
+}
+
 .image-lightbox {
   width: min(1500px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
@@ -754,10 +765,6 @@ button {
   overflow: auto;
 }
 
-.settings-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.68);
-}
-
 .settings-shell {
   display: grid;
   gap: 18px;
@@ -810,6 +817,7 @@ button {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 18px;
   min-height: 0;
+  align-items: start;
 }
 
 .model-list {
@@ -1324,13 +1332,6 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
-.preview-viewer {
-  display: none;
-  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
 .preview-viewer.is-active {
   display: grid;
 }
@@ -1798,6 +1799,23 @@ pre {
     align-items: stretch;
   }
 
+  .app-topbar {
+    gap: 14px;
+    padding: 0;
+  }
+
+  .topbar-brand {
+    gap: 12px;
+  }
+
+  .topbar-actions > * {
+    width: 100%;
+  }
+
+  .topbar-create-button {
+    min-height: 48px;
+  }
+
   .brand-actions,
   .topbar-actions,
   .result-actions {
@@ -1820,6 +1838,7 @@ pre {
 @media (max-width: 720px) {
   :root {
     --panel-padding: 14px;
+    --panel-head-min-height: 72px;
   }
 
   .status-pill,
@@ -1833,6 +1852,61 @@ pre {
   .stage-body,
   .settings-shell {
     padding: 14px;
+  }
+
+  .app-shell {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    font-size: 22px;
+  }
+
+  .topbar-brand {
+    align-items: flex-start;
+  }
+
+  .topbar-brand h1 {
+    font-size: 18px;
+  }
+
+  .topbar-brand p {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .topbar-actions .status-pill {
+    padding: 8px 12px;
+    min-width: 0;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-actions .secondary-button,
+  .topbar-actions .primary-button {
+    justify-content: center;
+  }
+
+  .topbar-actions > * {
+    width: auto;
+  }
+
+  .topbar-actions .topbar-create-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .page-card-head,
@@ -1904,11 +1978,85 @@ pre {
   .image-lightbox-body img {
     max-height: calc(100vh - 110px);
   }
+
+  .settings-dialog,
+  .content-dialog {
+    width: calc(100vw - 18px);
+    max-height: calc(100vh - 18px);
+    border-radius: 22px;
+  }
+
+  .settings-shell,
+  .content-dialog-shell {
+    gap: 14px;
+    padding: 16px;
+    max-height: calc(100vh - 18px);
+  }
+
+  .settings-head,
+  .content-dialog .settings-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-bottom: 4px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9));
+  }
+
+  .settings-head p,
+  .content-dialog .settings-head p {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  .settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-body {
+    gap: 14px;
+  }
+
+  .model-list {
+    display: grid;
+    gap: 10px;
+    max-height: min(34vh, 280px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-content: start;
+    padding-right: 4px;
+  }
+
+  .model-item,
+  .add-model-card {
+    min-height: auto;
+  }
+
+  .add-model-card {
+    min-height: 132px;
+  }
+
+  .model-form {
+    border-radius: 18px;
+  }
+
+  .content-dialog textarea,
+  .settings-dialog textarea {
+    min-height: 44vh;
+  }
+
+  .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-top: 10px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.96) 28%);
+  }
 }
 
 @media (max-width: 560px) {
   textarea {
-    min-height: 220px;
+    min-height: 200px;
   }
 
   .thumb-list,
@@ -1944,4 +2092,23 @@ pre {
     padding: 14px;
     max-height: calc(100vh - 16px);
   }
+
+  .topbar-brand {
+    gap: 10px;
+  }
+
+  .topbar-brand h1 {
+    font-size: 16px;
+  }
+
+  .topbar-brand p,
+  .topbar-actions .status-pill {
+    font-size: 11px;
+  }
+
+  .topbar-create-button {
+    min-height: 46px;
+    padding: 0 16px;
+  }
+
 }

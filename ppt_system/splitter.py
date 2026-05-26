@@ -12,7 +12,11 @@ from ppt_system.asset_output_dir import prepare_asset_output_dir
 from ppt_system.asset_cleaner import has_fill_mask, restore_removed_regions
 from ppt_system.component_decomposer import decompose_components
 from ppt_system.component_filter import filter_decorative_components
-from ppt_system.component_postprocess import absorb_overlapping_fragments, merge_related_components
+from ppt_system.component_postprocess import (
+    absorb_overlapping_fragments,
+    merge_dashed_line_components,
+    merge_related_components,
+)
 
 
 SPLIT_MODE_CLASSIC = "classic"
@@ -102,20 +106,27 @@ def split_transparent_png(
     raw_components = find_components(mask)
     resolved_split_mode = _normalize_split_mode(split_mode)
     components = raw_components
-    if resolved_split_mode == SPLIT_MODE_SEMANTIC:
-        components = decompose_components(raw_components, image_array=image_array)
     if int(merge_distance) > 0:
-        components = merge_related_components(
+        components = merge_dashed_line_components(
             components,
             image_width=image.width,
             image_height=image.height,
-            merge_distance=merge_distance,
+            max_dash_gap=max(4, int(merge_distance) * 2),
         )
-    components = absorb_overlapping_fragments(
-        components,
-        image_width=image.width,
-        image_height=image.height,
-    )
+    if resolved_split_mode == SPLIT_MODE_SEMANTIC:
+        components = decompose_components(raw_components, image_array=image_array)
+        if int(merge_distance) > 0:
+            components = merge_related_components(
+                components,
+                image_width=image.width,
+                image_height=image.height,
+                merge_distance=merge_distance,
+            )
+        components = absorb_overlapping_fragments(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+        )
     merged_component_count = len(components)
     removed_components: list[dict[str, Any]] = []
     if filter_decorative_fragments:
@@ -242,8 +253,14 @@ def _component_meets_size_thresholds(
     height = int(component["bottom"]) - int(component["top"])
     if int(component["area"]) < int(min_area):
         return False
-    if width < max(0, int(min_width)):
-        return False
-    if height < max(0, int(min_height)):
-        return False
+
+    width_threshold = max(0, int(min_width))
+    height_threshold = max(0, int(min_height))
+    if width_threshold > 0 and height_threshold > 0:
+        # 只过滤宽高都偏小的碎块，避免把细长但有编辑价值的线条误删。
+        return not (width < width_threshold and height < height_threshold)
+    if width_threshold > 0:
+        return width >= width_threshold
+    if height_threshold > 0:
+        return height >= height_threshold
     return True

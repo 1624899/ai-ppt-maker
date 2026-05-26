@@ -1,0 +1,7 @@
+{
+  "name": "ppt-system-local-debug",
+  "private": true,
+  "version": "1.0.0",
+  "description": "本地 UI 调试依赖",
+  "license": "UNLICENSED"
+}

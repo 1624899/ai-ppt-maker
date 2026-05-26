@@ -9,6 +9,8 @@ from typing import Any
 
 import requests
 
+from ppt_system.logging_utils import format_log_line
+
 
 class OpenAIChatProvider:
     def __init__(self, config: dict[str, Any], profile: dict[str, Any]) -> None:
@@ -31,6 +33,13 @@ class OpenAIChatProvider:
         return f"{self.api_base_url}/chat/completions"
 
     def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        print(
+            format_log_line(
+                "chat",
+                f"开始请求模型 `{self.model}`，timeout={self.timeout}s，max_tokens={self.max_tokens}",
+            ),
+            flush=True,
+        )
         payload = {
             "model": self.model,
             "messages": messages,
@@ -40,9 +49,18 @@ class OpenAIChatProvider:
         }
         if self.reasoning_effort:
             payload["reasoning_effort"] = self.reasoning_effort
+        started_at = time.perf_counter()
         response = self._post_with_retry(payload)
+        elapsed = time.perf_counter() - started_at
+        print(
+            format_log_line(
+                "chat",
+                f"模型响应完成，status={response.status_code}，耗时={elapsed:.1f}s",
+            ),
+            flush=True,
+        )
         self._raise_for_error(response)
-        body = response.json()
+        body = _parse_response_json(response)
         content = body["choices"][0]["message"]["content"]
         return parse_json_content(content)
 
@@ -57,21 +75,76 @@ class OpenAIChatProvider:
     def _post_with_retry(self, payload: dict[str, Any]) -> requests.Response:
         last_response: requests.Response | None = None
         for attempt in range(self.retry_count + 1):
-            response = requests.post(
-                self.chat_completions_url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self.timeout,
+            attempt_no = attempt + 1
+            print(
+                format_log_line(
+                    "chat",
+                    f"发送第 {attempt_no}/{self.retry_count + 1} 次请求 -> {self.chat_completions_url}",
+                ),
+                flush=True,
             )
+            request_started_at = time.perf_counter()
+            try:
+                response = requests.post(
+                    self.chat_completions_url,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=self.timeout,
+                )
+            except requests.Timeout as exc:
+                elapsed = time.perf_counter() - request_started_at
+                print(
+                    format_log_line(
+                        "chat",
+                        f"第 {attempt_no} 次请求超时，耗时={elapsed:.1f}s，timeout={self.timeout}s",
+                    ),
+                    flush=True,
+                )
+                if attempt >= self.retry_count:
+                    raise RuntimeError(f"对话模型请求超时：{self.timeout}s") from exc
+                delay = self.retry_initial_delay * (2**attempt)
+                print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
+                time.sleep(delay)
+                continue
+            except requests.RequestException as exc:
+                elapsed = time.perf_counter() - request_started_at
+                print(
+                    format_log_line(
+                        "chat",
+                        f"第 {attempt_no} 次请求异常：{exc.__class__.__name__}，耗时={elapsed:.1f}s",
+                    ),
+                    flush=True,
+                )
+                if attempt >= self.retry_count:
+                    raise RuntimeError(f"对话模型请求异常：{exc}") from exc
+                delay = self.retry_initial_delay * (2**attempt)
+                print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
+                time.sleep(delay)
+                continue
             last_response = response
+            elapsed = time.perf_counter() - request_started_at
+            print(
+                format_log_line(
+                    "chat",
+                    f"第 {attempt_no} 次请求返回 HTTP {response.status_code}，耗时={elapsed:.1f}s",
+                ),
+                flush=True,
+            )
             if not should_retry(response) or attempt >= self.retry_count:
                 return response
 
             retry_after = response.headers.get("Retry-After", "").strip()
             delay = float(retry_after) if retry_after.isdigit() else self.retry_initial_delay * (2**attempt)
+            print(
+                format_log_line(
+                    "chat",
+                    f"命中可重试状态码 {response.status_code}，将在 {delay:.1f}s 后重试",
+                ),
+                flush=True,
+            )
             time.sleep(delay)
         return last_response
 
@@ -120,3 +193,24 @@ def file_to_data_url(path: Path) -> str:
         mime_type = "image/png"
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def _parse_response_json(response: requests.Response) -> dict[str, Any]:
+    """优先按 UTF-8 解析响应体，避免上游缺失 charset 时把中文误解码成乱码。"""
+    response_json = getattr(response, "json", None)
+    response_content = getattr(response, "content", None)
+
+    if isinstance(response_content, bytes) and response_content:
+        for encoding in ("utf-8-sig", "utf-8"):
+            try:
+                return json.loads(response_content.decode(encoding))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+
+    if callable(response_json):
+        return response_json()
+
+    response_text = getattr(response, "text", "")
+    if isinstance(response_text, str) and response_text.strip():
+        return json.loads(response_text)
+    raise RuntimeError("对话模型返回空响应，无法解析 JSON。")

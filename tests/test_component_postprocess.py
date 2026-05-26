@@ -4,7 +4,11 @@ import unittest
 
 import numpy as np
 
-from ppt_system.component_postprocess import absorb_overlapping_fragments, merge_related_components
+from ppt_system.component_postprocess import (
+    absorb_overlapping_fragments,
+    merge_dashed_line_components,
+    merge_related_components,
+)
 
 
 def _component(left: int, top: int, width: int, height: int, area: int) -> dict[str, object]:
@@ -19,6 +23,39 @@ def _component(left: int, top: int, width: int, height: int, area: int) -> dict[
 
 
 class ComponentPostprocessTests(unittest.TestCase):
+    def test_merge_dashed_line_components_merges_horizontal_dash_cluster(self) -> None:
+        components = [
+            _component(10, 20, 10, 4, 40),
+            _component(26, 20, 10, 4, 40),
+            _component(42, 20, 10, 4, 40),
+        ]
+
+        merged = merge_dashed_line_components(
+            components,
+            image_width=200,
+            image_height=100,
+            max_dash_gap=12,
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(int(merged[0]["area"]), 120)
+
+    def test_merge_dashed_line_components_does_not_merge_large_blocks(self) -> None:
+        components = [
+            _component(10, 10, 20, 20, 400),
+            _component(34, 10, 20, 20, 400),
+            _component(58, 10, 20, 20, 400),
+        ]
+
+        merged = merge_dashed_line_components(
+            components,
+            image_width=200,
+            image_height=100,
+            max_dash_gap=12,
+        )
+
+        self.assertEqual(len(merged), 3)
+
     def test_merge_related_components_keeps_meaningful_inner_fragment_separate(self) -> None:
         components = [
             _component(10, 10, 80, 80, 4200),

@@ -78,6 +78,15 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             normalize_page_script("import os")
 
+    def test_normalize_page_script_preserves_valid_text_call(self) -> None:
+        script = 'add_text(slide, "标题", 10, 20, 200, 60, size=24, color="163A63")'
+        self.assertEqual(normalize_page_script(script), script)
+
+    def test_normalize_page_script_coalesces_multiline_call(self) -> None:
+        script = 'add_text(slide,\n"标题",\n10, 20, 200, 60,\nsize=24, color="163A63")'
+        expected = 'add_text(slide, "标题", 10, 20, 200, 60, size=24, color="163A63")'
+        self.assertEqual(normalize_page_script(script), expected)
+
     def test_build_and_execute_project_script_produces_editable_ppt(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

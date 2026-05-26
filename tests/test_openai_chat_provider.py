@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from typing import Any
 from unittest.mock import patch
@@ -23,6 +24,7 @@ class _FakeResponse:
         }
         self.headers: dict[str, str] = {}
         self.text = ""
+        self.content = json.dumps(self._payload, ensure_ascii=False).encode("utf-8")
 
     def json(self) -> dict[str, Any]:
         return self._payload
@@ -109,6 +111,34 @@ class OpenAIChatProviderTests(unittest.TestCase):
             provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(captured_payload["reasoning_effort"], "medium")
+
+    def test_complete_json_prefers_utf8_response_body_when_text_decoding_is_garbled(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+
+        payload = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"page_script":"add_text(slide, \\"提问即竞争力\\", 0, 0, 100, 40)"}'
+                    }
+                }
+            ]
+        }
+        response = _FakeResponse(payload)
+        response.text = '{"page_script":"add_text(slide, \\"æé®å³ç«äºå\\", 0, 0, 100, 40)"}'
+
+        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+            result = provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(result["page_script"], 'add_text(slide, "提问即竞争力", 0, 0, 100, 40)')
 
 
 if __name__ == "__main__":

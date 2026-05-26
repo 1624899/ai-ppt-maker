@@ -56,7 +56,7 @@ class SplitterTests(unittest.TestCase):
             self.assertEqual(manifest["count"], 2)
             self.assertEqual(manifest["split_mode"], "classic")
 
-    def test_split_transparent_png_classic_mode_merges_compact_fragment_cluster(self) -> None:
+    def test_split_transparent_png_classic_mode_keeps_compact_fragment_cluster_separate(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             image_path = root / "sample.png"
@@ -75,7 +75,7 @@ class SplitterTests(unittest.TestCase):
                 filter_decorative_fragments=False,
             )
 
-            self.assertEqual(manifest["count"], 1)
+            self.assertEqual(manifest["count"], 3)
             self.assertEqual(manifest["split_mode"], "classic")
 
     def test_split_transparent_png_filters_tiny_edge_fragments_by_default(self) -> None:
@@ -135,7 +135,7 @@ class SplitterTests(unittest.TestCase):
             self.assertEqual(manifest["split_mode"], "semantic")
             self.assertGreaterEqual(manifest["count"], 2)
 
-    def test_split_transparent_png_filters_components_by_min_width_and_height(self) -> None:
+    def test_split_transparent_png_filters_only_components_small_in_both_dimensions(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             image_path = root / "sample.png"
@@ -156,9 +156,61 @@ class SplitterTests(unittest.TestCase):
                 filter_decorative_fragments=False,
             )
 
-            self.assertEqual(manifest["count"], 1)
+            self.assertEqual(manifest["count"], 3)
             self.assertEqual(manifest["min_width"], 6)
             self.assertEqual(manifest["min_height"], 6)
+
+    def test_split_transparent_png_keeps_horizontal_dashed_cluster_when_height_below_threshold(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "sample.png"
+            out_dir = root / "assets"
+            image = np.zeros((80, 80, 4), dtype=np.uint8)
+            image[10:30, 10:30] = [255, 0, 0, 255]
+            image[50:55, 20:30] = [0, 128, 255, 255]
+            image[50:55, 36:46] = [0, 128, 255, 255]
+            image[50:55, 52:62] = [0, 128, 255, 255]
+            image[60:65, 62:67] = [0, 255, 0, 255]
+            Image.fromarray(image, mode="RGBA").save(image_path)
+
+            manifest = split_transparent_png(
+                image_path,
+                out_dir,
+                min_area=8,
+                min_width=7,
+                min_height=6,
+                merge_distance=6,
+                filter_decorative_fragments=False,
+            )
+
+            self.assertEqual(manifest["count"], 2)
+            self.assertTrue(any(asset["width"] == 42 and asset["height"] == 5 for asset in manifest["assets"]))
+
+    def test_split_transparent_png_keeps_vertical_dashed_cluster_when_width_below_threshold(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "sample.png"
+            out_dir = root / "assets"
+            image = np.zeros((80, 80, 4), dtype=np.uint8)
+            image[10:30, 10:30] = [255, 0, 0, 255]
+            image[20:30, 50:55] = [0, 128, 255, 255]
+            image[36:46, 50:55] = [0, 128, 255, 255]
+            image[52:62, 50:55] = [0, 128, 255, 255]
+            image[62:67, 60:65] = [0, 255, 0, 255]
+            Image.fromarray(image, mode="RGBA").save(image_path)
+
+            manifest = split_transparent_png(
+                image_path,
+                out_dir,
+                min_area=8,
+                min_width=7,
+                min_height=6,
+                merge_distance=6,
+                filter_decorative_fragments=False,
+            )
+
+            self.assertEqual(manifest["count"], 2)
+            self.assertTrue(any(asset["width"] == 5 and asset["height"] == 42 for asset in manifest["assets"]))
 
     def test_split_transparent_png_cleans_stale_asset_files_before_rerun(self) -> None:
         with TemporaryDirectory() as temp_dir:

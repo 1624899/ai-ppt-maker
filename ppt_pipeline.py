@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ppt_system.console_encoding import configure_utf8_console
 from ppt_system.export_pipeline import export_project_to_pptx
+from ppt_system.logging_utils import format_log_line
 from ppt_system.model_config import get_active_model_config, read_config
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 
@@ -69,7 +71,16 @@ def load_project(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _stage_logger(message: str) -> None:
+    print(format_log_line("stage", message), flush=True)
+
+
+def _page_logger(page_no: int, message: str) -> None:
+    print(format_log_line(f"page:{int(page_no):02d}", message), flush=True)
+
+
 def main() -> None:
+    configure_utf8_console()
     args = parse_args()
     project = load_project(Path(args.project))
     config_path = Path(args.config)
@@ -102,6 +113,8 @@ def main() -> None:
         external_command_timeout_seconds=args.external_command_timeout_seconds,
         script_refine_rounds=args.script_refine_rounds,
         chat_provider=chat_provider,
+        stage_logger=_stage_logger,
+        page_logger=_page_logger,
     )
     print(f"已生成 PPT: {args.output}")
     print(f"中间产物目录: {work_dir}")

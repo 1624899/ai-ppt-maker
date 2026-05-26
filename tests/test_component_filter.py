@@ -157,6 +157,54 @@ class ComponentFilterTests(unittest.TestCase):
         self.assertEqual(len(kept), 2)
         self.assertEqual(len(removed), 0)
 
+    def test_filter_drops_enclosed_edge_attached_slender_strip_inside_tighter_container(self) -> None:
+        components = [
+            _component(0, 0, 200, 200, 9000),
+            _component(40, 40, 50, 60, 1600),
+            _component(42, 44, 4, 40, 120),
+        ]
+
+        kept, removed = filter_decorative_components(
+            components,
+            image_width=200,
+            image_height=200,
+        )
+
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(len(removed), 1)
+
+    def test_filter_keeps_enclosed_meaningful_long_inner_line(self) -> None:
+        components = [
+            _component(0, 0, 200, 200, 9000),
+            _component(40, 40, 50, 60, 1600),
+            _component(60, 46, 4, 52, 208),
+        ]
+
+        kept, removed = filter_decorative_components(
+            components,
+            image_width=200,
+            image_height=200,
+        )
+
+        self.assertEqual(len(kept), 3)
+        self.assertEqual(len(removed), 0)
+
+    def test_filter_drops_enclosed_tiny_corner_fragment_inside_tighter_container(self) -> None:
+        components = [
+            _component(0, 0, 200, 200, 9000),
+            _component(40, 40, 60, 60, 1800),
+            _component(44, 44, 6, 6, 18),
+        ]
+
+        kept, removed = filter_decorative_components(
+            components,
+            image_width=200,
+            image_height=200,
+        )
+
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(len(removed), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

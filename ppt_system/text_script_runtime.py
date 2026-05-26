@@ -353,7 +353,7 @@ if __name__ == "__main__":
 
 def normalize_page_script(script: str) -> str:
     normalized_lines: list[str] = []
-    for raw_line in str(script).splitlines():
+    for raw_line in _coalesce_script_lines(str(script)):
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped:
@@ -362,7 +362,9 @@ def normalize_page_script(script: str) -> str:
         if stripped.startswith("#"):
             normalized_lines.append(stripped)
             continue
-        _validate_script_call(stripped)
+        sanitized = _sanitize_script_line(stripped)
+        _validate_script_call(sanitized)
+        stripped = sanitized
         normalized_lines.append(stripped)
     while normalized_lines and not normalized_lines[-1]:
         normalized_lines.pop()
@@ -448,6 +450,44 @@ def _validate_script_call(line: str) -> None:
             anchor = str(value).upper()
             if anchor not in ALLOWED_ANCHORS:
                 raise RuntimeError(f"anchor 不合法：{anchor}")
+
+
+def _sanitize_script_line(line: str) -> str:
+    """对模型偶发返回的损坏转义做最小修复，避免整次导出中断。"""
+    sanitized = str(line).replace("\\\r", "\\r").replace("\\\n", "\\n")
+    if sanitized.count('"') % 2 != 0:
+        sanitized = sanitized.replace("\\", "\\\\")
+    return sanitized
+
+
+def _coalesce_script_lines(script: str) -> list[str]:
+    """把模型返回的多行函数调用拼回单行，再进入 AST 校验。"""
+    result: list[str] = []
+    buffer: list[str] = []
+    paren_depth = 0
+
+    for raw_line in str(script).splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            if not buffer:
+                result.append("")
+            continue
+        if stripped.startswith("#") and not buffer:
+            result.append(stripped)
+            continue
+
+        buffer.append(stripped)
+        paren_depth += stripped.count("(") - stripped.count(")")
+        if paren_depth > 0:
+            continue
+
+        result.append(" ".join(buffer))
+        buffer = []
+        paren_depth = 0
+
+    if buffer:
+        result.append(" ".join(buffer))
+    return result
 
 
 def _literal_eval(node: ast.AST) -> Any:

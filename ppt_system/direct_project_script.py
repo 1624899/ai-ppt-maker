@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -181,6 +182,7 @@ def generate_direct_project_text_script(
         )
         single_page_project["asset_adjustments"] = {str(page_no): {}}
         _log_page(page_logger, page_no, "开始直出首轮文字脚本")
+        request_started_at = time.perf_counter()
         current_script = _request_direct_page_script(
             provider,
             reference_image=reference_image,
@@ -188,6 +190,7 @@ def generate_direct_project_text_script(
             image_width=image_width,
             image_height=image_height,
         )
+        _log_page(page_logger, page_no, f"首轮文字脚本生成完成，耗时 {time.perf_counter() - request_started_at:.1f}s")
         current_asset_adjustments: dict[str, Any] = {}
 
         page_result = {
@@ -210,15 +213,19 @@ def generate_direct_project_text_script(
                 page_script=current_script,
                 script_path=preview_script_path,
             )
+            preview_script_started_at = time.perf_counter()
             execute_generated_text_script(preview_script_path)
+            _log_page(page_logger, page_no, f"预览 PPT 脚本执行完成，耗时 {time.perf_counter() - preview_script_started_at:.1f}s")
 
             preview_image_path = page_dir / f"office_preview_round_{round_index + 1:02d}.png"
+            render_started_at = time.perf_counter()
             rendered_preview = render_pptx_first_slide_to_png(
                 preview_pptx,
                 preview_image_path,
                 image_width=image_width,
                 image_height=image_height,
             )
+            _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
             if rendered_preview is None:
                 _log_page(page_logger, page_no, "Office 真渲染不可用，跳过真实导出回看")
                 break
@@ -233,6 +240,7 @@ def generate_direct_project_text_script(
             )
             page_result["comparison_paths"].append(str(comparison_path))
             _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
+            refine_started_at = time.perf_counter()
             refine_result = _refine_direct_page_script(
                 provider,
                 reference_image=reference_image,
@@ -243,6 +251,7 @@ def generate_direct_project_text_script(
                 asset_adjustments=current_asset_adjustments,
                 round_index=round_index,
             )
+            _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
             candidate_script = refine_result.page_script
             candidate_adjustments = refine_result.asset_adjustments
             if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:

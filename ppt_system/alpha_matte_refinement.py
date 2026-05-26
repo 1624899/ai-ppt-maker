@@ -120,8 +120,14 @@ def refine_alpha_matte(
         color_distance=color_distance,
         tolerance=background.tolerance,
     )
-    bridged_alpha = _bridge_narrow_gaps(
+    fill_preserved_alpha = _preserve_enclosed_light_fill(
         alpha=promoted_alpha,
+        color_distance=color_distance,
+        connected_mask=connected_foreground,
+        tolerance=background.tolerance,
+    )
+    bridged_alpha = _bridge_narrow_gaps(
+        alpha=fill_preserved_alpha,
         color_distance=color_distance,
         tolerance=background.tolerance,
     )
@@ -130,16 +136,9 @@ def refine_alpha_matte(
         color_distance=color_distance,
         tolerance=background.tolerance,
     )
-    propagated_alpha = _propagate_unknown_band_alpha(
-        alpha=suppressed_alpha,
-        rgb=source_rgba[:, :, :3],
-        color_distance=color_distance,
-        tolerance=background.tolerance,
-        iterations=2,
-    )
     smoothed_alpha = _smooth_transition_alpha(
-        propagated_alpha,
-        locked_mask=(propagated_alpha >= 240) | (~support_mask),
+        suppressed_alpha,
+        locked_mask=(suppressed_alpha >= 240) | (~support_mask),
         iterations=2,
     )
     decontaminated_rgb = _decontaminate_edge_colors(
@@ -218,6 +217,38 @@ def _promote_supported_soft_edges(
     boost_floor = np.clip((color_distance.astype(np.int16) - max(0, tolerance // 3)) * 4, 0, 192).astype(np.uint8)
     promoted[soft_edge_mask] = np.maximum(promoted[soft_edge_mask], boost_floor[soft_edge_mask])
     return promoted
+
+
+def _preserve_enclosed_light_fill(
+    *,
+    alpha: np.ndarray,
+    color_distance: np.ndarray,
+    connected_mask: np.ndarray,
+    tolerance: int,
+) -> np.ndarray:
+    preserved = np.array(alpha, copy=True)
+    near_background_mask = color_distance <= tolerance + 10
+    border_background_mask = _flood_fill_from_border(near_background_mask)
+    enclosed_light_fill_mask = (
+        (~border_background_mask)
+        & (color_distance >= max(4, tolerance // 3))
+        & (color_distance <= tolerance + 10)
+        & _dilate_mask(connected_mask, steps=2)
+    )
+    if not np.any(enclosed_light_fill_mask):
+        return preserved
+
+    # 被深色描边包围的浅色填充不应按背景抠除，给这类区域一个温和的 alpha 下限。
+    fill_floor = np.clip(
+        (color_distance.astype(np.int16) - max(2, tolerance // 4)) * 8,
+        0,
+        144,
+    ).astype(np.uint8)
+    preserved[enclosed_light_fill_mask] = np.maximum(
+        preserved[enclosed_light_fill_mask],
+        fill_floor[enclosed_light_fill_mask],
+    )
+    return preserved
 
 
 def _bridge_narrow_gaps(
@@ -323,65 +354,34 @@ def _count_alpha_neighbors(mask: np.ndarray, *, include_diagonal: bool = True) -
     return count
 
 
-def _propagate_unknown_band_alpha(
-    *,
-    alpha: np.ndarray,
-    rgb: np.ndarray,
-    color_distance: np.ndarray,
-    tolerance: int,
-    iterations: int,
-) -> np.ndarray:
-    propagated = alpha.astype(np.float32)
-    if propagated.size == 0:
-        return alpha
+def _flood_fill_from_border(candidate_mask: np.ndarray) -> np.ndarray:
+    height, width = candidate_mask.shape
+    visited = np.zeros((height, width), dtype=bool)
+    queue: list[tuple[int, int]] = []
 
-    sure_foreground = propagated >= 232.0
-    sure_background = (propagated <= 8.0) & (color_distance <= tolerance + 8)
-    protected_soft_edge = (
-        (propagated > 8.0)
-        & (propagated < 232.0)
-        & (_count_alpha_neighbors(propagated >= 160.0, include_diagonal=False) > 0)
-    )
-    unknown_mask = ~(sure_foreground | sure_background | protected_soft_edge)
-    if not np.any(unknown_mask):
-        return alpha
+    def push(y: int, x: int) -> None:
+        if visited[y, x] or not candidate_mask[y, x]:
+            return
+        visited[y, x] = True
+        queue.append((y, x))
 
-    sigma_color = float(max(8, tolerance + 4))
-    spatial_kernel = np.array(
-        [
-            [1.0, 2.0, 1.0],
-            [2.0, 0.0, 2.0],
-            [1.0, 2.0, 1.0],
-        ],
-        dtype=np.float32,
-    )
-    rgb_float = rgb.astype(np.float32)
+    for x in range(width):
+        push(0, x)
+        push(height - 1, x)
+    for y in range(height):
+        push(y, 0)
+        push(y, width - 1)
 
-    for _ in range(max(0, int(iterations))):
-        alpha_padded = np.pad(propagated, 1, mode="edge")
-        rgb_padded = np.pad(rgb_float, ((1, 1), (1, 1), (0, 0)), mode="edge")
-        weight_sum = np.zeros(propagated.shape, dtype=np.float32)
-        alpha_sum = np.zeros(propagated.shape, dtype=np.float32)
-
-        for offset_y in range(3):
-            for offset_x in range(3):
-                spatial_weight = spatial_kernel[offset_y, offset_x]
-                if spatial_weight <= 0.0:
-                    continue
-                neighbor_alpha = alpha_padded[offset_y : offset_y + propagated.shape[0], offset_x : offset_x + propagated.shape[1]]
-                neighbor_rgb = rgb_padded[offset_y : offset_y + propagated.shape[0], offset_x : offset_x + propagated.shape[1], :]
-                color_delta = np.max(np.abs(neighbor_rgb - rgb_float), axis=2)
-                color_weight = np.exp(-np.square(color_delta / sigma_color))
-                weights = spatial_weight * color_weight
-                weight_sum += weights
-                alpha_sum += weights * neighbor_alpha
-
-        updated = np.where(weight_sum > 0.0, alpha_sum / np.maximum(weight_sum, 1e-6), propagated)
-        propagated[unknown_mask] = updated[unknown_mask]
-        propagated[sure_foreground] = 255.0
-        propagated[sure_background] = 0.0
-
-    return np.clip(np.round(propagated), 0.0, 255.0).astype(np.uint8)
+    cursor = 0
+    while cursor < len(queue):
+        y, x = queue[cursor]
+        cursor += 1
+        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            ny = y + dy
+            nx = x + dx
+            if 0 <= ny < height and 0 <= nx < width:
+                push(ny, nx)
+    return visited
 
 
 def _decontaminate_edge_colors(
