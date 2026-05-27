@@ -10,17 +10,11 @@ from PIL import Image
 
 from ppt_system.asset_output_dir import prepare_asset_output_dir
 from ppt_system.asset_cleaner import has_fill_mask, restore_removed_regions
-from ppt_system.component_decomposer import decompose_components
 from ppt_system.component_filter import filter_decorative_components
-from ppt_system.component_postprocess import (
-    absorb_overlapping_fragments,
-    merge_dashed_line_components,
-    merge_related_components,
-)
+from ppt_system.component_postprocess import merge_dashed_line_components
 
 
 SPLIT_MODE_CLASSIC = "classic"
-SPLIT_MODE_SEMANTIC = "semantic"
 
 
 def find_components(mask: np.ndarray) -> list[dict[str, Any]]:
@@ -97,14 +91,11 @@ def split_transparent_png(
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
-    split_mode: str = SPLIT_MODE_CLASSIC,
 ) -> dict[str, Any]:
     image = Image.open(image_path).convert("RGBA")
-    image_array = np.array(image)
     alpha = np.array(image.getchannel("A"))
     mask = alpha > alpha_threshold
     raw_components = find_components(mask)
-    resolved_split_mode = _normalize_split_mode(split_mode)
     components = raw_components
     if int(merge_distance) > 0:
         components = merge_dashed_line_components(
@@ -112,20 +103,6 @@ def split_transparent_png(
             image_width=image.width,
             image_height=image.height,
             max_dash_gap=max(4, int(merge_distance) * 2),
-        )
-    if resolved_split_mode == SPLIT_MODE_SEMANTIC:
-        components = decompose_components(raw_components, image_array=image_array)
-        if int(merge_distance) > 0:
-            components = merge_related_components(
-                components,
-                image_width=image.width,
-                image_height=image.height,
-                merge_distance=merge_distance,
-            )
-        components = absorb_overlapping_fragments(
-            components,
-            image_width=image.width,
-            image_height=image.height,
         )
     merged_component_count = len(components)
     removed_components: list[dict[str, Any]] = []
@@ -212,6 +189,7 @@ def split_transparent_png(
 
     manifest = {
         "source_image": str(image_path),
+        "assets_dir": str(out_dir),
         "image_width": image.width,
         "image_height": image.height,
         "alpha_threshold": alpha_threshold,
@@ -221,7 +199,7 @@ def split_transparent_png(
         "padding": padding,
         "merge_distance": int(merge_distance),
         "filter_decorative_fragments": bool(filter_decorative_fragments),
-        "split_mode": resolved_split_mode,
+        "split_mode": SPLIT_MODE_CLASSIC,
         "raw_component_count": len(raw_components),
         "merged_component_count": merged_component_count,
         "filtered_out_count": len(removed_components),
@@ -233,13 +211,6 @@ def split_transparent_png(
         encoding="utf-8",
     )
     return manifest
-
-
-def _normalize_split_mode(value: str) -> str:
-    mode = str(value or "").strip().lower()
-    if mode == SPLIT_MODE_SEMANTIC:
-        return SPLIT_MODE_SEMANTIC
-    return SPLIT_MODE_CLASSIC
 
 
 def _component_meets_size_thresholds(

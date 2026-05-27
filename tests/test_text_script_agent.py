@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
 
@@ -74,6 +74,58 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertIn("asset_adjustments 固定返回空对象 {}", prompt)
         self.assertIn("请直接修正 page_script", prompt)
 
+    def test_prepare_assets_aligns_split_source_without_changing_model_input(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            output_pptx = root / "result.pptx"
+            reference_path = root / "reference.png"
+            visual_path = root / "visual.png"
+
+            reference = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
+            draw_reference = ImageDraw.Draw(reference)
+            draw_reference.rectangle((80, 40, 140, 90), outline=(0, 80, 220, 255), width=4)
+            reference.save(reference_path)
+
+            visual = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
+            draw_visual = ImageDraw.Draw(visual)
+            draw_visual.rectangle((55, 58, 115, 108), outline=(0, 80, 220, 255), width=4)
+            visual.save(visual_path)
+
+            provider = FakeChatProvider(
+                [{"page_script": 'add_text(slide, "示例页", 18, 18, 180, 44, size=24, color="163A63", bold=True)'}]
+            )
+
+            with patch("ppt_system.direct_page_script.render_pptx_first_slide_to_png", return_value=None):
+                result = generate_direct_single_page_ppt(
+                    provider,
+                    reference_path,
+                    visual_path,
+                    work_dir,
+                    output_pptx,
+                    page_no=2,
+                )
+
+            self.assertEqual(result["output_pptx"], str(output_pptx))
+            page_assets_dir = work_dir / "page_02" / "assets"
+            manifest = json.loads((page_assets_dir / "assets.json").read_text(encoding="utf-8"))
+            self.assertTrue(str(manifest["source_image"]).endswith("page_02_aligned_for_split.png"))
+            self.assertEqual(Path(str(manifest["assets_dir"])).name, "assets")
+            self.assertFalse((work_dir / "page_02" / "page_02_enhanced.png").exists())
+            self.assertFalse((work_dir / "page_02" / "page_02_transparent.png").exists())
+            self.assertFalse((work_dir / "page_02" / "page_02_aligned_for_split.png").exists())
+
+            first_round_messages = provider.calls[0]
+            image_items = [
+                item
+                for message in first_round_messages
+                if message.get("role") == "user"
+                for item in message.get("content", [])
+                if isinstance(item, dict) and item.get("type") == "image_url"
+            ]
+            self.assertEqual(len(image_items), 2)
+            self.assertEqual(str(image_items[1]["image_url"]["url"]), str(visual_path))
+
     def test_normalize_page_script_rejects_disallowed_code(self) -> None:
         with self.assertRaises(RuntimeError):
             normalize_page_script("import os")
@@ -86,6 +138,16 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         script = 'add_text(slide,\n"标题",\n10, 20, 200, 60,\nsize=24, color="163A63")'
         expected = 'add_text(slide, "标题", 10, 20, 200, 60, size=24, color="163A63")'
         self.assertEqual(normalize_page_script(script), expected)
+
+    def test_normalize_page_script_accepts_json_style_literals_in_add_runs(self) -> None:
+        script = (
+            'add_runs(slide, [{"text":"从","size":64,"color":"08265C","bold":true},'
+            '{"text":"提问","size":64,"color":"0B55E6","bold":false},'
+            '{"text":"到","size":64,"color":"08265C","bold":true},'
+            '{"text":"协同","size":64,"color":"0B55E6","italic":null}],'
+            '100, 120, 500, 90, align="LEFT", anchor="TOP")'
+        )
+        self.assertEqual(normalize_page_script(script), script)
 
     def test_build_and_execute_project_script_produces_editable_ppt(self) -> None:
         with TemporaryDirectory() as temp_dir:

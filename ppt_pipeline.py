@@ -25,7 +25,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--padding", type=int, default=0, help="元素裁剪透明边距。")
     parser.add_argument("--merge-distance", type=int, default=6, help="邻近碎片合并距离，单位为像素。")
     parser.add_argument("--disable-fragment-filter", action="store_true", help="关闭贴边装饰碎片过滤。")
-    parser.add_argument("--split-mode", default="classic", choices=["classic", "semantic"], help="元素切分模式：classic 更接近 split_image_to_ppt.py 的干净切图；semantic 会尝试更细粒度拆分。")
     parser.add_argument("--skip-enhance", action="store_true", help="跳过图像增强。")
     parser.add_argument("--skip-transparent", action="store_true", help="跳过透明化阶段。")
     parser.add_argument(
@@ -103,7 +102,6 @@ def main() -> None:
         padding=args.padding,
         merge_distance=args.merge_distance,
         filter_decorative_fragments=not args.disable_fragment_filter,
-        split_mode=args.split_mode,
         skip_enhance=args.skip_enhance,
         skip_transparent=args.skip_transparent,
         enhance_mode=args.enhance_mode,

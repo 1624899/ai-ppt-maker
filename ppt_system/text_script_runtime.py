@@ -492,9 +492,44 @@ def _coalesce_script_lines(script: str) -> list[str]:
 
 def _literal_eval(node: ast.AST) -> Any:
     try:
-        return ast.literal_eval(node)
+        return _eval_allowed_literal_node(node)
     except Exception as exc:
         raise RuntimeError(f"脚本参数必须是字面量：{ast.dump(node)}") from exc
+
+
+def _eval_allowed_literal_node(node: ast.AST) -> Any:
+    """递归解析白名单字面量，同时兼容 JSON 风格 true/false/null。"""
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        json_literal_map = {
+            "true": True,
+            "false": False,
+            "null": None,
+        }
+        lowered = node.id.lower()
+        if lowered in json_literal_map:
+            return json_literal_map[lowered]
+        raise ValueError(f"unsupported name literal: {node.id}")
+    if isinstance(node, ast.List):
+        return [_eval_allowed_literal_node(item) for item in node.elts]
+    if isinstance(node, ast.Tuple):
+        return tuple(_eval_allowed_literal_node(item) for item in node.elts)
+    if isinstance(node, ast.Set):
+        return {_eval_allowed_literal_node(item) for item in node.elts}
+    if isinstance(node, ast.Dict):
+        if len(node.keys) != len(node.values):
+            raise ValueError("dict key/value length mismatch")
+        return {
+            _eval_allowed_literal_node(key): _eval_allowed_literal_node(value)
+            for key, value in zip(node.keys, node.values)
+        }
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        operand = _eval_allowed_literal_node(node.operand)
+        if not isinstance(operand, (int, float, complex)):
+            raise ValueError("unary operator only supports numeric literals")
+        return +operand if isinstance(node.op, ast.UAdd) else -operand
+    raise ValueError(f"unsupported literal node: {type(node).__name__}")
 
 
 def _build_page_function_source(page_no: int, script: str) -> str:

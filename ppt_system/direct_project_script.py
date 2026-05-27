@@ -51,7 +51,6 @@ def prepare_direct_project_assets(
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
-    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
     stage_logger: StageLogger | None = None,
@@ -78,6 +77,17 @@ def prepare_direct_project_assets(
             work_dir=work_dir,
             page_no=page_no,
             elements_image=visual_image,
+            reference_image=reference_image,
+            reference_text_boxes=[
+                (
+                    int(item.get("left", 0)),
+                    int(item.get("top", 0)),
+                    int(item.get("width", 0)),
+                    int(item.get("height", 0)),
+                )
+                for item in page.get("texts", [])
+                if isinstance(item, dict)
+            ],
             image_width=image_width,
             image_height=image_height,
             alpha_threshold=alpha_threshold,
@@ -87,24 +97,39 @@ def prepare_direct_project_assets(
             padding=padding,
             merge_distance=merge_distance,
             filter_decorative_fragments=filter_decorative_fragments,
-            split_mode=split_mode,
             skip_enhance=skip_enhance,
             skip_transparent=skip_transparent,
         )
         manifest = dict(asset_result["manifest"])
         _log_page(page_logger, page_no, f"已准备分割元素资产，共 {int(manifest.get('count', 0))} 个元素")
+        global_alignment = asset_result.get("global_alignment")
+        if isinstance(global_alignment, dict):
+            if bool(global_alignment.get("should_apply")):
+                _log_page(
+                    page_logger,
+                    page_no,
+                    f"整页元素拟合对齐已应用：dx={int(global_alignment.get('dx', 0))}, dy={int(global_alignment.get('dy', 0))}",
+                )
+            else:
+                _log_page(
+                    page_logger,
+                    page_no,
+                    f"整页元素拟合未应用：{str(global_alignment.get('reason', 'unknown'))}",
+                )
         page_summaries.append(
             {
                 "page_no": page_no,
                 "asset_count": int(manifest.get("count", 0)),
                 "assets_manifest": str(asset_result["manifest_path"]),
+                "split_source_image": str(asset_result.get("split_source_image", "")),
+                "global_alignment": global_alignment,
                 "processing": {
                     "page_no": page_no,
                     "source_image": str(visual_image),
                     "asset_strategy": "direct_split_elements",
                     "merge_distance": int(merge_distance),
                     "filter_decorative_fragments": bool(filter_decorative_fragments),
-                    "split_mode": str(split_mode),
+                    "split_mode": "classic",
                 },
             }
         )
@@ -129,7 +154,6 @@ def generate_direct_project_text_script(
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
-    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
     stage_logger: StageLogger | None = None,
@@ -147,7 +171,6 @@ def generate_direct_project_text_script(
         padding=padding,
         merge_distance=merge_distance,
         filter_decorative_fragments=filter_decorative_fragments,
-        split_mode=split_mode,
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
         stage_logger=stage_logger,

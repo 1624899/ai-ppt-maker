@@ -8,6 +8,8 @@ const modeText = document.querySelector("#modeText");
 const jobMeta = document.querySelector("#jobMeta");
 const resultLinks = document.querySelector("#resultLinks");
 const deliveryResult = document.querySelector("#deliveryResult");
+const resultHeadMeta = document.querySelector("#resultHeadMeta");
+const resultStageOverview = document.querySelector("#resultStageOverview");
 const pageTemplate = document.querySelector("#pageTemplate");
 const contentInput = document.querySelector("#content");
 const pageCount = document.querySelector("#pageCount");
@@ -19,6 +21,7 @@ const styleImages = document.querySelector("#styleImages");
 const styleImagesHint = document.querySelector("#styleImagesHint");
 const styleRefGallery = document.querySelector("#styleRefGallery");
 const styleNotes = document.querySelector("#styleNotes");
+const taskContextCard = document.querySelector("#taskContextCard");
 const previewViewer = document.querySelector("#previewViewer");
 const thumbList = document.querySelector("#thumbList");
 const mainPreviewImage = document.querySelector("#mainPreviewImage");
@@ -53,6 +56,7 @@ const modelOutputFormat = document.querySelector("#modelOutputFormat");
 const modelFormMessage = document.querySelector("#modelFormMessage");
 const imageLightbox = window.createImageLightbox ? window.createImageLightbox() : null;
 const generationResultPresenter = window.PptGenerationResult || null;
+const workspaceStatusPresenter = window.PptWorkspaceStatus || null;
 
 let config = null;
 let modelConfigs = null;
@@ -91,6 +95,7 @@ function updatePresetSummary() {
     return;
   }
   configText.textContent = `最多 ${config.max_pages} 页，当前尺寸 ${preset.label}`;
+  renderWorkspaceStatus();
 }
 
 function summarizeContent(value) {
@@ -112,6 +117,20 @@ function syncContentPreview() {
   const summary = summarizeContent(contentInput.value);
   contentPreviewTitle.textContent = summary.title;
   contentPreviewText.textContent = summary.preview;
+  renderWorkspaceStatus();
+}
+
+function renderWorkspaceStatus(job = currentJob) {
+  if (!workspaceStatusPresenter?.render) {
+    return;
+  }
+  workspaceStatusPresenter.render({
+    config,
+    job,
+    taskContextContainer: taskContextCard,
+    resultHeadMetaContainer: resultHeadMeta,
+    stageOverviewContainer: resultStageOverview,
+  });
 }
 
 function defaultIncludeCoverPageValue() {
@@ -283,6 +302,7 @@ async function loadConfig() {
   }
   imageQuality.value = config.image_quality || "medium";
   updatePresetSummary();
+  renderWorkspaceStatus(null);
   await loadModelConfigs();
   await loadJobHistory();
   startHistoryStream();
@@ -390,6 +410,7 @@ function resetWorkspaceView(message = "等待提交任务") {
   setLoading(false);
   syncJobActionButtons();
   renderHistoryList();
+  renderWorkspaceStatus(null);
 }
 
 function startNewTask(openEditor = false) {
@@ -919,6 +940,7 @@ function renderJob(job) {
   }
   syncJobActionButtons();
   renderHistoryList();
+  renderWorkspaceStatus(job);
 }
 
 function syncHistoryItemFromJob(job) {
@@ -1083,6 +1105,7 @@ async function deleteHistoryJob(jobId) {
     }
     setLoading(false);
     syncJobActionButtons();
+    renderWorkspaceStatus(null);
   }
 }
 
@@ -1421,3 +1444,4 @@ document.addEventListener("keydown", (event) => {
 loadConfig();
 syncJobActionButtons();
 syncContentPreview();
+renderWorkspaceStatus(null);

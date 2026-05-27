@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from ppt_system.manifest_paths import resolve_assets_dir_from_manifest
+
 
 TEXT_BOX_ARG_INDEX: dict[str, tuple[int, int, int, int]] = {
     "add_text": (2, 3, 4, 5),
@@ -277,7 +279,7 @@ def _compose_asset_canvas(manifest: dict[str, Any], adjustments: dict[str, Any])
     width = max(1, int(manifest.get("image_width", 1) or 1))
     height = max(1, int(manifest.get("image_height", 1) or 1))
     canvas = Image.new("RGBA", (width, height), (255, 255, 255, 0))
-    assets_dir = Path(str(manifest.get("source_image", ""))).resolve().parent / "assets"
+    assets_dir = resolve_assets_dir_from_manifest(manifest)
     normalized_adjustments = _normalize_adjustments(adjustments)
     global_adjustment = dict(normalized_adjustments.get("global", {}))
     asset_map = dict(normalized_adjustments.get("asset_map", {}))
@@ -376,7 +378,7 @@ def _estimate_large_asset_offsets(
     search_radius_x: int,
     search_radius_y: int,
 ) -> list[dict[str, Any]]:
-    assets_dir = Path(str(manifest.get("source_image", ""))).resolve().parent / "assets"
+    assets_dir = resolve_assets_dir_from_manifest(manifest)
     indexed_assets = {
         int(asset["index"]): asset
         for asset in manifest.get("assets", [])

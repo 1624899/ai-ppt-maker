@@ -8,7 +8,9 @@ from typing import Any
 
 from PIL import Image
 
+from ppt_system.global_element_alignment import align_elements_image_to_reference
 from ppt_system.image_ops import enhance_image, make_transparent
+from ppt_system.intermediate_artifact_cleanup import cleanup_split_intermediate_images
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.splitter import split_transparent_png
@@ -169,6 +171,8 @@ def prepare_direct_page_assets(
     work_dir: Path,
     page_no: int,
     elements_image: Path,
+    reference_image: Path | None = None,
+    reference_text_boxes: list[tuple[int, int, int, int]] | None = None,
     image_width: int,
     image_height: int,
     alpha_threshold: int = 8,
@@ -178,9 +182,9 @@ def prepare_direct_page_assets(
     padding: int = 0,
     merge_distance: int = 6,
     filter_decorative_fragments: bool = True,
-    split_mode: str = "classic",
     skip_enhance: bool = False,
     skip_transparent: bool = False,
+    cleanup_intermediate_images: bool = True,
 ) -> dict[str, Any]:
     """把元素图处理成分割后的 PNG 资产，供生成脚本与文字框叠加。"""
     page_dir = work_dir / f"page_{int(page_no):02d}"
@@ -198,6 +202,18 @@ def prepare_direct_page_assets(
         make_transparent(current_source, transparent_path)
         current_source = transparent_path
 
+    alignment_decision = None
+    if reference_image is not None:
+        aligned_path = page_dir / f"page_{int(page_no):02d}_aligned_for_split.png"
+        alignment_decision = align_elements_image_to_reference(
+            reference_image=Path(reference_image),
+            elements_image=current_source,
+            output_path=aligned_path,
+            text_boxes=list(reference_text_boxes or []),
+            alpha_threshold=int(alpha_threshold),
+        )
+        current_source = aligned_path
+
     manifest = split_transparent_png(
         current_source,
         assets_dir,
@@ -208,16 +224,31 @@ def prepare_direct_page_assets(
         padding=int(padding),
         merge_distance=int(merge_distance),
         filter_decorative_fragments=bool(filter_decorative_fragments),
-        split_mode=str(split_mode),
     )
     if int(manifest.get("count", 0)) <= 0:
         raise RuntimeError(f"第 {page_no} 页元素分割结果为空，无法继续导出。")
+    removed_intermediate_images: list[str] = []
+    if bool(cleanup_intermediate_images):
+        removed_intermediate_images = cleanup_split_intermediate_images(page_dir, page_no=page_no)
     manifest_path = assets_dir / "assets.json"
     return {
         "manifest_path": str(manifest_path),
         "manifest": manifest,
         "image_width": int(image_width),
         "image_height": int(image_height),
+        "split_source_image": str(current_source),
+        "removed_intermediate_images": removed_intermediate_images,
+        "global_alignment": None
+        if alignment_decision is None
+        else {
+            "should_apply": bool(alignment_decision.should_apply),
+            "dx": int(alignment_decision.dx),
+            "dy": int(alignment_decision.dy),
+            "baseline_iou": float(alignment_decision.baseline_iou),
+            "shifted_iou": float(alignment_decision.shifted_iou),
+            "confidence": float(alignment_decision.confidence),
+            "reason": alignment_decision.reason,
+        },
     }
 
 
@@ -367,6 +398,7 @@ def _generate_direct_single_page_script_with_metadata(
         work_dir=work_dir,
         page_no=page_no,
         elements_image=resolved_elements,
+        reference_image=resolved_reference,
         image_width=image_width,
         image_height=image_height,
     )

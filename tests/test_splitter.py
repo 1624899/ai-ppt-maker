@@ -109,31 +109,6 @@ class SplitterTests(unittest.TestCase):
             self.assertEqual(manifest["count"], 2)
             self.assertEqual(manifest["filtered_out_count"], 0)
 
-    def test_split_transparent_png_semantic_mode_records_mode(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            image_path = root / "sample.png"
-            out_dir = root / "assets"
-            image = np.zeros((80, 120, 4), dtype=np.uint8)
-            image[10:70, 10:110] = [250, 250, 250, 255]
-            image[10:70, 10:13] = [0, 80, 220, 255]
-            image[10:70, 107:110] = [0, 80, 220, 255]
-            image[10:13, 10:110] = [0, 80, 220, 255]
-            image[67:70, 10:110] = [0, 80, 220, 255]
-            image[28:48, 44:64] = [0, 80, 220, 255]
-            Image.fromarray(image, mode="RGBA").save(image_path)
-
-            manifest = split_transparent_png(
-                image_path,
-                out_dir,
-                min_area=1,
-                merge_distance=6,
-                filter_decorative_fragments=False,
-                split_mode="semantic",
-            )
-
-            self.assertEqual(manifest["split_mode"], "semantic")
-            self.assertGreaterEqual(manifest["count"], 2)
 
     def test_split_transparent_png_filters_only_components_small_in_both_dimensions(self) -> None:
         with TemporaryDirectory() as temp_dir:

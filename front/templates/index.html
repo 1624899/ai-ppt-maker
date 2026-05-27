@@ -55,98 +55,125 @@
           </div>
 
           <div class="panel-scroll">
+            <section class="task-context-card" id="taskContextCard"></section>
             <form id="jobForm">
-              <div class="field">
-                <div class="field-head">
-                  <span>汇报内容</span>
-                  <button class="secondary-button compact-button" id="editContentButton" type="button">打开编辑</button>
+              <section class="form-section-card">
+                <div class="form-section-head">
+                  <div>
+                    <h3>内容输入</h3>
+                    <p>正文放在独立编辑器里，当前面板只保留摘要预览和入口。</p>
+                  </div>
                 </div>
-                <button class="content-preview-card" id="contentPreviewCard" type="button">
-                  <strong id="contentPreviewTitle">未填写内容</strong>
-                  <p id="contentPreviewText">点击打开二级窗口，粘贴或编辑完整汇报内容。</p>
-                </button>
-                <textarea
-                  name="content"
-                  id="content"
-                  rows="12"
-                  placeholder="粘贴完整汇报内容，系统会自动拆页并生成每页参考图。"
-                  required
-                  hidden
-                ></textarea>
-              </div>
+                <div class="field">
+                  <div class="field-head">
+                    <span>汇报内容</span>
+                    <button class="secondary-button compact-button" id="editContentButton" type="button">打开编辑</button>
+                  </div>
+                  <button class="content-preview-card" id="contentPreviewCard" type="button">
+                    <strong id="contentPreviewTitle">未填写内容</strong>
+                    <p id="contentPreviewText">点击打开二级窗口，粘贴或编辑完整汇报内容。</p>
+                  </button>
+                  <textarea
+                    name="content"
+                    id="content"
+                    rows="12"
+                    placeholder="粘贴完整汇报内容，系统会自动拆页并生成每页参考图。"
+                    required
+                    hidden
+                  ></textarea>
+                </div>
+              </section>
 
-              <div class="grid-2">
+              <section class="form-section-card">
+                <div class="form-section-head">
+                  <div>
+                    <h3>输出规格</h3>
+                    <p>先确定页数、画幅和质量，右侧结果区会按照这组参数持续刷新。</p>
+                  </div>
+                </div>
+                <div class="grid-2">
+                  <label class="field">
+                    <span>指定页数</span>
+                    <input name="page_count" id="pageCount" type="number" min="1" value="4" required />
+                  </label>
+                  <label class="field">
+                    <span>图像尺寸</span>
+                    <select name="image_preset" id="imagePreset" required></select>
+                  </label>
+                </div>
+
+                <div class="grid-1">
+                  <label class="field">
+                    <span>图像质量</span>
+                    <select name="image_quality" id="imageQuality" required>
+                      <option value="low">low</option>
+                      <option value="medium" selected>medium</option>
+                      <option value="high">high</option>
+                      <option value="auto">auto</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="grid-1">
+                  <label class="toggle-field" for="includeCoverPage">
+                    <span class="toggle-copy">
+                      <strong>生成 PPT 首页图</strong>
+                      <small>勾选时第 1 页可作为首页建立视觉基调；不勾选则直接从正文页开始生成。</small>
+                    </span>
+                    <input name="include_cover_page" id="includeCoverPage" type="checkbox" checked />
+                  </label>
+                </div>
+              </section>
+
+              <section class="form-section-card">
+                <div class="form-section-head">
+                  <div>
+                    <h3>风格约束</h3>
+                    <p>参考图与风格补充会一起进入规划链路，帮助每页视觉保持一致。</p>
+                  </div>
+                </div>
+                <div class="grid-1">
+                  <label class="field">
+                    <span>参考风格图</span>
+                    <input name="reuse_style_refs_from_job_id" id="reuseStyleRefsJobId" type="hidden" value="" />
+                    <input name="style_images" id="styleImages" type="file" accept="image/*" multiple />
+                    <p class="field-tip" id="styleImagesHint">支持查看历史任务时自动回填参考图；也可以重新选择本地文件覆盖。</p>
+                    <div class="style-ref-gallery" id="styleRefGallery" hidden></div>
+                  </label>
+                </div>
+
                 <label class="field">
-                  <span>指定页数</span>
-                  <input name="page_count" id="pageCount" type="number" min="1" value="4" required />
+                  <span>风格补充</span>
+                  <input
+                    name="style_notes"
+                    id="styleNotes"
+                    type="text"
+                    placeholder="例如：蓝白科技线稿、低透明、边界清晰、toB 商务汇报"
+                  />
                 </label>
-                <label class="field">
-                  <span>图像尺寸</span>
-                  <select name="image_preset" id="imagePreset" required></select>
-                </label>
-              </div>
-
-              <div class="grid-1">
-                <label class="field">
-                  <span>图像质量</span>
-                  <select name="image_quality" id="imageQuality" required>
-                    <option value="low">low</option>
-                    <option value="medium" selected>medium</option>
-                    <option value="high">high</option>
-                    <option value="auto">auto</option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="grid-1">
-                <label class="toggle-field" for="includeCoverPage">
-                  <span class="toggle-copy">
-                    <strong>生成 PPT 首页图</strong>
-                    <small>勾选时第 1 页可作为首页建立视觉基调；不勾选则直接从正文页开始生成。</small>
-                  </span>
-                  <input name="include_cover_page" id="includeCoverPage" type="checkbox" checked />
-                </label>
-              </div>
-
-              <div class="grid-1">
-                <label class="field">
-                  <span>参考风格图</span>
-                  <input name="reuse_style_refs_from_job_id" id="reuseStyleRefsJobId" type="hidden" value="" />
-                  <input name="style_images" id="styleImages" type="file" accept="image/*" multiple />
-                  <p class="field-tip" id="styleImagesHint">支持查看历史任务时自动回填参考图；也可以重新选择本地文件覆盖。</p>
-                  <div class="style-ref-gallery" id="styleRefGallery" hidden></div>
-                </label>
-              </div>
-
-              <label class="field">
-                <span>风格补充</span>
-                <input
-                  name="style_notes"
-                  id="styleNotes"
-                  type="text"
-                  placeholder="例如：蓝白科技线稿、低透明、边界清晰、toB 商务汇报"
-                />
-              </label>
+              </section>
             </form>
           </div>
         </section>
 
         <section class="result-panel">
           <div class="result-workspace">
-            <div class="panel-head result-head">
-              <div>
-                <h2>生成结果</h2>
-                <p id="jobMeta">等待提交任务</p>
-                <div id="resultLinks" hidden></div>
-              </div>
-              <div class="result-actions">
-                <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
-                <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续</button>
+              <div class="panel-head result-head">
+                <div>
+                  <h2>生成结果</h2>
+                  <p id="jobMeta">等待提交任务</p>
+                  <div class="result-head-meta" id="resultHeadMeta"></div>
+                  <div id="resultLinks" hidden></div>
+                </div>
+                <div class="result-actions">
+                  <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
+                  <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续</button>
                 <button class="secondary-button" id="clearButton" type="button" title="清空结果">清空</button>
               </div>
             </div>
 
             <div class="panel-scroll result-scroll">
+              <section class="result-stage-overview" id="resultStageOverview"></section>
               <div class="progress" id="progress">
                 <div class="progress-bar"></div>
               </div>
@@ -310,6 +337,7 @@
 
     <script src="/static/image_lightbox.js?v={{ asset_version }}"></script>
     <script src="/static/generation_result.js?v={{ asset_version }}"></script>
+    <script src="/static/workspace_status.js?v={{ asset_version }}"></script>
     <script src="/static/app.js?v={{ asset_version }}"></script>
   </body>
 </html>
