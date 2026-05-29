@@ -8,6 +8,7 @@ from typing import Any
 
 from PIL import Image
 
+from ppt_system.export_layer_mode import OVERLAY_LAYER_MODE
 from ppt_system.global_element_alignment import align_elements_image_to_reference
 from ppt_system.image_ops import enhance_image, make_transparent
 from ppt_system.intermediate_artifact_cleanup import cleanup_split_intermediate_images
@@ -324,6 +325,7 @@ def _write_direct_page_script(
             }
         ],
         include_assets=True,
+        layer_mode=OVERLAY_LAYER_MODE,
     )
     script_path.write_text(script_source, encoding="utf-8")
     return script_path

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ppt_system.export_layer_mode import OVERLAY_LAYER_MODE, build_slide_layer_specs, normalize_layer_mode
 from ppt_system.text_script_schema import normalize_page_script
 
 
@@ -109,6 +110,7 @@ def build_project_script_source(
     page_scripts: list[dict[str, Any]],
     *,
     include_assets: bool = True,
+    layer_mode: str = OVERLAY_LAYER_MODE,
 ) -> str:
     image_width = int(project.get("image_width", 2000))
     image_height = int(project.get("image_height", 1125))
@@ -127,6 +129,8 @@ def build_project_script_source(
         for item in page_scripts
         if int(item.get("page_no", 0)) > 0 and normalize_asset_adjustments(item.get("asset_adjustments"))
     }
+    slide_layer_specs = [spec.to_payload() for spec in build_slide_layer_specs(layer_mode)]
+    resolved_layer_mode = normalize_layer_mode(layer_mode)
 
     page_functions = "\n\n".join(
         _build_page_function_source(item["page_no"], str(item["script"]))
@@ -160,8 +164,10 @@ OUTPUT_PPTX = Path(r"{output_pptx.resolve()}")
 DEFAULT_FONT_NAME = {font_name!r}
 DEFAULT_FONT_COLOR = {font_color!r}
 INCLUDE_ASSETS = {bool(include_assets)!r}
+LAYER_MODE = {resolved_layer_mode!r}
 PAGE_TEXTS = {json.dumps(page_texts, ensure_ascii=False, indent=2)}
 PAGE_ASSET_ADJUSTMENTS = {json.dumps(page_asset_adjustments, ensure_ascii=False, indent=2)}
+SLIDE_LAYER_SPECS = {slide_layer_specs!r}
 
 
 def px_x(value):
@@ -387,6 +393,13 @@ def add_assets(slide, manifest_path, page_no):
 {page_functions}
 
 
+def add_page_content(slide, page_no, builder, layer_spec):
+    if bool(layer_spec.get("include_assets")) and INCLUDE_ASSETS:
+        add_assets(slide, WORK_DIR / f"page_{{page_no:02d}}" / "assets" / "assets.json", page_no)
+    if bool(layer_spec.get("include_text")):
+        builder(slide)
+
+
 def build_deck():
     prs = Presentation()
     prs.slide_width = Inches(SLIDE_W)
@@ -396,12 +409,11 @@ def build_deck():
         {page_builder_entries}
     ]
     for page_no, builder in page_builders:
-        slide = prs.slides.add_slide(blank_layout)
-        slide.background.fill.solid()
-        slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
-        if INCLUDE_ASSETS:
-            add_assets(slide, WORK_DIR / f"page_{{page_no:02d}}" / "assets" / "assets.json", page_no)
-        builder(slide)
+        for layer_spec in SLIDE_LAYER_SPECS:
+            slide = prs.slides.add_slide(blank_layout)
+            slide.background.fill.solid()
+            slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
+            add_page_content(slide, page_no, builder, layer_spec)
     OUTPUT_PPTX.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUTPUT_PPTX)
     return OUTPUT_PPTX

@@ -23,6 +23,7 @@ from ppt_system.export_page_resume import (
     load_export_page_checkpoint,
     save_export_page_checkpoint,
 )
+from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.text_script_runtime import build_project_script_source, execute_generated_text_script
@@ -516,6 +517,7 @@ def generate_direct_project_text_script(
         output_pptx,
         page_scripts,
         include_assets=True,
+        layer_mode=SEPARATE_LAYER_MODE,
     )
     script_path.write_text(script_source, encoding="utf-8")
     return {

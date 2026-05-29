@@ -160,10 +160,14 @@ function buildJobMetaText(job) {
   if (!job?.job_id) {
     return "等待提交任务";
   }
-  const pageCount = Number(job.reference_pages?.length || job.job_meta?.page_count || job.pages?.length || 0);
+  const logicalPageCount = Number(job.reference_pages?.length || job.job_meta?.page_count || job.pages?.length || 0);
+  const exportedPageCount = Number(job.result?.export?.page_count || logicalPageCount || 0);
   const targetLabel = String(job.job_meta?.job_target_label || "PPT");
   if (job.status === "completed") {
-    return `任务 ${job.job_id} 已完成，共 ${pageCount} 页，可直接下载${targetLabel}`;
+    if (job.result?.export?.delivery_mode === "separate_layer_slides") {
+      return `任务 ${job.job_id} 已完成，逻辑 ${logicalPageCount} 页，导出 ${exportedPageCount} 页，可直接下载${targetLabel}`;
+    }
+    return `任务 ${job.job_id} 已完成，共 ${logicalPageCount} 页，可直接下载${targetLabel}`;
   }
   if (job.status === "stopping") {
     return `任务 ${job.job_id} 已暂停，可继续从当前进度恢复`;

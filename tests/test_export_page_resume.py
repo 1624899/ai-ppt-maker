@@ -129,6 +129,8 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
         final_script = Path(result["text_script_path"]).read_text(encoding="utf-8")
         assert output_pptx.exists()
         assert len(second_run_provider.calls) == 1
+        assert result["page_count"] == 4
+        assert result["logical_page_count"] == 2
         assert "第一页成稿" in final_script
         assert "第二页成稿" in final_script
         assert (work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists()

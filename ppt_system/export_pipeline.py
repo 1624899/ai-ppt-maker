@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ppt_system.direct_project_script import generate_direct_project_text_script
+from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE, count_output_slides
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.style_runtime import apply_text_theme, resolve_text_palette
 from ppt_system.text_layout import (
@@ -216,6 +217,7 @@ def export_project_to_pptx(
     _log(stage_logger, f"文字脚本已生成：{generated_script_path.name}")
     execute_generated_text_script(generated_script_path)
     _log(stage_logger, f"文字脚本执行完成：{output_pptx.name}")
+    logical_page_count = len(project.get("pages", []))
     return {
         "output_pptx": str(output_pptx),
         "work_dir": str(work_dir),
@@ -223,6 +225,10 @@ def export_project_to_pptx(
         "text_layout_strategy": "direct_office_refine",
         "text_script_path": str(generated_script_path),
         "page_results": direct_result["pages"],
+        "delivery_mode": "separate_layer_slides",
+        "logical_page_count": logical_page_count,
+        "page_count": count_output_slides(logical_page_count, SEPARATE_LAYER_MODE),
+        "layer_mode": SEPARATE_LAYER_MODE,
     }
 
 
@@ -288,6 +294,9 @@ def export_web_job_to_pptx(
         "pptx_path": str(output_pptx),
         "pptx_url": f"/runs/{job_id}/{output_pptx.relative_to(job_dir).as_posix()}",
         "work_dir": str(work_dir),
-        "page_count": len(project.get("pages", [])),
+        "page_count": int(export_summary.get("page_count", len(project.get("pages", [])))),
+        "logical_page_count": int(export_summary.get("logical_page_count", len(project.get("pages", [])))),
         "assets": export_summary.get("assets", {}),
+        "delivery_mode": str(export_summary.get("delivery_mode", "editable_ppt")),
+        "layer_mode": str(export_summary.get("layer_mode", "")),
     }

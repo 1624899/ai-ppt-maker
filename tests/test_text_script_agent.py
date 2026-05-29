@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
 
+from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.export_page_resume import CHECKPOINT_FILE_NAME
 from ppt_system.direct_page_script import (
     build_direct_page_refine_prompt,
@@ -278,6 +279,70 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             text_shapes = [shape for shape in slide.shapes if hasattr(shape, "text") and shape.text]
             self.assertEqual(text_shapes[0].text_frame.auto_size, MSO_AUTO_SIZE.NONE)
 
+    def test_generated_script_can_split_assets_and_texts_into_two_slides(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            page_assets_dir = work_dir / "page_01" / "assets"
+            page_assets_dir.mkdir(parents=True, exist_ok=True)
+            output_pptx = root / "result.pptx"
+            Image.new("RGBA", (40, 30), (0, 128, 255, 255)).save(page_assets_dir / "asset_001.png")
+            (page_assets_dir / "assets.json").write_text(
+                json.dumps(
+                    {
+                        "image_width": 400,
+                        "image_height": 240,
+                        "assets": [
+                            {"index": 1, "file": "asset_001.png", "left": 40, "top": 50, "width": 120, "height": 80}
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            project = {
+                "slide_width_inch": 10.0,
+                "image_width": 400,
+                "image_height": 240,
+                "default_font": {"font_name": "Microsoft YaHei", "font_size": 24, "color": "355C7D"},
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "示例页",
+                        "summary": "摘要",
+                        "texts": [{"role": "title", "text": "示例页", "left": 40, "top": 50, "width": 120, "height": 80}],
+                    }
+                ],
+            }
+            script_source = build_project_script_source(
+                project,
+                work_dir,
+                output_pptx,
+                [{"page_no": 1, "script": 'add_text_ref(slide, page_texts, "title", 40, 50, 120, 80, size=24, color="163A63", bold=True)'}],
+                include_assets=True,
+                layer_mode=SEPARATE_LAYER_MODE,
+            )
+            script_path = work_dir / "generated_text_layout.py"
+            script_path.write_text(script_source, encoding="utf-8")
+
+            execute_generated_text_script(script_path)
+
+            prs = Presentation(str(output_pptx))
+            self.assertEqual(len(prs.slides), 2)
+            asset_slide = prs.slides[0]
+            text_slide = prs.slides[1]
+
+            asset_picture = [shape for shape in asset_slide.shapes if shape.shape_type == 13][0]
+            self.assertEqual(len([shape for shape in asset_slide.shapes if hasattr(shape, "text") and shape.text]), 0)
+
+            text_box = [shape for shape in text_slide.shapes if hasattr(shape, "text") and shape.text][0]
+            self.assertEqual(len([shape for shape in text_slide.shapes if shape.shape_type == 13]), 0)
+            self.assertEqual(text_box.text, "示例页")
+            self.assertAlmostEqual(asset_picture.left / prs.slide_width, text_box.left / prs.slide_width, places=3)
+            self.assertAlmostEqual(asset_picture.top / prs.slide_height, text_box.top / prs.slide_height, places=3)
+            self.assertAlmostEqual(asset_picture.width / prs.slide_width, text_box.width / prs.slide_width, places=3)
+            self.assertAlmostEqual(asset_picture.height / prs.slide_height, text_box.height / prs.slide_height, places=3)
+
     def test_generated_script_maps_assets_using_manifest_canvas_size(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -399,6 +464,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertEqual(result["output_pptx"], str(output_pptx))
             self.assertTrue(output_pptx.exists())
             prs = Presentation(str(output_pptx))
+            self.assertEqual(len(prs.slides), 1)
             slide = prs.slides[0]
             texts = [shape.text for shape in slide.shapes if hasattr(shape, "text") and shape.text]
             self.assertIn("示例页", texts)
@@ -544,6 +610,12 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertTrue(Path(result["text_script_path"]).exists())
             self.assertTrue(output_pptx.exists())
             self.assertIn("page_results", result)
+            self.assertEqual(result["layer_mode"], SEPARATE_LAYER_MODE)
+            self.assertEqual(result["delivery_mode"], "separate_layer_slides")
+            self.assertEqual(result["logical_page_count"], 1)
+            self.assertEqual(result["page_count"], 2)
+            prs = Presentation(str(output_pptx))
+            self.assertEqual(len(prs.slides), 2)
 
     def test_export_project_keeps_existing_asset_adjustments_after_overlap_check(self) -> None:
         with TemporaryDirectory() as temp_dir:
