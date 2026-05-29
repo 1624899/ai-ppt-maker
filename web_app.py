@@ -13,9 +13,27 @@ from typing import Any
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, stream_with_context
 
 from ppt_system.content_agent import build_content_plan
-from ppt_system.export_pipeline import export_web_job_to_pptx
+from ppt_system.delivery_options import (
+    EDITABLE_PPT_DELIVERY_KEY,
+    REFERENCE_PPT_DELIVERY_KEY,
+    REFERENCE_PPT_FILENAME,
+    build_editable_ppt_filename,
+    normalize_editable_delivery_layer_mode,
+)
+from ppt_system.export_pipeline import export_editable_delivery, export_web_job_to_pptx
 from ppt_system.generation_options import default_generation_options, resolve_generation_options
 from ppt_system.generation_prompts import build_elements_prompt
+from ppt_system.job_delivery_state import (
+    attach_delivery_actions,
+    build_editable_delivery_payload,
+    build_reference_delivery_payload,
+    get_editable_delivery_bundle,
+    merge_job_result,
+    normalize_job_result_payload,
+    set_editable_delivery,
+    set_editable_delivery_bundle,
+    set_reference_delivery,
+)
 from ppt_system.page_evaluator import evaluate_plan
 from ppt_system.page_richness import PAGE_RICHNESS_LEVELS
 from ppt_system.job_store import create_job as create_job_record
@@ -24,6 +42,12 @@ from ppt_system.job_store import get_job as get_job_record
 from ppt_system.job_store import init_db as init_job_db
 from ppt_system.job_store import list_jobs as list_job_records
 from ppt_system.job_store import update_job as update_job_record
+from ppt_system.job_state_recovery import (
+    INTERRUPTED_MESSAGE,
+    STOPPING_MESSAGE,
+    is_running_job_status,
+    normalize_orphaned_job_state,
+)
 from ppt_system.job_targets import (
     JOB_TARGET_EDITABLE_PPT,
     TARGET_LABELS,
@@ -204,9 +228,9 @@ def build_job_state(
             },
             {
                 "key": "ppt_export",
-                "label": "PPT 组装",
+                "label": "可编辑元素生成",
                 "status": "pending",
-                "summary": "等待执行图像后处理并导出 PPTX",
+                "summary": "等待生成可编辑元素资源与文字脚本",
                 "logs": [],
                 "data": {},
             },
@@ -244,18 +268,37 @@ def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
 
 def normalize_stale_job_record(record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
+    job_id = str(record.get("job_id") or "").strip()
     status = str(record.get("status") or "").strip()
     job_dir = Path(str(record.get("job_dir") or ""))
+    state = record.get("state", {})
     has_status_file = status_file(job_dir).exists() if job_dir else False
     if status == "stopping" and not has_status_file:
         normalized["status"] = "interrupted"
         normalized["stop_requested"] = False
         update_job_record(
             JOBS_DB_PATH,
-            str(record.get("job_id") or ""),
+            job_id,
             status="interrupted",
             stop_requested=False,
         )
+        return normalized
+    if not job_id or not is_running_job_status(status):
+        return normalized
+    if not isinstance(state, dict) or not state:
+        state = load_job_state(job_id, job_dir) or {}
+    if not state:
+        normalized["status"] = "interrupted"
+        normalized["stop_requested"] = False
+        update_job_record(
+            JOBS_DB_PATH,
+            job_id,
+            status="interrupted",
+            stop_requested=False,
+        )
+        return normalized
+    if _recover_orphaned_job_record(job_id, job_dir, normalized, state):
+        return get_job_record(JOBS_DB_PATH, job_id) or normalized
     return normalized
 
 
@@ -265,11 +308,41 @@ def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] |
         record = normalize_stale_job_record(record)
         state = record.get("state", {})
         if isinstance(state, dict) and state:
-            return normalize_job_state_labels(enrich_job_state_with_record(state, record)), record
+            enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
+            return attach_delivery_actions(enriched, job_dir), record
     state = load_job_state(job_id, job_dir)
     if not state:
         return None, record
-    return normalize_job_state_labels(enrich_job_state_with_record(state, record)), record
+    enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
+    return attach_delivery_actions(enriched, job_dir), record
+
+
+def _recover_orphaned_job_record(
+    job_id: str,
+    job_dir: Path,
+    record: dict[str, Any],
+    state: dict[str, Any],
+) -> bool:
+    # 进程重启后，这类任务已经不可能继续运行，应恢复成可继续或可删除状态。
+    recovered_state = json.loads(json.dumps(state, ensure_ascii=False))
+    changed = normalize_orphaned_job_state(
+        recovered_state,
+        current_stage_key=str(record.get("current_stage") or recovered_state.get("current_stage") or ""),
+        resume_message=INTERRUPTED_MESSAGE,
+    )
+    if not changed:
+        return False
+    save_job_state(job_dir, recovered_state)
+    return True
+
+
+def repair_orphaned_jobs() -> None:
+    """启动时收口历史遗留运行态任务，避免列表中长期残留假运行状态。"""
+    for record in list_job_records(JOBS_DB_PATH, limit=None):
+        try:
+            normalize_stale_job_record(record)
+        except Exception:
+            continue
 
 
 def mutate_job_state(job_dir: Path, job_id: str, updater) -> dict[str, Any]:
@@ -370,13 +443,13 @@ def finalize_job_interrupted(job_dir: Path, job_id: str, stage_key: str, message
 
 def mark_job_stopping(job_dir: Path, job_id: str, stage_key: str, message: str) -> None:
     def updater(state: dict[str, Any]) -> None:
-        state["status"] = "interrupted"
+        state["status"] = "stopping"
         state["current_stage"] = stage_key
         state["stop_requested"] = True
         for stage in state["stages"]:
             if stage["key"] == stage_key:
                 stage["summary"] = message
-                stage["status"] = "interrupted"
+                stage["status"] = "stopping"
                 logs = stage.setdefault("logs", [])
                 if message not in logs:
                     logs.append(message)
@@ -389,13 +462,14 @@ def sync_job_record(job_id: str, state: dict[str, Any]) -> None:
     record = get_job_record(JOBS_DB_PATH, job_id)
     if not record:
         return
+    merged_result = merge_job_result(record.get("result", {}), state.get("result", {}))
     update_job_record(
         JOBS_DB_PATH,
         job_id,
         status=state.get("status", "queued"),
         current_stage=state.get("current_stage", "queued"),
         state=state,
-        result=state.get("result", {}),
+        result=merged_result,
         stop_requested=state.get("stop_requested", False),
     )
 
@@ -463,7 +537,7 @@ def normalize_job_state_labels(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_job_summaries(limit: int = 100) -> list[dict[str, Any]]:
-    records = list_job_records(JOBS_DB_PATH, limit=limit)
+    records = [normalize_stale_job_record(record) for record in list_job_records(JOBS_DB_PATH, limit=limit)]
     return [job_summary(record) for record in records]
 
 
@@ -486,7 +560,8 @@ def remove_job_artifacts(job_dir: Path) -> None:
         resolved = job_dir.resolve()
     except OSError:
         return
-    output_root = (ROOT / "output").resolve()
+    config = read_config()
+    output_root = (ROOT / str(config.get("output_dir", "output"))).resolve()
     if resolved == output_root or output_root not in resolved.parents:
         return
     shutil.rmtree(resolved, ignore_errors=True)
@@ -494,7 +569,7 @@ def remove_job_artifacts(job_dir: Path) -> None:
 
 def ensure_job_not_stopped(job_dir: Path, job_id: str, stage_key: str) -> None:
     if should_stop_job(job_id):
-        mark_job_stopping(job_dir, job_id, stage_key, "任务已暂停")
+        mark_job_stopping(job_dir, job_id, stage_key, STOPPING_MESSAGE)
         raise JobInterruptedError(stage_key)
 
 
@@ -588,17 +663,19 @@ def finalize_job_completed(
     job_dir: Path,
     job_id: str,
     state: dict[str, Any],
-    result: dict[str, Any],
+    result_payload: dict[str, Any],
     *,
     terminal_stage: str,
     summary: str,
 ) -> None:
     job_target = get_job_target_from_state(state)
+    normalized_result = normalize_job_result_payload(result_payload)
+    deliveries = normalized_result.get("deliveries", {})
 
     def updater(current_state: dict[str, Any]) -> None:
         current_state["status"] = "completed"
         current_state["current_stage"] = terminal_stage
-        current_state["result"] = result
+        current_state["result"] = normalized_result
         current_state["stop_requested"] = False
         current_state["error"] = ""
 
@@ -609,12 +686,19 @@ def finalize_job_completed(
         terminal_stage,
         status="completed",
         summary=summary,
-        data=result.get("export", {}),
+        data=deliveries if isinstance(deliveries, dict) else {},
         current_stage=terminal_stage,
         job_status="completed",
     )
     append_stage_log(job_dir, job_id, terminal_stage, build_completion_summary(job_target))
-    update_job_record(JOBS_DB_PATH, job_id, stop_requested=False, status="completed", current_stage=terminal_stage, result=result)
+    update_job_record(
+        JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="completed",
+        current_stage=terminal_stage,
+        result=normalized_result,
+    )
 
 
 def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
@@ -627,6 +711,7 @@ def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
             "planning": has_complete_planning_state(state),
             "reference_generation": has_expected_outputs(references, len(pages)),
             "elements_generation": has_expected_outputs(elements, len(references)),
+            "ppt_export": bool(get_editable_delivery_bundle(state.get("result", {}))),
         }
         reconcile_completed_stages(state, completion_map)
         if not should_continue_after_stage(job_target, "reference_generation"):
@@ -636,6 +721,86 @@ def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
                     stage["summary"] = "当前输出模式截至参考图阶段，此阶段已跳过"
 
     return mutate_job_state(job_dir, job_id, updater)
+
+
+def build_job_payload(
+    *,
+    job_id: str,
+    config: dict[str, Any],
+    content: str,
+    plan: dict[str, Any],
+    pages: list[dict[str, Any]],
+    references: list[dict[str, Any]],
+    element_pages: list[dict[str, Any]],
+    chat_provider: OpenAIChatProvider,
+    chat_profile: dict[str, Any],
+    image_provider: OpenAIImageProvider,
+    image_profile: dict[str, Any],
+    result_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "job_id": job_id,
+        "mode": config["generation_mode"],
+        "content": content,
+        "plan": plan,
+        "pages": pages,
+        "model_profiles": {
+            "chat": {
+                "id": chat_profile.get("id", ""),
+                "name": chat_profile.get("name", ""),
+                "model": chat_provider.model,
+                "base_url": chat_provider.api_base_url,
+            },
+            "image": {
+                "id": image_profile.get("id", ""),
+                "name": image_profile.get("name", ""),
+                "model": image_provider.model,
+                "base_url": image_provider.api_base_url,
+            },
+        },
+        "reference_pages": references,
+        "element_pages": element_pages,
+        "result": normalize_job_result_payload(result_payload),
+    }
+
+
+def write_job_snapshot(job_dir: Path, job_payload: dict[str, Any]) -> None:
+    (job_dir / "job.json").write_text(
+        json.dumps(job_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_job_snapshot(job_dir: Path) -> dict[str, Any]:
+    snapshot_path = job_dir / "job.json"
+    if not snapshot_path.exists():
+        return {}
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def build_job_payload_from_state(
+    state: dict[str, Any],
+    snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result_payload = normalize_job_result_payload(state.get("result", {}))
+    if isinstance(snapshot, dict) and snapshot:
+        result_payload = merge_job_result(snapshot.get("result", {}), result_payload)
+    source = snapshot if isinstance(snapshot, dict) and snapshot else {}
+    return {
+        "job_id": str(state.get("job_id") or source.get("job_id") or ""),
+        "mode": str(source.get("mode") or ""),
+        "content": str(source.get("content") or state.get("job_meta", {}).get("content") or ""),
+        "plan": source.get("plan", state.get("plan", {})),
+        "pages": source.get("pages", extract_pages_from_state(state)),
+        "model_profiles": source.get("model_profiles", {}),
+        "reference_pages": source.get("reference_pages", extract_reference_pages_from_state(state)),
+        "element_pages": source.get("element_pages", extract_element_pages_from_state(state)),
+        "result": result_payload,
+    }
 
 
 def submit_reference_task(
@@ -692,6 +857,7 @@ app = Flask(
     template_folder=str(ROOT / "front" / "templates"),
     static_folder=str(ROOT / "front" / "static"),
 )
+repair_orphaned_jobs()
 
 
 def static_asset_version() -> str:
@@ -1305,7 +1471,7 @@ def run_job_pipeline(
             append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图生成失败：{exc}")
 
         def on_pipeline_stop(stage_key: str) -> None:
-            message = "任务已暂停"
+            message = STOPPING_MESSAGE
             mark_job_stopping(job_dir, job_id, stage_key, message)
 
         pipeline_result = run_page_image_pipeline(
@@ -1346,30 +1512,7 @@ def run_job_pipeline(
         )
 
         if not should_continue_after_stage(job_target, "reference_generation"):
-            job = {
-                "job_id": job_id,
-                "mode": config["generation_mode"],
-                "content": content,
-                "plan": plan,
-                "pages": pages,
-                "model_profiles": {
-                    "chat": {
-                        "id": chat_profile.get("id", ""),
-                        "name": chat_profile.get("name", ""),
-                        "model": chat_provider.model,
-                        "base_url": chat_provider.api_base_url,
-                    },
-                    "image": {
-                        "id": image_profile.get("id", ""),
-                        "name": image_profile.get("name", ""),
-                        "model": image_provider.model,
-                        "base_url": image_provider.api_base_url,
-                    },
-                },
-                "reference_pages": references,
-                "element_pages": [],
-                "export": {},
-            }
+            job_result: dict[str, Any] = normalize_job_result_payload({})
             preview_pptx_path = job_dir / "result.reference_only.pptx"
             preview_export = export_reference_images_to_pptx(
                 references,
@@ -1378,49 +1521,56 @@ def run_job_pipeline(
                 image_width=int(active_config["image_width"]),
                 image_height=int(active_config["image_height"]),
             )
-            job["export"] = {
-                "pptx_path": str(preview_pptx_path),
-                "pptx_url": f"/runs/{job_id}/{preview_pptx_path.relative_to(job_dir).as_posix()}",
-                "page_count": int(preview_export["page_count"]),
-                "delivery_mode": "reference_only",
-            }
-            (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+            reference_delivery = build_reference_delivery_payload(
+                job_id,
+                job_dir,
+                preview_pptx_path,
+                page_count=int(preview_export["page_count"]),
+                logical_page_count=len(references),
+            )
+            job_result = set_reference_delivery(job_result, reference_delivery)
+            job = build_job_payload(
+                job_id=job_id,
+                config=config,
+                content=content,
+                plan=plan,
+                pages=pages,
+                references=references,
+                element_pages=[],
+                chat_provider=chat_provider,
+                chat_profile=chat_profile,
+                image_provider=image_provider,
+                image_profile=image_profile,
+                result_payload=job_result,
+            )
+            write_job_snapshot(job_dir, job)
             finalize_job_completed(
                 job_dir,
                 job_id,
                 load_job_state(job_id, job_dir) or state,
-                job,
+                job_result,
                 terminal_stage=terminal_stage,
-                summary=f"已完成 {len(references)} 张参考图，并导出图片版 PPT",
+                summary=f"已完成 {len(references)} 张参考图，可生成图片PPT",
             )
             return
 
         element_results.sort(key=lambda item: item["page_no"])
-        job = {
-            "job_id": job_id,
-            "mode": config["generation_mode"],
-            "content": content,
-            "plan": plan,
-            "pages": pages,
-            "model_profiles": {
-                "chat": {
-                    "id": chat_profile.get("id", ""),
-                    "name": chat_profile.get("name", ""),
-                    "model": chat_provider.model,
-                    "base_url": chat_provider.api_base_url,
-                },
-                "image": {
-                    "id": image_profile.get("id", ""),
-                    "name": image_profile.get("name", ""),
-                    "model": image_provider.model,
-                    "base_url": image_provider.api_base_url,
-                },
-            },
-            "reference_pages": references,
-            "element_pages": element_results,
-            "export": {},
-        }
-        (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        job_result = normalize_job_result_payload({})
+        job = build_job_payload(
+            job_id=job_id,
+            config=config,
+            content=content,
+            plan=plan,
+            pages=pages,
+            references=references,
+            element_pages=element_results,
+            chat_provider=chat_provider,
+            chat_profile=chat_profile,
+            image_provider=image_provider,
+            image_profile=image_profile,
+            result_payload=job_result,
+        )
+        write_job_snapshot(job_dir, job)
         (job_dir / "config.snapshot.json").write_text(
             json.dumps(active_config, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -1429,7 +1579,7 @@ def run_job_pipeline(
         def save_generated_job(current_state: dict[str, Any]) -> None:
             current_state["element_pages"] = element_results
             current_state["reference_pages"] = references
-            current_state["result"] = job
+            current_state["result"] = job_result
             current_state["stop_requested"] = False
 
         mutate_job_state(job_dir, job_id, save_generated_job)
@@ -1448,13 +1598,14 @@ def run_job_pipeline(
             job_id,
             "ppt_export",
             status="running",
-            summary="正在执行图像后处理并导出 PPTX",
+            summary="正在生成可编辑元素资源与文字脚本",
             current_stage="ppt_export",
         )
 
         export_work_dir = job_dir / "03_ppt_build"
         export_project_path = job_dir / "project.generated.json"
-        export_pptx_path = job_dir / "result.pptx"
+        export_bundle_path = export_work_dir / "editable_delivery.bundle.json"
+        export_pptx_path = job_dir / build_editable_ppt_filename(SEPARATE_LAYER_MODE)
         export_options = build_export_options(active_config)
 
         def export_stage_logger(message: str) -> None:
@@ -1469,7 +1620,7 @@ def run_job_pipeline(
                     job_dir,
                     job_id,
                     "ppt_export",
-                    "任务已暂停",
+                    STOPPING_MESSAGE,
                 )
                 return True
             return False
@@ -1484,6 +1635,7 @@ def run_job_pipeline(
                 work_dir=export_work_dir,
                 output_pptx=export_pptx_path,
                 project_path=export_project_path,
+                bundle_path=export_bundle_path,
                 chat_provider=chat_provider,
                 stage_logger=export_stage_logger,
                 page_logger=export_page_logger,
@@ -1493,15 +1645,46 @@ def run_job_pipeline(
         except InterruptedError as exc:
             raise JobInterruptedError("ppt_export") from exc
 
-        job["export"] = export_result
-        (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        job_result = set_editable_delivery_bundle(
+            job_result,
+            {
+                "bundle_path": str(export_result.get("bundle_path", "")),
+                "bundle_url": str(export_result.get("bundle_url", "")),
+                "project_path": str(export_result.get("project_path", "")),
+                "project_url": str(export_result.get("project_url", "")),
+                "default_pptx_path": str(export_result.get("default_pptx_path", "")),
+                "default_pptx_url": str(export_result.get("default_pptx_url", "")),
+                "logical_page_count": int(export_result.get("logical_page_count", len(pages))),
+                "page_count": int(export_result.get("page_count", 0)),
+                "text_script_path": str(export_result.get("text_script_path", "")),
+                "assets": export_result.get("assets", {}),
+                "page_results": export_result.get("page_results", []),
+                "layer_mode": str(export_result.get("layer_mode", SEPARATE_LAYER_MODE)),
+                "delivery_mode": str(export_result.get("delivery_mode", "")),
+            },
+        )
+        job = build_job_payload(
+            job_id=job_id,
+            config=config,
+            content=content,
+            plan=plan,
+            pages=pages,
+            references=references,
+            element_pages=element_results,
+            chat_provider=chat_provider,
+            chat_profile=chat_profile,
+            image_provider=image_provider,
+            image_profile=image_profile,
+            result_payload=job_result,
+        )
+        write_job_snapshot(job_dir, job)
 
         def complete_job(current_state: dict[str, Any]) -> None:
             current_state["status"] = "completed"
-            current_state["current_stage"] = "completed"
+            current_state["current_stage"] = "ppt_export"
             current_state["element_pages"] = element_results
             current_state["reference_pages"] = references
-            current_state["result"] = job
+            current_state["result"] = job_result
             current_state["stop_requested"] = False
 
         mutate_job_state(job_dir, job_id, complete_job)
@@ -1509,12 +1692,12 @@ def run_job_pipeline(
             job_dir,
             job_id,
             load_job_state(job_id, job_dir) or state,
-            job,
+            job_result,
             terminal_stage=terminal_stage,
-            summary=f"已导出可编辑 PPT，共 {int(export_result.get('page_count', 0))} 页",
+            summary=f"已完成可编辑元素生成，共 {len(element_results)} 页，可继续导出可编辑PPT",
         )
     except JobInterruptedError as exc:
-        finalize_job_interrupted(job_dir, job_id, str(exc), "任务已暂停，可稍后继续")
+        finalize_job_interrupted(job_dir, job_id, str(exc), INTERRUPTED_MESSAGE)
         update_job_record(JOBS_DB_PATH, job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
     except Exception as exc:
         stage_key = "reference_generation"
@@ -1656,22 +1839,22 @@ def api_interrupt_job(job_id: str):
         JOBS_DB_PATH,
         job_id,
         stop_requested=True,
-        status="interrupted",
+        status="stopping",
         current_stage=current_stage,
     )
     job_dir = Path(record["job_dir"])
 
     def updater(state: dict[str, Any]) -> None:
         state["stop_requested"] = True
-        state["status"] = "interrupted"
+        state["status"] = "stopping"
         state["current_stage"] = str(state.get("current_stage") or current_stage)
         for stage in state.get("stages", []):
             if stage.get("key") == state["current_stage"]:
-                stage["status"] = "interrupted"
-                stage["summary"] = "任务已暂停"
+                stage["status"] = "stopping"
+                stage["summary"] = STOPPING_MESSAGE
                 logs = stage.setdefault("logs", [])
-                if "任务已暂停" not in logs:
-                    logs.append("任务已暂停")
+                if STOPPING_MESSAGE not in logs:
+                    logs.append(STOPPING_MESSAGE)
                 break
 
     mutate_job_state(job_dir, job_id, updater)
@@ -1738,6 +1921,86 @@ def api_resume_job(job_id: str):
     )
     state = load_job_state(job_id, job_dir)
     return jsonify(state or {"ok": True})
+
+
+@app.post("/api/jobs/<job_id>/deliver")
+def api_deliver_job(job_id: str):
+    record = get_job_record(JOBS_DB_PATH, job_id)
+    if not record:
+        return jsonify({"error": "任务不存在"}), 404
+    record = normalize_stale_job_record(record)
+    job_dir = Path(record["job_dir"])
+    state, _ = get_job_state_snapshot(job_id, job_dir)
+    if not state:
+        return jsonify({"error": "任务状态不存在"}), 404
+    if record["status"] in {"queued", "running", "stopping"}:
+        return jsonify({"error": "任务仍在运行，请等待当前生成阶段完成后再导出。"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    delivery_key = str(payload.get("delivery_key", "")).strip()
+    if not delivery_key:
+        return jsonify({"error": "缺少 delivery_key。"}), 400
+
+    job_snapshot = load_job_snapshot(job_dir)
+    job_payload = build_job_payload_from_state(state, job_snapshot)
+    result_payload = normalize_job_result_payload(job_payload.get("result", {}))
+
+    try:
+        if delivery_key == REFERENCE_PPT_DELIVERY_KEY:
+            reference_pages = extract_reference_pages_from_state(state)
+            if not reference_pages:
+                return jsonify({"error": "参考图尚未生成完成，暂时不能导出图片PPT。"}), 400
+            image_preset = state.get("job_meta", {}).get("image_preset", {})
+            image_width = int(image_preset.get("width") or read_config().get("image_width", 2048))
+            image_height = int(image_preset.get("height") or read_config().get("image_height", 1152))
+            output_pptx = job_dir / REFERENCE_PPT_FILENAME
+            preview_export = export_reference_images_to_pptx(
+                reference_pages,
+                job_dir,
+                output_pptx,
+                image_width=image_width,
+                image_height=image_height,
+            )
+            reference_delivery = build_reference_delivery_payload(
+                job_id,
+                job_dir,
+                output_pptx,
+                page_count=int(preview_export["page_count"]),
+                logical_page_count=len(reference_pages),
+            )
+            result_payload = set_reference_delivery(result_payload, reference_delivery)
+        elif delivery_key == EDITABLE_PPT_DELIVERY_KEY:
+            requested_layer_mode = normalize_editable_delivery_layer_mode(payload.get("layer_mode"))
+            editable_bundle = get_editable_delivery_bundle(result_payload)
+            bundle_path = Path(str(editable_bundle.get("bundle_path", "")).strip())
+            if not bundle_path.exists():
+                return jsonify({"error": "可编辑元素尚未生成完成，暂时不能导出可编辑PPT。"}), 400
+            output_pptx = job_dir / build_editable_ppt_filename(requested_layer_mode)
+            export_payload = export_editable_delivery(
+                bundle_path,
+                output_pptx,
+                layer_mode=requested_layer_mode,
+            )
+            editable_delivery = build_editable_delivery_payload(job_id, job_dir, export_payload)
+            result_payload = set_editable_delivery(
+                result_payload,
+                editable_delivery,
+                layer_mode=requested_layer_mode,
+            )
+        else:
+            return jsonify({"error": f"不支持的导出类型：{delivery_key}"}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    job_payload["result"] = result_payload
+    write_job_snapshot(job_dir, job_payload)
+
+    def updater(current_state: dict[str, Any]) -> None:
+        current_state["result"] = result_payload
+
+    mutate_job_state(job_dir, job_id, updater)
+    refreshed_state, _ = get_job_state_snapshot(job_id, job_dir)
+    return jsonify(refreshed_state or {"ok": True})
 
 
 @app.get("/runs/<job_id>/<path:filename>")

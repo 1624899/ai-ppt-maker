@@ -524,4 +524,5 @@ def generate_direct_project_text_script(
         "script_path": str(script_path),
         "assets": assets_summary,
         "pages": page_results,
+        "page_scripts": page_scripts,
     }

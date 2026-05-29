@@ -32,7 +32,7 @@
       planning: "模型规划",
       reference_generation: "参考图生成",
       elements_generation: "元素图生成",
-      ppt_export: "PPT 组装",
+      ppt_export: "可编辑元素生成",
       completed: "全部完成",
     };
     return map[String(stageKey || "").trim()] || "处理中";
@@ -69,7 +69,7 @@
       meta.generation_options?.page_richness_default,
       "medium"
     );
-    const targetLabel = String(meta.job_target_label || (meta.job_target === "reference_only" ? "图片版 PPT" : "可编辑 PPT"));
+    const targetLabel = String(meta.job_target_label || (meta.job_target === "reference_only" ? "图片版 PPT" : "可编辑元素"));
     return {
       kicker: `当前任务 ${job.job_id}`,
       title: summary.title,
@@ -94,7 +94,7 @@
         statusLabel: "等待中",
         progressText: "等待开始",
         activeStageLabel: "尚未开始",
-        activeStageSummary: "提交任务后，系统会依次执行规划、参考图生成、元素图生成和 PPT 组装。",
+        activeStageSummary: "提交任务后，系统会依次执行规划、参考图生成、元素图生成和可编辑元素生成。",
       };
     }
 

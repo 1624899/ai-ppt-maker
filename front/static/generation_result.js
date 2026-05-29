@@ -16,7 +16,7 @@
       planning: "模型规划",
       reference_generation: "参考图生成",
       elements_generation: "元素图生成",
-      ppt_export: "PPT 组装",
+      ppt_export: "可编辑元素生成",
       completed: "全部完成",
     };
     return map[String(stageKey || "").trim()] || "处理中";
@@ -27,7 +27,7 @@
       pending: "等待中",
       queued: "等待中",
       running: "进行中",
-      stopping: "已暂停",
+      stopping: "暂停中",
       interrupted: "已暂停",
       skipped: "已跳过",
       completed: "已完成",
@@ -83,9 +83,9 @@
     const isReferenceOnly = job?.job_meta?.job_target === "reference_only";
     if (job?.status === "completed") {
       if (isReferenceOnly) {
-        return exportStage?.summary || "参考图与图片版 PPT 已完成，可继续转为可编辑 PPT。";
+        return exportStage?.summary || "参考图已生成完成，可按需生成图片PPT。";
       }
-      return exportStage?.summary || "PPT 已组装完成，可以直接下载。";
+      return exportStage?.summary || "可编辑元素与文字脚本已生成完成，可继续生成可编辑PPT。";
     }
     if (job?.status === "error") {
       return job?.error || exportStage?.summary || "任务执行失败，请查看错误日志。";
@@ -94,7 +94,7 @@
       return "任务已暂停，可继续从当前进度恢复。";
     }
     if (job?.status === "stopping") {
-      return "任务已暂停，可继续从当前进度恢复。";
+      return "暂停请求已发送，正在等待当前步骤收尾。";
     }
     if (activeStage?.key === "queued") {
       return "任务已创建，等待进入执行队列。";
@@ -112,28 +112,9 @@
       return "正在生成去文字元素图。";
     }
     if (activeStage?.key === "ppt_export") {
-      return activeStage?.summary || exportStage?.summary || "正在后处理并组装 PPT。";
+      return activeStage?.summary || exportStage?.summary || "正在生成可编辑元素资源与文字脚本。";
     }
     return "等待进入下一阶段。";
-  }
-
-  function buildActions(exportResult) {
-    const actions = [];
-    if (exportResult?.pptx_url) {
-      actions.push({
-        kind: "primary",
-        label: exportResult?.delivery_mode === "reference_only" ? "下载图片版 PPT" : "下载 PPT",
-        href: exportResult.pptx_url,
-      });
-    }
-    if (exportResult?.project_url) {
-      actions.push({
-        kind: "secondary",
-        label: "查看快照",
-        href: exportResult.project_url,
-      });
-    }
-    return actions;
   }
 
   function buildStageDots(stages, currentStageKey) {
@@ -158,7 +139,6 @@
 
   function buildFlowCard(job) {
     const exportStage = (job?.stages || []).find((stage) => stage.key === "ppt_export") || {};
-    const exportResult = job?.result?.export || {};
     const activeStage = getActiveStage(job);
     const progress = getStageProgress(job?.stages);
     return {
@@ -171,16 +151,7 @@
       summary: getStageSummary(job, activeStage, exportStage),
       allowErrorLog: job?.status === "error",
       stageDots: buildStageDots(job?.stages, job?.current_stage),
-      actions: buildActions(exportResult),
     };
-  }
-
-  function renderLinks(linksContainer) {
-    if (!linksContainer) {
-      return;
-    }
-    linksContainer.hidden = true;
-    linksContainer.innerHTML = "";
   }
 
   function renderCard(container, card) {
@@ -191,16 +162,6 @@
       .map((item) => {
         return `
           <span class="flow-stage-dot is-${escapeHtml(item.tone)}">${escapeHtml(item.label)}</span>
-        `;
-      })
-      .join("");
-    const actionHtml = card.actions
-      .map((action) => {
-        const actionClass = action.kind === "primary" ? "primary-button" : "secondary-button";
-        return `
-          <a class="flow-card-action ${actionClass}" href="${escapeHtml(action.href)}" target="_blank" rel="noreferrer">
-            ${escapeHtml(action.label)}
-          </a>
         `;
       })
       .join("");
@@ -230,16 +191,14 @@
           <div class="flow-stage-dots">${stageDotsHtml}</div>
         </div>
         <div class="result-stage-overview-summary${card.allowErrorLog ? " is-bounded" : ""}">${escapeHtml(card.summary)}</div>
-        <div class="flow-card-actions">${actionHtml}</div>
       </section>
     `;
   }
 
   globalScope.PptGenerationResult = {
     buildFlowCard,
-    render({ container, linksContainer, job }) {
+    render({ container, job }) {
       renderCard(container, buildFlowCard(job));
-      renderLinks(linksContainer);
     },
   };
 })(window);

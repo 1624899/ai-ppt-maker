@@ -107,9 +107,9 @@
                     <span>输出模式</span>
                     <select name="job_target" id="jobTarget" required>
                       <option value="reference_only">图片版 PPT（生成参考图后截止）</option>
-                      <option value="editable_ppt" selected>可编辑 PPT（完整流程）</option>
+                      <option value="editable_ppt" selected>可编辑元素（完整流程）</option>
                     </select>
-                    <p class="field-tip">可先只生成参考图与图片版 PPT，后续再从历史任务继续转换为可编辑 PPT。</p>
+                    <p class="field-tip">可先只生成参考图，随后导出图片PPT；也可以继续生成可编辑元素，再按需导出合页或双页可编辑PPT。</p>
                   </label>
                 </div>
 
@@ -190,13 +190,15 @@
           <div class="result-workspace">
             <div class="panel-head result-head">
               <div class="result-head-copy">
+                <div class="result-head-top">
                   <h2>生成结果</h2>
+                  <div class="result-actions">
+                    <button class="secondary-button result-action-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
+                    <button class="secondary-button result-action-button" id="resumeButton" type="button" title="继续当前任务">继续生成</button>
+                    <button class="secondary-button result-action-button" id="regenerateButton" type="button" title="按当前参数重新生成任务">重新生成</button>
+                  </div>
+                </div>
                 <p id="jobMeta" class="result-head-summary">等待提交任务</p>
-              </div>
-              <div class="result-actions">
-                <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
-                <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续生成</button>
-                <button class="secondary-button" id="clearButton" type="button" title="清空结果">清空</button>
               </div>
             </div>
 
@@ -333,6 +335,27 @@
         </div>
         <div class="error-log-body">
           <pre class="error-log-content" id="errorLogContent">暂无错误日志</pre>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="delivery-dialog" id="deliveryDialog">
+      <div class="delivery-dialog-shell">
+        <div class="settings-head">
+          <div>
+            <h2 id="deliveryDialogTitle">可编辑PPT生成</h2>
+            <p id="deliveryDialogSubtitle">选择导出方式后，会基于已生成的可编辑元素和文字脚本立即组装 PPT。</p>
+          </div>
+          <button class="icon-button" id="closeDeliveryDialogButton" type="button" title="关闭">×</button>
+        </div>
+
+        <div class="delivery-option-list" id="deliveryOptionList"></div>
+
+        <div class="form-actions">
+          <button class="secondary-button" id="cancelDeliveryDialogButton" type="button">取消</button>
+          <button class="primary-button" id="confirmDeliveryDialogButton" type="button">
+            <span>开始生成</span>
+          </button>
         </div>
       </div>
     </dialog>

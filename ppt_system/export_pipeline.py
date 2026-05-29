@@ -4,7 +4,17 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from ppt_system.delivery_options import (
+    SEPARATE_DELIVERY_MODE,
+    build_editable_delivery_description,
+    build_editable_delivery_label,
+    normalize_editable_delivery_layer_mode,
+)
 from ppt_system.direct_project_script import generate_direct_project_text_script
+from ppt_system.editable_delivery_bundle import (
+    export_editable_delivery_from_bundle,
+    write_editable_delivery_bundle,
+)
 from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE, count_output_slides
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.style_runtime import apply_text_theme, resolve_text_palette
@@ -189,6 +199,51 @@ def export_project_to_pptx(
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
 ) -> dict[str, Any]:
+    export_summary = _prepare_editable_delivery_core(
+        project,
+        work_dir,
+        output_pptx,
+        script_refine_rounds=script_refine_rounds,
+        alpha_threshold=alpha_threshold,
+        min_area=min_area,
+        min_width=min_width,
+        min_height=min_height,
+        padding=padding,
+        merge_distance=merge_distance,
+        skip_enhance=skip_enhance,
+        skip_transparent=skip_transparent,
+        export_page_concurrency=export_page_concurrency,
+        chat_provider=chat_provider,
+        stage_logger=stage_logger,
+        page_logger=page_logger,
+        stop_checker=stop_checker,
+    )
+    generated_script_path = Path(str(export_summary["text_script_path"]))
+    execute_generated_text_script(generated_script_path)
+    _log(stage_logger, f"文字脚本执行完成：{output_pptx.name}")
+    return export_summary
+
+
+def _prepare_editable_delivery_core(
+    project: dict[str, Any],
+    work_dir: Path,
+    output_pptx: Path,
+    *,
+    script_refine_rounds: int = 1,
+    alpha_threshold: int = 8,
+    min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
+    padding: int = 0,
+    merge_distance: int = 6,
+    skip_enhance: bool = False,
+    skip_transparent: bool = False,
+    export_page_concurrency: int = 1,
+    chat_provider: OpenAIChatProvider | None = None,
+    stage_logger: StageLogger | None = None,
+    page_logger: PageLogger | None = None,
+    stop_checker: StopChecker | None = None,
+) -> dict[str, Any]:
     if chat_provider is None:
         raise RuntimeError("当前主路径必须提供 chat_provider，已不再支持 legacy/builtin 回退。")
 
@@ -215,8 +270,6 @@ def export_project_to_pptx(
     _ensure_not_stopped(stop_checker)
     generated_script_path = Path(str(direct_result["script_path"]))
     _log(stage_logger, f"文字脚本已生成：{generated_script_path.name}")
-    execute_generated_text_script(generated_script_path)
-    _log(stage_logger, f"文字脚本执行完成：{output_pptx.name}")
     logical_page_count = len(project.get("pages", []))
     return {
         "output_pptx": str(output_pptx),
@@ -225,11 +278,81 @@ def export_project_to_pptx(
         "text_layout_strategy": "direct_office_refine",
         "text_script_path": str(generated_script_path),
         "page_results": direct_result["pages"],
-        "delivery_mode": "separate_layer_slides",
+        "page_scripts": direct_result.get("page_scripts", []),
+        "delivery_mode": SEPARATE_DELIVERY_MODE,
         "logical_page_count": logical_page_count,
         "page_count": count_output_slides(logical_page_count, SEPARATE_LAYER_MODE),
         "layer_mode": SEPARATE_LAYER_MODE,
+        "label": build_editable_delivery_label(SEPARATE_LAYER_MODE),
+        "description": build_editable_delivery_description(SEPARATE_LAYER_MODE),
     }
+
+
+def prepare_editable_delivery_bundle(
+    project: dict[str, Any],
+    work_dir: Path,
+    output_pptx: Path,
+    bundle_path: Path,
+    *,
+    script_refine_rounds: int = 1,
+    alpha_threshold: int = 8,
+    min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
+    padding: int = 0,
+    merge_distance: int = 6,
+    skip_enhance: bool = False,
+    skip_transparent: bool = False,
+    export_page_concurrency: int = 1,
+    chat_provider: OpenAIChatProvider | None = None,
+    stage_logger: StageLogger | None = None,
+    page_logger: PageLogger | None = None,
+    stop_checker: StopChecker | None = None,
+) -> dict[str, Any]:
+    export_summary = _prepare_editable_delivery_core(
+        project,
+        work_dir,
+        output_pptx,
+        script_refine_rounds=script_refine_rounds,
+        alpha_threshold=alpha_threshold,
+        min_area=min_area,
+        min_width=min_width,
+        min_height=min_height,
+        padding=padding,
+        merge_distance=merge_distance,
+        skip_enhance=skip_enhance,
+        skip_transparent=skip_transparent,
+        export_page_concurrency=export_page_concurrency,
+        chat_provider=chat_provider,
+        stage_logger=stage_logger,
+        page_logger=page_logger,
+        stop_checker=stop_checker,
+    )
+    write_editable_delivery_bundle(
+        bundle_path,
+        project=project,
+        work_dir=work_dir,
+        page_scripts=list(export_summary.get("page_scripts", [])),
+        assets=dict(export_summary.get("assets", {})),
+        page_results=list(export_summary.get("page_results", [])),
+        default_output_pptx=output_pptx,
+        default_layer_mode=str(export_summary.get("layer_mode", SEPARATE_LAYER_MODE)),
+    )
+    export_summary["bundle_path"] = str(bundle_path)
+    return export_summary
+
+
+def export_editable_delivery(
+    bundle_path: Path,
+    output_pptx: Path,
+    *,
+    layer_mode: str,
+) -> dict[str, Any]:
+    return export_editable_delivery_from_bundle(
+        bundle_path,
+        output_pptx,
+        layer_mode=normalize_editable_delivery_layer_mode(layer_mode),
+    )
 
 
 def export_web_job_to_pptx(
@@ -242,6 +365,7 @@ def export_web_job_to_pptx(
     work_dir: Path,
     output_pptx: Path,
     project_path: Path,
+    bundle_path: Path,
     chat_provider: OpenAIChatProvider | None = None,
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
@@ -268,10 +392,11 @@ def export_web_job_to_pptx(
     project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
     _log(stage_logger, f"已生成项目快照：{project_path.name}")
 
-    export_summary = export_project_to_pptx(
+    export_summary = prepare_editable_delivery_bundle(
         project,
         work_dir,
         output_pptx,
+        bundle_path,
         script_refine_rounds=script_refine_rounds,
         alpha_threshold=alpha_threshold,
         min_area=min_area,
@@ -291,12 +416,18 @@ def export_web_job_to_pptx(
     return {
         "project_path": str(project_path),
         "project_url": f"/runs/{job_id}/{project_path.relative_to(job_dir).as_posix()}",
-        "pptx_path": str(output_pptx),
-        "pptx_url": f"/runs/{job_id}/{output_pptx.relative_to(job_dir).as_posix()}",
+        "bundle_path": str(bundle_path),
+        "bundle_url": f"/runs/{job_id}/{bundle_path.relative_to(job_dir).as_posix()}",
+        "default_pptx_path": str(output_pptx),
+        "default_pptx_url": f"/runs/{job_id}/{output_pptx.relative_to(job_dir).as_posix()}",
         "work_dir": str(work_dir),
         "page_count": int(export_summary.get("page_count", len(project.get("pages", [])))),
         "logical_page_count": int(export_summary.get("logical_page_count", len(project.get("pages", [])))),
         "assets": export_summary.get("assets", {}),
-        "delivery_mode": str(export_summary.get("delivery_mode", "editable_ppt")),
+        "page_results": list(export_summary.get("page_results", [])),
+        "text_script_path": str(export_summary.get("text_script_path", "")),
+        "delivery_mode": str(export_summary.get("delivery_mode", SEPARATE_DELIVERY_MODE)),
         "layer_mode": str(export_summary.get("layer_mode", "")),
+        "label": str(export_summary.get("label", "")),
+        "description": str(export_summary.get("description", "")),
     }

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import unittest
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from ppt_system.job_store import get_job as get_job_record
 from ppt_system.job_store import init_db as init_job_db
+from ppt_system.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE
 from web_app import app, load_job_state, mutate_job_state, status_file, update_job_record
 import web_app
 
@@ -73,6 +75,31 @@ class JobApiPageRichnessTests(unittest.TestCase):
         web_app.JOB_STATUS_CACHE.clear()
 
         self.client = app.test_client()
+
+    def _seed_completed_reference_job(self, *, job_target: str = "reference_only") -> tuple[str, Path]:
+        create_response = self.client.post(
+            "/api/jobs",
+            data={
+                "content": "第一页讲总览，第二页讲拆解。",
+                "page_count": "2",
+                "image_preset": "landscape_2k",
+                "image_quality": "medium",
+                "job_target": job_target,
+                "style_notes": "蓝白科技风",
+                "include_cover_page": "1",
+                "page_richness_default": "medium",
+                "page_richness_map": '{"1":"medium","2":"high"}',
+            },
+        )
+        self.assertEqual(create_response.status_code, 202)
+        payload = create_response.get_json()
+        self.assertIsNotNone(payload)
+        job_id = str(payload["job_id"])
+        job_dir = self.output_dir / job_id
+        (job_dir / "01_reference_pages").mkdir(parents=True, exist_ok=True)
+        for page_no in (1, 2):
+            (job_dir / "01_reference_pages" / f"page_{page_no:02d}_reference.png").write_bytes(b"fake")
+        return job_id, job_dir
 
     def test_create_job_persists_page_richness_generation_options(self) -> None:
         response = self.client.post(
@@ -173,25 +200,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
         self.assertEqual(len(self.executor.calls), 2)
 
     def test_resume_completed_reference_only_job_upgrades_target_to_editable(self) -> None:
-        create_response = self.client.post(
-            "/api/jobs",
-            data={
-                "content": "第一页讲总览，第二页讲拆解。",
-                "page_count": "2",
-                "image_preset": "landscape_2k",
-                "image_quality": "medium",
-                "job_target": "reference_only",
-                "style_notes": "蓝白科技风",
-                "include_cover_page": "1",
-                "page_richness_default": "medium",
-                "page_richness_map": '{"1":"medium","2":"high"}',
-            },
-        )
-        self.assertEqual(create_response.status_code, 202)
-        payload = create_response.get_json()
-        self.assertIsNotNone(payload)
-        job_id = str(payload["job_id"])
-        job_dir = self.output_dir / job_id
+        job_id, job_dir = self._seed_completed_reference_job(job_target="reference_only")
 
         update_job_record(
             self.jobs_db_path,
@@ -229,6 +238,152 @@ class JobApiPageRichnessTests(unittest.TestCase):
         self.assertIsNotNone(saved_record)
         self.assertEqual(saved_record["request"]["job_target"], "editable_ppt")
         self.assertEqual(len(self.executor.calls), 2)
+
+    def test_deliver_reference_ppt_updates_result_payload(self) -> None:
+        job_id, job_dir = self._seed_completed_reference_job(job_target="reference_only")
+        references = [
+            {"page_no": 1, "image": f"/runs/{job_id}/01_reference_pages/page_01_reference.png"},
+            {"page_no": 2, "image": f"/runs/{job_id}/01_reference_pages/page_02_reference.png"},
+        ]
+
+        update_job_record(
+            self.jobs_db_path,
+            job_id,
+            status="completed",
+            current_stage="reference_generation",
+            stop_requested=False,
+        )
+        mutate_job_state(
+            job_dir,
+            job_id,
+            lambda state: state.update(
+                {
+                    "status": "completed",
+                    "current_stage": "reference_generation",
+                    "reference_pages": references,
+                    "pages": [
+                        {
+                            "page_no": 1,
+                            "reference_image": references[0]["image"],
+                            "element_image": "",
+                        },
+                        {
+                            "page_no": 2,
+                            "reference_image": references[1]["image"],
+                            "element_image": "",
+                        },
+                    ],
+                    "result": {},
+                }
+            ),
+        )
+
+        with patch.object(web_app, "export_reference_images_to_pptx", return_value={"page_count": 2}):
+            response = self.client.post(
+                f"/api/jobs/{job_id}/deliver",
+                json={"delivery_key": "reference_ppt"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        reference_action = next(item for item in payload["delivery_actions"] if item["key"] == "reference_ppt")
+        self.assertTrue(reference_action["generated"])
+        self.assertEqual(reference_action["generated_file"]["page_count"], 2)
+
+        record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(record)
+        deliveries = record["state"]["result"]["deliveries"]
+        self.assertIn("reference_ppt", deliveries)
+        self.assertEqual(deliveries["reference_ppt"]["delivery_mode"], "reference_only")
+
+    def test_deliver_editable_ppt_supports_overlay_and_separate_modes(self) -> None:
+        job_id, job_dir = self._seed_completed_reference_job(job_target="editable_ppt")
+        bundle_dir = job_dir / "03_ppt_build"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        bundle_path = bundle_dir / "editable_delivery.bundle.json"
+        bundle_path.write_text(
+            json.dumps(
+                {
+                    "bundle_path": str(bundle_path),
+                    "logical_page_count": 2,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        references = [
+            {"page_no": 1, "image": f"/runs/{job_id}/01_reference_pages/page_01_reference.png"},
+            {"page_no": 2, "image": f"/runs/{job_id}/01_reference_pages/page_02_reference.png"},
+        ]
+        elements = [
+            {"page_no": 1, "image": f"/runs/{job_id}/02_elements_pages/page_01_elements.png"},
+            {"page_no": 2, "image": f"/runs/{job_id}/02_elements_pages/page_02_elements.png"},
+        ]
+        (job_dir / "02_elements_pages").mkdir(parents=True, exist_ok=True)
+        for page_no in (1, 2):
+            (job_dir / "02_elements_pages" / f"page_{page_no:02d}_elements.png").write_bytes(b"fake")
+
+        mutate_job_state(
+            job_dir,
+            job_id,
+            lambda state: state.update(
+                {
+                    "status": "completed",
+                    "current_stage": "ppt_export",
+                    "reference_pages": references,
+                    "element_pages": elements,
+                    "result": {
+                        "editable_delivery_bundle": {
+                            "bundle_path": str(bundle_path),
+                            "logical_page_count": 2,
+                        }
+                    },
+                }
+            ),
+        )
+        update_job_record(
+            self.jobs_db_path,
+            job_id,
+            status="completed",
+            current_stage="ppt_export",
+            stop_requested=False,
+        )
+
+        def fake_export(bundle_path_value, output_pptx, *, layer_mode):
+            return {
+                "output_pptx": str(output_pptx),
+                "page_count": 4 if layer_mode == SEPARATE_LAYER_MODE else 2,
+                "logical_page_count": 2,
+                "delivery_mode": "separate_layer_slides" if layer_mode == SEPARATE_LAYER_MODE else "overlay_slides",
+                "layer_mode": layer_mode,
+                "label": "双页" if layer_mode == SEPARATE_LAYER_MODE else "合页",
+                "description": "desc",
+            }
+
+        with patch.object(web_app, "export_editable_delivery", side_effect=fake_export):
+            separate_response = self.client.post(
+                f"/api/jobs/{job_id}/deliver",
+                json={"delivery_key": "editable_ppt", "layer_mode": SEPARATE_LAYER_MODE},
+            )
+            overlay_response = self.client.post(
+                f"/api/jobs/{job_id}/deliver",
+                json={"delivery_key": "editable_ppt", "layer_mode": OVERLAY_LAYER_MODE},
+            )
+
+        self.assertEqual(separate_response.status_code, 200)
+        self.assertEqual(overlay_response.status_code, 200)
+        overlay_payload = overlay_response.get_json()
+        self.assertIsNotNone(overlay_payload)
+        editable_action = next(item for item in overlay_payload["delivery_actions"] if item["key"] == "editable_ppt")
+        self.assertTrue(editable_action["generated"])
+        self.assertEqual(editable_action["generated_file"]["layer_mode"], OVERLAY_LAYER_MODE)
+
+        record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(record)
+        by_layer_mode = record["state"]["result"]["deliveries"]["editable_ppt"]["by_layer_mode"]
+        self.assertIn(SEPARATE_LAYER_MODE, by_layer_mode)
+        self.assertIn(OVERLAY_LAYER_MODE, by_layer_mode)
 
 
 if __name__ == "__main__":

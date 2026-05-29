@@ -11,7 +11,7 @@
       planning: "模型规划",
       reference_generation: "参考图生成",
       elements_generation: "元素图生成",
-      ppt_export: "PPT 组装",
+      ppt_export: "可编辑元素生成",
       completed: "全部完成",
     };
     return map[String(stageKey || "").trim()] || "处理中";

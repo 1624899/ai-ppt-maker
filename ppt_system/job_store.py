@@ -93,13 +93,18 @@ def get_job(db_path: Path, job_id: str) -> dict[str, Any] | None:
     return _row_to_job(dict(row))
 
 
-def list_jobs(db_path: Path, limit: int = 100) -> list[dict[str, Any]]:
+def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM jobs ORDER BY datetime(updated_at) DESC, rowid DESC LIMIT ?",
-            (int(limit),),
-        ).fetchall()
+        if limit is None:
+            rows = conn.execute(
+                "SELECT * FROM jobs ORDER BY datetime(updated_at) DESC, rowid DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM jobs ORDER BY datetime(updated_at) DESC, rowid DESC LIMIT ?",
+                (int(limit),),
+            ).fetchall()
     return [_row_to_job(dict(row)) for row in rows]
 
 

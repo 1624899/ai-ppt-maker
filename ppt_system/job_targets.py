@@ -22,7 +22,7 @@ TERMINAL_STAGE_BY_TARGET = {
 
 TARGET_LABELS = {
     JOB_TARGET_REFERENCE_ONLY: "图片版 PPT",
-    JOB_TARGET_EDITABLE_PPT: "可编辑 PPT",
+    JOB_TARGET_EDITABLE_PPT: "可编辑元素",
 }
 
 
@@ -67,5 +67,5 @@ def can_upgrade_to_editable(job_state: dict[str, Any] | None) -> bool:
 def build_completion_summary(job_target: Any) -> str:
     normalized = normalize_job_target(job_target)
     if normalized == JOB_TARGET_REFERENCE_ONLY:
-        return "参考图与图片版 PPT 已生成完成，可按需继续转换为可编辑 PPT。"
-    return "可编辑 PPT 已生成完成，可直接下载。"
+        return "参考图已生成完成，可按需导出图片PPT，或继续生成可编辑元素。"
+    return "可编辑元素与文字脚本已生成完成，可继续导出可编辑PPT。"

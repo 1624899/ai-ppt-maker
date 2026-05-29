@@ -19,7 +19,7 @@ class WebJobStateLabelTests(unittest.TestCase):
         result = enrich_job_state_with_record(state, None)
 
         self.assertEqual(result["stages"][0]["label"], "模型规划")
-        self.assertEqual(result["stages"][1]["label"], "PPT 组装")
+        self.assertEqual(result["stages"][1]["label"], "可编辑元素生成")
 
 
 if __name__ == "__main__":

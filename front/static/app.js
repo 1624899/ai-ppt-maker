@@ -1,12 +1,11 @@
 const form = document.querySelector("#jobForm");
 const pagesGrid = document.querySelector("#pagesGrid");
 const submitButton = document.querySelector("#submitButton");
-const clearButton = document.querySelector("#clearButton");
+const regenerateButton = document.querySelector("#regenerateButton");
 const progress = document.querySelector("#progress");
 const configText = document.querySelector("#configText");
 const modeText = document.querySelector("#modeText");
 const jobMeta = document.querySelector("#jobMeta");
-const resultLinks = document.querySelector("#resultLinks");
 const deliveryResult = document.querySelector("#deliveryResult");
 const pageTemplate = document.querySelector("#pageTemplate");
 const contentInput = document.querySelector("#content");
@@ -44,6 +43,13 @@ const contentEditor = document.querySelector("#contentEditor");
 const saveContentButton = document.querySelector("#saveContentButton");
 const cancelContentButton = document.querySelector("#cancelContentButton");
 const closeContentButton = document.querySelector("#closeContentButton");
+const deliveryDialog = document.querySelector("#deliveryDialog");
+const deliveryDialogTitle = document.querySelector("#deliveryDialogTitle");
+const deliveryDialogSubtitle = document.querySelector("#deliveryDialogSubtitle");
+const deliveryOptionList = document.querySelector("#deliveryOptionList");
+const confirmDeliveryDialogButton = document.querySelector("#confirmDeliveryDialogButton");
+const cancelDeliveryDialogButton = document.querySelector("#cancelDeliveryDialogButton");
+const closeDeliveryDialogButton = document.querySelector("#closeDeliveryDialogButton");
 const modelList = document.querySelector("#modelList");
 const modelForm = document.querySelector("#modelForm");
 const modelConfigId = document.querySelector("#modelConfigId");
@@ -73,6 +79,8 @@ let historyEventSource = null;
 let historyItems = [];
 let selectedHistoryJobId = "";
 let styleReferenceHydrationKey = "";
+let pendingDeliveryAction = null;
+let isSubmittingDelivery = false;
 
 const pageRichnessHelpers = window.PptPageRichness || null;
 const PAGE_RICHNESS_OPTIONS = pageRichnessHelpers?.listOptions?.() || [
@@ -89,7 +97,7 @@ function formatStageKey(stage) {
     planning: "模型规划",
     reference_generation: "参考图生成",
     elements_generation: "元素图生成",
-    ppt_export: "PPT 组装",
+    ppt_export: "可编辑元素生成",
     completed: "全部完成",
   };
   return map[stage] || "处理中";
@@ -161,16 +169,16 @@ function buildJobMetaText(job) {
     return "等待提交任务";
   }
   const logicalPageCount = Number(job.reference_pages?.length || job.job_meta?.page_count || job.pages?.length || 0);
-  const exportedPageCount = Number(job.result?.export?.page_count || logicalPageCount || 0);
-  const targetLabel = String(job.job_meta?.job_target_label || "PPT");
+  const editableAction = findDeliveryAction(job, "editable_ppt");
+  const editableExportCount = Number(editableAction?.generated_file?.page_count || 0);
   if (job.status === "completed") {
-    if (job.result?.export?.delivery_mode === "separate_layer_slides") {
-      return `任务 ${job.job_id} 已完成，逻辑 ${logicalPageCount} 页，导出 ${exportedPageCount} 页，可直接下载${targetLabel}`;
+    if (editableExportCount > 0) {
+      return `任务 ${job.job_id} 已完成，可编辑元素已就绪；最近一次可编辑PPT导出 ${editableExportCount} 页`;
     }
-    return `任务 ${job.job_id} 已完成，共 ${logicalPageCount} 页，可直接下载${targetLabel}`;
+    return `任务 ${job.job_id} 已完成，共 ${logicalPageCount} 个逻辑页，可继续生成图片PPT或可编辑PPT`;
   }
   if (job.status === "stopping") {
-    return `任务 ${job.job_id} 已暂停，可继续从当前进度恢复`;
+    return `任务 ${job.job_id} 正在暂停，请等待当前步骤收尾`;
   }
   if (job.status === "interrupted") {
     return `任务 ${job.job_id} 已暂停，可继续从当前进度恢复`;
@@ -179,6 +187,14 @@ function buildJobMetaText(job) {
     return `任务 ${job.job_id} 执行失败，请打开错误日志查看详情`;
   }
   return `任务 ${job.job_id} 正在${formatStageKey(job.current_stage || "queued")}`;
+}
+
+function listDeliveryActions(job) {
+  return Array.isArray(job?.delivery_actions) ? job.delivery_actions : [];
+}
+
+function findDeliveryAction(job, key) {
+  return listDeliveryActions(job).find((item) => item?.key === key) || null;
 }
 
 function showErrorLog(message, options = {}) {
@@ -567,9 +583,9 @@ function currentModelItems() {
 function updateSubmitButtonState() {
   const status = currentJob?.status || "";
   const target = currentJob?.job_meta?.job_target || jobTarget?.value || "editable_ppt";
-  let label = target === "reference_only" ? "生成图片版 PPT" : "生成可编辑 PPT";
+  let label = target === "reference_only" ? "生成参考图" : "生成可编辑元素";
   if (status === "stopping") {
-    label = "任务已暂停";
+    label = "暂停中...";
   } else if (status === "interrupted") {
     label = "任务已暂停";
   } else if (status === "queued" || status === "running") {
@@ -603,13 +619,10 @@ function resetWorkspaceView(message = "等待提交任务") {
   }
   mainPreviewCaption.textContent = "等待生成";
   setJobMetaText(message);
-  if (resultLinks) {
-    resultLinks.innerHTML = "";
-    resultLinks.hidden = true;
-  }
   if (deliveryResult) {
     deliveryResult.innerHTML = "";
   }
+  closeDeliveryDialog();
   stageOpenState = {};
   setLoading(false);
   syncJobActionButtons();
@@ -678,7 +691,7 @@ function getStageStatusLabel(status) {
     pending: "等待中",
     queued: "排队中",
     running: "进行中",
-    stopping: "已暂停",
+    stopping: "暂停中",
     interrupted: "已暂停",
     skipped: "已跳过",
     completed: "已完成",
@@ -705,11 +718,11 @@ function currentStageLabel(job) {
     planning: "正在进行模型规划",
     reference_generation: "正在生成带文字参考图",
     elements_generation: "正在生成去文字元素图",
-    ppt_export: "正在执行图像后处理并导出 PPTX",
+    ppt_export: "正在生成可编辑元素资源与文字脚本",
     completed: "全部阶段已完成",
   };
   if (job.status === "stopping") {
-    return "任务已暂停，可点击继续从当前进度恢复";
+    return "任务正在暂停，请等待当前步骤完成收尾";
   }
   if (job.status === "interrupted") {
     return "任务已暂停，可点击继续从当前进度恢复";
@@ -718,37 +731,186 @@ function currentStageLabel(job) {
     return `任务失败：${job.error || "请查看阶段日志"}`;
   }
   if (job.status === "completed" && job.job_meta?.job_target === "reference_only") {
-    return "参考图与图片版 PPT 已完成";
+    return "参考图已完成，可生成图片PPT";
   }
   return labels[job.current_stage] || "任务运行中";
 }
 
-function renderResultLinks(job) {
-  if (!resultLinks) {
+function renderGenerationResult(job) {
+  if (!deliveryResult) {
     return;
   }
-  const exportResult = job?.result?.export || {};
-  const links = [];
-  if (exportResult.pptx_url) {
-    links.push(`<a href="${escapeHtml(exportResult.pptx_url)}" target="_blank" rel="noreferrer">下载 PPTX</a>`);
-  }
-  if (exportResult.project_url) {
-    links.push(`<a href="${escapeHtml(exportResult.project_url)}" target="_blank" rel="noreferrer">查看项目快照</a>`);
-  }
-  resultLinks.hidden = links.length === 0;
-  resultLinks.innerHTML = links.join(" · ");
-}
-
-function renderGenerationResult(job) {
-  if (generationResultPresenter?.render && deliveryResult) {
+  if (generationResultPresenter?.render) {
     generationResultPresenter.render({
       container: deliveryResult,
-      linksContainer: resultLinks,
       job,
     });
+  }
+  renderDeliveryActionPanel(job);
+}
+
+function renderDeliveryActionPanel(job) {
+  if (!deliveryResult) {
     return;
   }
-  renderResultLinks(job);
+  const actions = listDeliveryActions(job);
+  const panel = document.createElement("section");
+  panel.className = "delivery-action-panel";
+  if (!actions.length) {
+    panel.innerHTML = `
+      <div class="delivery-action-empty">
+        <strong>导出入口会在对应阶段完成后出现</strong>
+        <p>参考图完成后可生成图片PPT；可编辑元素生成完成后可继续生成可编辑PPT。</p>
+      </div>
+    `;
+    deliveryResult.appendChild(panel);
+    return;
+  }
+
+  panel.innerHTML = actions
+    .map((action) => {
+      const generatedFile = action.generated_file || {};
+      const generatedSummary = action.generated
+        ? `<p class="delivery-action-meta">最近一次导出：${escapeHtml(
+            generatedFile?.label || action.label
+          )}${generatedFile?.page_count ? ` · ${escapeHtml(String(generatedFile.page_count))} 页` : ""}</p>`
+        : `<p class="delivery-action-meta">尚未导出，点击后会立即开始生成。</p>`;
+      const buttonClass = action.key === "editable_ppt" ? "secondary-button" : "primary-button";
+      return `
+        <article class="delivery-action-card">
+          <div class="delivery-action-copy">
+            <h3>${escapeHtml(action.label)}</h3>
+            <p>${escapeHtml(action.description || "")}</p>
+            ${generatedSummary}
+          </div>
+          <div class="delivery-action-buttons">
+            <button
+              class="${buttonClass}"
+              type="button"
+              data-action="deliver"
+              data-delivery-key="${escapeHtml(action.key)}"
+            >
+              ${escapeHtml(action.label)}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+  deliveryResult.appendChild(panel);
+}
+
+function closeDeliveryDialog() {
+  pendingDeliveryAction = null;
+  if (deliveryOptionList) {
+    deliveryOptionList.innerHTML = "";
+  }
+  if (deliveryDialog?.open) {
+    deliveryDialog.close();
+  }
+  syncDeliveryConfirmButton();
+}
+
+function syncDeliveryConfirmButton() {
+  if (!confirmDeliveryDialogButton) {
+    return;
+  }
+  const checkedOption = deliveryOptionList?.querySelector('input[name="delivery_layer_mode"]:checked');
+  confirmDeliveryDialogButton.disabled = isSubmittingDelivery || !checkedOption;
+  confirmDeliveryDialogButton.textContent = isSubmittingDelivery ? "生成中..." : "开始生成";
+}
+
+function openEditableDeliveryDialog(action) {
+  pendingDeliveryAction = action;
+  if (deliveryDialogTitle) {
+    deliveryDialogTitle.textContent = action?.label || "可编辑PPT生成";
+  }
+  if (deliveryDialogSubtitle) {
+    deliveryDialogSubtitle.textContent = "请选择导出方式。双页会把元素和文字拆到相邻两页；合页会把元素与文字放在同一页。";
+  }
+  if (deliveryOptionList) {
+    const options = Array.isArray(action?.options) ? action.options : [];
+    deliveryOptionList.innerHTML = options
+      .map((option, index) => {
+        return `
+          <label class="delivery-option-card">
+            <input
+              type="radio"
+              name="delivery_layer_mode"
+              value="${escapeHtml(option.layer_mode)}"
+              ${index === 0 ? "checked" : ""}
+            />
+            <div class="delivery-option-copy">
+              <strong>${escapeHtml(option.label)}</strong>
+              <p>${escapeHtml(option.description || "")}</p>
+            </div>
+          </label>
+        `;
+      })
+      .join("");
+    deliveryOptionList.querySelectorAll('input[name="delivery_layer_mode"]').forEach((node) => {
+      node.addEventListener("change", syncDeliveryConfirmButton);
+    });
+  }
+  syncDeliveryConfirmButton();
+  deliveryDialog?.showModal();
+}
+
+function triggerFileDownload(fileUrl) {
+  const safeUrl = String(fileUrl || "").trim();
+  if (!safeUrl) {
+    return;
+  }
+  const anchor = document.createElement("a");
+  anchor.href = safeUrl;
+  anchor.download = "";
+  anchor.rel = "noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+async function submitDeliveryAction(deliveryKey, layerMode = "") {
+  if (!currentJob?.job_id) {
+    return;
+  }
+  isSubmittingDelivery = true;
+  syncDeliveryConfirmButton();
+  renderJob(currentJob);
+  try {
+    const res = await fetch(`/api/jobs/${currentJob.job_id}/deliver`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        delivery_key: deliveryKey,
+        layer_mode: layerMode,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "导出失败");
+    }
+    renderJob(data);
+    const action = findDeliveryAction(data, deliveryKey);
+    const downloadUrl = action?.generated_file?.pptx_url || "";
+    if (jobEventSource && ["queued", "running", "stopping"].includes(data.status)) {
+      startJobStream(data.job_id);
+    }
+    closeDeliveryDialog();
+    triggerFileDownload(downloadUrl);
+  } catch (error) {
+    showErrorLog(error.message, {
+      title: "导出失败",
+      subtitle: currentJob?.job_id ? `任务 ID：${currentJob.job_id}` : "当前任务",
+    });
+  } finally {
+    isSubmittingDelivery = false;
+    syncDeliveryConfirmButton();
+    if (currentJob) {
+      renderJob(currentJob);
+    }
+  }
 }
 
 function syncStyleReferenceSelectionHint() {
@@ -1262,7 +1424,8 @@ function syncJobActionButtons() {
   const canUpgradeReferenceOnly =
     status === "completed" && currentJob?.job_meta?.job_target === "reference_only";
   resumeButton.disabled = !(["interrupted", "error"].includes(status) || canUpgradeReferenceOnly);
-  resumeButton.textContent = canUpgradeReferenceOnly ? "继续转可编辑" : "继续生成";
+  resumeButton.textContent = canUpgradeReferenceOnly ? "继续生成可编辑元素" : "继续生成";
+  regenerateButton.disabled = ["queued", "running", "stopping"].includes(status);
 }
 
 function stopJobStream() {
@@ -1317,10 +1480,6 @@ async function deleteHistoryJob(jobId) {
     mainPreviewImage.removeAttribute("src");
     mainPreviewCaption.textContent = "等待生成";
     setJobMetaText("该任务已删除");
-    if (resultLinks) {
-      resultLinks.innerHTML = "";
-      resultLinks.hidden = true;
-    }
     setLoading(false);
     syncJobActionButtons();
     renderWorkspaceStatus(null);
@@ -1341,8 +1500,8 @@ async function interruptCurrentJob() {
     });
     return;
   }
-  currentJob = {...currentJob, status: "interrupted"};
-  setJobMetaText("任务已暂停，可点击继续从当前进度恢复。");
+  currentJob = {...currentJob, status: "stopping", stop_requested: true};
+  setJobMetaText("暂停请求已发送，正在等待当前步骤收尾。");
   syncJobActionButtons();
   startJobStream(currentJob.job_id);
 }
@@ -1589,8 +1748,7 @@ async function deleteModel(id) {
   updateModeText();
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function submitCurrentJob() {
   if (!config) {
     return;
   }
@@ -1612,7 +1770,7 @@ form.addEventListener("submit", async (event) => {
   stageTimeline.innerHTML = "";
   currentPreviewPageNo = 1;
   setLoading(true);
-  const targetLabel = jobTarget.value === "reference_only" ? "图片版 PPT" : "可编辑 PPT";
+  const targetLabel = jobTarget.value === "reference_only" ? "参考图" : "可编辑元素";
   setJobMetaText(`准备生成 ${selectedPreset.label} ${targetLabel}，任务创建中...`);
 
   try {
@@ -1643,10 +1801,15 @@ form.addEventListener("submit", async (event) => {
       subtitle: "任务尚未成功创建",
     });
   }
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitCurrentJob();
 });
 
-clearButton.addEventListener("click", () => {
-  resetWorkspaceView("等待提交任务");
+regenerateButton.addEventListener("click", async () => {
+  await submitCurrentJob();
 });
 
 newTaskButton.addEventListener("click", () => startNewTask(true));
@@ -1665,12 +1828,35 @@ contentEditor.addEventListener("input", () => {
 interruptButton.addEventListener("click", interruptCurrentJob);
 resumeButton.addEventListener("click", resumeCurrentJob);
 deliveryResult?.addEventListener("click", (event) => {
+  const deliverTrigger = event.target.closest('[data-action="deliver"]');
+  if (deliverTrigger && currentJob) {
+    const deliveryKey = String(deliverTrigger.dataset.deliveryKey || "").trim();
+    const action = findDeliveryAction(currentJob, deliveryKey);
+    if (!action) {
+      return;
+    }
+    if (deliveryKey === "editable_ppt") {
+      openEditableDeliveryDialog(action);
+      return;
+    }
+    submitDeliveryAction(deliveryKey);
+    return;
+  }
   const trigger = event.target.closest('[data-action="open-error-log"]');
   if (!trigger || !currentJob) {
     return;
   }
   showJobError(currentJob);
 });
+confirmDeliveryDialogButton?.addEventListener("click", () => {
+  const selectedOption = deliveryOptionList?.querySelector('input[name="delivery_layer_mode"]:checked');
+  if (!pendingDeliveryAction || !selectedOption) {
+    return;
+  }
+  submitDeliveryAction(pendingDeliveryAction.key, selectedOption.value);
+});
+cancelDeliveryDialogButton?.addEventListener("click", closeDeliveryDialog);
+closeDeliveryDialogButton?.addEventListener("click", closeDeliveryDialog);
 modelForm.addEventListener("submit", saveModel);
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => {
