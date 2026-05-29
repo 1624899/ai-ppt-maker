@@ -3,12 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+from ppt_system.component_geometry import bbox_center_x, bbox_center_y
 
 def merge_dashed_line_components(
     components: list[dict[str, Any]],
     *,
-    image_width: int,
-    image_height: int,
     max_dash_gap: int,
     min_group_size: int = 3,
 ) -> list[dict[str, Any]]:
@@ -18,8 +17,6 @@ def merge_dashed_line_components(
 
     groups = _collect_dashed_line_groups(
         components,
-        image_width=image_width,
-        image_height=image_height,
         max_dash_gap=int(max_dash_gap),
         min_group_size=max(2, int(min_group_size)),
     )
@@ -34,7 +31,18 @@ def merge_dashed_line_components(
             continue
         merged.append(component)
     for group in groups:
-        merged.append(_merge_component_group(group, contains_anchor=False))
+        orientation = _infer_dash_orientation(group[0]) or "unknown"
+        merged.append(
+            merge_component_group(
+                group,
+                contains_anchor=False,
+                extra_metadata={
+                    "is_dashed_line_group": True,
+                    "dash_group_size": len(group),
+                    "dash_orientation": orientation,
+                },
+            )
+        )
     return merged
 
 
@@ -70,16 +78,14 @@ def _can_join_dashed_group(
     *,
     orientation: str,
     max_dash_gap: int,
-    image_width: int,
-    image_height: int,
 ) -> bool:
     if orientation == "horizontal":
         candidate_left = int(candidate["left"])
         candidate_right = int(candidate["right"])
-        candidate_center_y = _bbox_center_y(candidate)
+        candidate_center_y = bbox_center_y(candidate)
         min_left = min(int(item["left"]) for item in group)
         max_right = max(int(item["right"]) for item in group)
-        centers = [_bbox_center_y(item) for item in group]
+        centers = [bbox_center_y(item) for item in group]
         gap_x = max(0, candidate_left - max_right, min_left - candidate_right)
         if gap_x > max_dash_gap:
             return False
@@ -89,10 +95,10 @@ def _can_join_dashed_group(
 
     candidate_top = int(candidate["top"])
     candidate_bottom = int(candidate["bottom"])
-    candidate_center_x = _bbox_center_x(candidate)
+    candidate_center_x = bbox_center_x(candidate)
     min_top = min(int(item["top"]) for item in group)
     max_bottom = max(int(item["bottom"]) for item in group)
-    centers = [_bbox_center_x(item) for item in group]
+    centers = [bbox_center_x(item) for item in group]
     gap_y = max(0, candidate_top - max_bottom, min_top - candidate_bottom)
     if gap_y > max_dash_gap:
         return False
@@ -104,8 +110,6 @@ def _can_join_dashed_group(
 def _collect_dashed_line_groups(
     components: list[dict[str, Any]],
     *,
-    image_width: int,
-    image_height: int,
     max_dash_gap: int,
     min_group_size: int,
 ) -> list[list[dict[str, Any]]]:
@@ -147,8 +151,6 @@ def _collect_dashed_line_groups(
                     group,
                     orientation=orientation,
                     max_dash_gap=max_dash_gap,
-                    image_width=image_width,
-                    image_height=image_height,
                 ):
                     continue
                 group.append(candidate)
@@ -174,14 +176,15 @@ def _primary_axis_start(component: dict[str, Any]) -> int:
 def _secondary_axis_center(component: dict[str, Any]) -> float:
     orientation = _infer_dash_orientation(component)
     if orientation == "vertical":
-        return _bbox_center_x(component)
-    return _bbox_center_y(component)
+        return bbox_center_x(component)
+    return bbox_center_y(component)
 
 
-def _merge_component_group(
+def merge_component_group(
     group: list[dict[str, Any]],
     *,
     contains_anchor: bool | None = None,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     left = min(int(item["left"]) for item in group)
     top = min(int(item["top"]) for item in group)
@@ -201,7 +204,7 @@ def _merge_component_group(
         if bool(component.get("contains_anchor", False)):
             merged_contains_anchor = True
 
-    return {
+    merged_component = {
         "left": left,
         "top": top,
         "right": right,
@@ -211,45 +214,6 @@ def _merge_component_group(
         "component_count": merged_component_count,
         "contains_anchor": merged_contains_anchor,
     }
-
-
-def _bbox_gap(first: dict[str, Any], second: dict[str, Any]) -> tuple[int, int]:
-    return _bbox_gap_from_bbox(_component_bbox(first), _component_bbox(second))
-
-
-def _bbox_gap_from_bbox(
-    first: tuple[int, int, int, int],
-    second: tuple[int, int, int, int],
-) -> tuple[int, int]:
-    left_gap = max(0, first[0] - second[2], second[0] - first[2])
-    top_gap = max(0, first[1] - second[3], second[1] - first[3])
-    return left_gap, top_gap
-
-
-def _component_bbox(component: dict[str, Any]) -> tuple[int, int, int, int]:
-    return (
-        int(component["left"]),
-        int(component["top"]),
-        int(component["right"]),
-        int(component["bottom"]),
-    )
-
-
-def _bbox_center_x(component: dict[str, Any]) -> float:
-    return (int(component["left"]) + int(component["right"])) / 2.0
-
-
-def _bbox_center_y(component: dict[str, Any]) -> float:
-    return (int(component["top"]) + int(component["bottom"])) / 2.0
-
-
-def _merge_bbox(
-    first: tuple[int, int, int, int],
-    second: tuple[int, int, int, int],
-) -> tuple[int, int, int, int]:
-    return (
-        min(first[0], second[0]),
-        min(first[1], second[1]),
-        max(first[2], second[2]),
-        max(first[3], second[3]),
-    )
+    if isinstance(extra_metadata, dict):
+        merged_component.update(extra_metadata)
+    return merged_component

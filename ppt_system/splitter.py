@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -10,111 +9,122 @@ from PIL import Image
 
 from ppt_system.asset_output_dir import prepare_asset_output_dir
 from ppt_system.asset_cleaner import has_fill_mask, restore_removed_regions
-from ppt_system.component_filter import filter_decorative_components
+from ppt_system.component_color_signature import annotate_component_color_signatures
+from ppt_system.component_color_grouping import merge_color_coherent_fragments
+from ppt_system.component_container_analysis import (
+    annotate_barrier_regions,
+    annotate_container_features,
+    build_container_barrier_mask,
+)
+from ppt_system.component_graph_clustering import (
+    merge_structural_components,
+    split_suspicious_sparse_components,
+)
+from ppt_system.component_bridge_cut import cut_container_bridges
+from ppt_system.component_instance_grouping import group_components_into_instances
 from ppt_system.component_postprocess import merge_dashed_line_components
+from ppt_system.cv_mask_components import find_mask_components, grow_mask_from_seed
 
 
-SPLIT_MODE_CLASSIC = "classic"
-
-
-def find_components(mask: np.ndarray) -> list[dict[str, Any]]:
-    height, width = mask.shape
-    visited = np.zeros(mask.shape, dtype=bool)
-    components: list[dict[str, Any]] = []
-    neighbors = (
-        (-1, -1),
-        (0, -1),
-        (1, -1),
-        (-1, 0),
-        (1, 0),
-        (-1, 1),
-        (0, 1),
-        (1, 1),
-    )
-
-    ys, xs = np.nonzero(mask)
-    for start_x, start_y in zip(xs, ys):
-        if visited[start_y, start_x]:
-            continue
-
-        queue: deque[tuple[int, int]] = deque([(int(start_x), int(start_y))])
-        visited[start_y, start_x] = True
-        pixels: list[tuple[int, int]] = []
-        min_x = max_x = int(start_x)
-        min_y = max_y = int(start_y)
-
-        while queue:
-            x, y = queue.popleft()
-            pixels.append((x, y))
-            min_x = min(min_x, x)
-            max_x = max(max_x, x)
-            min_y = min(min_y, y)
-            max_y = max(max_y, y)
-
-            for dx, dy in neighbors:
-                nx = x + dx
-                ny = y + dy
-                if (
-                    0 <= nx < width
-                    and 0 <= ny < height
-                    and mask[ny, nx]
-                    and not visited[ny, nx]
-                ):
-                    visited[ny, nx] = True
-                    queue.append((nx, ny))
-
-        component_mask = np.zeros((max_y - min_y + 1, max_x - min_x + 1), dtype=bool)
-        for x, y in pixels:
-            component_mask[y - min_y, x - min_x] = True
-
-        components.append(
-            {
-                "left": min_x,
-                "top": min_y,
-                "right": max_x + 1,
-                "bottom": max_y + 1,
-                "area": len(pixels),
-                "mask": component_mask,
-            }
-        )
-
-    return components
+DEFAULT_ALPHA_CORE_THRESHOLD = 48
 
 
 def split_transparent_png(
     image_path: Path,
     out_dir: Path,
     alpha_threshold: int = 8,
+    alpha_core_threshold: int = DEFAULT_ALPHA_CORE_THRESHOLD,
     min_area: int = 8,
     min_width: int = 0,
     min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
-    filter_decorative_fragments: bool = True,
 ) -> dict[str, Any]:
     image = Image.open(image_path).convert("RGBA")
-    alpha = np.array(image.getchannel("A"))
-    mask = alpha > alpha_threshold
-    raw_components = find_components(mask)
-    components = raw_components
+    image_array = np.array(image, dtype=np.uint8)
+    image = Image.fromarray(image_array, mode="RGBA")
+    alpha = image_array[:, :, 3]
+    visual_mask = alpha > int(alpha_threshold)
+    core_threshold = max(int(alpha_threshold) + 1, int(alpha_core_threshold))
+    core_mask = alpha > core_threshold
+    raw_components = find_mask_components(core_mask, connectivity=4)
+    components = annotate_component_color_signatures(
+        raw_components,
+        image_array=image_array,
+    )
+    components = annotate_container_features(
+        components,
+        image_width=image.width,
+        image_height=image.height,
+    )
     if int(merge_distance) > 0:
+        components = cut_container_bridges(
+            components,
+            image_array=image_array,
+        )
+        components = annotate_component_color_signatures(
+            components,
+            image_array=image_array,
+        )
+        components = annotate_container_features(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+        )
+        barrier_mask = build_container_barrier_mask(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+        )
+        components = annotate_barrier_regions(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+            barrier_mask=barrier_mask,
+        )
+        components = group_components_into_instances(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+            merge_distance=merge_distance,
+        )
+        components = annotate_component_color_signatures(
+            components,
+            image_array=image_array,
+        )
+        components = annotate_container_features(
+            components,
+            image_width=image.width,
+            image_height=image.height,
+        )
+        components = merge_structural_components(
+            components,
+            image_array=image_array,
+            merge_distance=merge_distance,
+        )
         components = merge_dashed_line_components(
             components,
-            image_width=image.width,
-            image_height=image.height,
             max_dash_gap=max(4, int(merge_distance) * 2),
         )
-    merged_component_count = len(components)
-    removed_components: list[dict[str, Any]] = []
-    if filter_decorative_fragments:
-        components, removed_components = filter_decorative_components(
+        components = merge_color_coherent_fragments(
             components,
+            image_array=image_array,
             image_width=image.width,
             image_height=image.height,
+            merge_distance=merge_distance,
         )
+    components = split_suspicious_sparse_components(
+        components,
+        image_array=image_array,
+    )
+    components = annotate_component_color_signatures(
+        components,
+        image_array=image_array,
+    )
+    merged_component_count = len(components)
 
     prepare_asset_output_dir(out_dir)
-    records: list[dict[str, int | str]] = []
+    records: list[dict[str, Any]] = []
     filtered = [
         component
         for component in components
@@ -140,11 +150,19 @@ def split_transparent_png(
         raw_right = int(component["right"])
         raw_bottom = int(component["bottom"])
         component_mask = component["mask"]
+        visual_component_mask = _expand_component_to_visual_mask(
+            component,
+            visual_mask=visual_mask,
+        )
+        visual_top = int(component.get("visual_top", raw_top))
+        visual_left = int(component.get("visual_left", raw_left))
+        visual_bottom = visual_top + visual_component_mask.shape[0]
+        visual_right = visual_left + visual_component_mask.shape[1]
 
-        left = max(0, raw_left - padding)
-        top = max(0, raw_top - padding)
-        right = min(image.width, raw_right + padding)
-        bottom = min(image.height, raw_bottom + padding)
+        left = max(0, min(raw_left, visual_left) - padding)
+        top = max(0, min(raw_top, visual_top) - padding)
+        right = min(image.width, max(raw_right, visual_right) + padding)
+        bottom = min(image.height, max(raw_bottom, visual_bottom) + padding)
 
         crop = image.crop((left, top, right, bottom))
         crop_array = np.array(crop)
@@ -152,18 +170,20 @@ def split_transparent_png(
 
         # 只保留当前连通域自己的像素，避免大 bbox 把内部小元素重复裁进去。
         keep_mask = np.zeros((bottom - top, right - left), dtype=bool)
-        mask_top = raw_top - top
-        mask_left = raw_left - left
+        mask_top = visual_top - top
+        mask_left = visual_left - left
         keep_mask[
-            mask_top : mask_top + component_mask.shape[0],
-            mask_left : mask_left + component_mask.shape[1],
-        ] = component_mask
+            mask_top : mask_top + visual_component_mask.shape[0],
+            mask_left : mask_left + visual_component_mask.shape[1],
+        ] = visual_component_mask
         if has_fill_mask(component):
             fill_mask = np.zeros((bottom - top, right - left), dtype=bool)
             component_fill_mask = np.asarray(component["fill_mask"], dtype=bool)
+            fill_top = raw_top - top
+            fill_left = raw_left - left
             fill_mask[
-                mask_top : mask_top + component_fill_mask.shape[0],
-                mask_left : mask_left + component_fill_mask.shape[1],
+                fill_top : fill_top + component_fill_mask.shape[0],
+                fill_left : fill_left + component_fill_mask.shape[1],
             ] = component_fill_mask
             crop_array[~keep_mask & ~fill_mask, 3] = 0
             crop_array[fill_mask, 3] = 0
@@ -193,16 +213,14 @@ def split_transparent_png(
         "image_width": image.width,
         "image_height": image.height,
         "alpha_threshold": alpha_threshold,
+        "alpha_core_threshold": int(alpha_core_threshold),
         "min_area": min_area,
         "min_width": int(min_width),
         "min_height": int(min_height),
         "padding": padding,
         "merge_distance": int(merge_distance),
-        "filter_decorative_fragments": bool(filter_decorative_fragments),
-        "split_mode": SPLIT_MODE_CLASSIC,
         "raw_component_count": len(raw_components),
         "merged_component_count": merged_component_count,
-        "filtered_out_count": len(removed_components),
         "count": len(records),
         "assets": records,
     }
@@ -235,3 +253,52 @@ def _component_meets_size_thresholds(
     if height_threshold > 0:
         return height >= height_threshold
     return True
+
+
+def _expand_component_to_visual_mask(
+    component: dict[str, Any],
+    *,
+    visual_mask: np.ndarray,
+) -> np.ndarray:
+    raw_left = int(component["left"])
+    raw_top = int(component["top"])
+    raw_right = int(component["right"])
+    raw_bottom = int(component["bottom"])
+    core_mask = np.asarray(component["mask"], dtype=bool)
+    height, width = visual_mask.shape
+
+    search_left = max(0, raw_left - 1)
+    search_top = max(0, raw_top - 1)
+    search_right = min(width, raw_right + 1)
+    search_bottom = min(height, raw_bottom + 1)
+    local_visual = visual_mask[search_top:search_bottom, search_left:search_right]
+    local_seed = np.zeros(local_visual.shape, dtype=bool)
+    seed_top = raw_top - search_top
+    seed_left = raw_left - search_left
+    local_seed[
+        seed_top : seed_top + core_mask.shape[0],
+        seed_left : seed_left + core_mask.shape[1],
+    ] = core_mask
+
+    expanded = _flood_visual_from_seed(local_visual, local_seed)
+    if not bool(np.any(expanded)):
+        component["visual_left"] = raw_left
+        component["visual_top"] = raw_top
+        return core_mask
+
+    ys, xs = np.nonzero(expanded)
+    min_x = int(xs.min())
+    max_x = int(xs.max()) + 1
+    min_y = int(ys.min())
+    max_y = int(ys.max()) + 1
+    component["visual_left"] = search_left + min_x
+    component["visual_top"] = search_top + min_y
+    return expanded[min_y:max_y, min_x:max_x]
+
+
+def _flood_visual_from_seed(local_visual: np.ndarray, local_seed: np.ndarray) -> np.ndarray:
+    return grow_mask_from_seed(
+        candidate_mask=local_visual,
+        seed_mask=local_seed,
+        connectivity=8,
+    )

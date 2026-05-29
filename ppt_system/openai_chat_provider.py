@@ -9,20 +9,29 @@ from typing import Any
 
 import requests
 
+from ppt_system.api_url import normalize_api_base_url
+from ppt_system.chat_response_parser import AmbiguousChatResponseError, extract_chat_completion_text
+from ppt_system.http_retry_policy import is_retryable_status_code
 from ppt_system.logging_utils import format_log_line
+
+
+RESPONSE_SNIPPET_LIMIT = 400
 
 
 class OpenAIChatProvider:
     def __init__(self, config: dict[str, Any], profile: dict[str, Any]) -> None:
         self.profile = profile
         self.api_key = str(profile.get("api_key", "")).strip()
-        self.api_base_url = str(profile.get("base_url", config.get("chat_api_base_url", "https://api.openai.com/v1"))).rstrip("/")
+        self.api_base_url = normalize_api_base_url(
+            str(profile.get("base_url", config.get("chat_api_base_url", "https://api.openai.com/v1")))
+        )
         self.model = str(profile.get("model", config.get("chat_model", "gpt-5.5")))
         self.temperature = float(profile.get("temperature", config.get("chat_temperature", 0.3)))
         self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
         self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
         self.timeout = int(config.get("request_timeout_seconds", 600))
         self.retry_count = int(config.get("request_retry_count", 3))
+        self.ambiguous_retry_count = int(config.get("chat_ambiguous_retry_count", 1))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
 
         if not self.api_key:
@@ -61,7 +70,7 @@ class OpenAIChatProvider:
         )
         self._raise_for_error(response)
         body = _parse_response_json(response)
-        content = body["choices"][0]["message"]["content"]
+        content = self._extract_json_content_with_retry(body, payload)
         return parse_json_content(content)
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
@@ -148,6 +157,28 @@ class OpenAIChatProvider:
             time.sleep(delay)
         return last_response
 
+    def _extract_json_content_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> str:
+        attempt = 0
+        current_body = body
+        while True:
+            try:
+                return _extract_response_content(current_body)
+            except AmbiguousChatResponseError:
+                if attempt >= self.ambiguous_retry_count:
+                    raise
+                attempt += 1
+                print(
+                    format_log_line(
+                        "chat",
+                        f"检测到歧义空响应，将执行第 {attempt}/{self.ambiguous_retry_count} 次补充重试",
+                    ),
+                    flush=True,
+                )
+                time.sleep(self.retry_initial_delay * (2 ** (attempt - 1)))
+                response = self._post_with_retry(payload)
+                self._raise_for_error(response)
+                current_body = _parse_response_json(response)
+
     @staticmethod
     def _raise_for_error(response: requests.Response) -> None:
         if response.ok:
@@ -166,21 +197,26 @@ class OpenAIChatProvider:
 
 
 def should_retry(response: requests.Response) -> bool:
-    return response.status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+    return is_retryable_status_code(response.status_code)
 
 
 def parse_json_content(content: str) -> dict[str, Any]:
     text = content.strip()
+    if not text:
+        raise RuntimeError("对话模型返回的 message.content 为空，无法解析 JSON。")
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         match = re.search(r"\{.*\}", text, flags=re.S)
         if not match:
-            raise RuntimeError(f"对话模型没有返回 JSON：{content}")
-        return json.loads(match.group(0))
+            raise RuntimeError(f"对话模型没有返回 JSON，响应片段：{_build_text_snippet(text)}") from exc
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError as nested_exc:
+            raise RuntimeError(f"对话模型返回了疑似 JSON 片段，但格式无效：{_build_text_snippet(text)}") from nested_exc
 
 
 def file_to_data_url(path: Path) -> str:
@@ -208,9 +244,45 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
                 continue
 
     if callable(response_json):
-        return response_json()
+        try:
+            return response_json()
+        except ValueError as exc:
+            raise RuntimeError(_build_invalid_json_message(response)) from exc
 
     response_text = getattr(response, "text", "")
     if isinstance(response_text, str) and response_text.strip():
-        return json.loads(response_text)
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(_build_invalid_json_message(response, response_text)) from exc
     raise RuntimeError("对话模型返回空响应，无法解析 JSON。")
+
+
+def _extract_response_content(body: dict[str, Any]) -> str:
+    return extract_chat_completion_text(body)
+
+
+def _build_invalid_json_message(response: requests.Response, response_text: str | None = None) -> str:
+    snippet_source = response_text if response_text is not None else _read_response_text(response)
+    return f"对话模型返回了非 JSON 响应：HTTP {response.status_code}，响应片段：{_build_text_snippet(snippet_source)}"
+
+
+def _read_response_text(response: requests.Response) -> str:
+    response_content = getattr(response, "content", None)
+    if isinstance(response_content, bytes) and response_content:
+        for encoding in ("utf-8-sig", "utf-8", "gb18030", "latin-1"):
+            try:
+                return response_content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+    response_text = getattr(response, "text", "")
+    return response_text if isinstance(response_text, str) else ""
+
+
+def _build_text_snippet(text: str, limit: int = RESPONSE_SNIPPET_LIMIT) -> str:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return "<empty>"
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."

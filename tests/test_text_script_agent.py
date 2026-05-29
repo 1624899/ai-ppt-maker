@@ -11,15 +11,16 @@ from PIL import Image, ImageDraw
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
 
+from ppt_system.export_page_resume import CHECKPOINT_FILE_NAME
 from ppt_system.direct_page_script import (
     build_direct_page_refine_prompt,
     build_direct_page_prompt,
     generate_direct_single_page_ppt,
+    prepare_direct_page_assets,
 )
 from ppt_system.export_pipeline import export_project_to_pptx
 from ppt_system.text_script_runtime import build_project_script_source, execute_generated_text_script, normalize_page_script
 from ppt_system.text_style_runtime import should_wrap_text
-from rerun_text_page import normalize_output_pptx_name, parse_args
 
 
 class FakeChatProvider:
@@ -37,16 +38,25 @@ class FakeChatProvider:
         return self.responses.pop(0)
 
 
+def _write_minimal_assets_manifest(page_assets_dir: Path, *, image_width: int, image_height: int) -> None:
+    page_assets_dir.mkdir(parents=True, exist_ok=True)
+    Image.new("RGBA", (10, 10), (0, 128, 255, 255)).save(page_assets_dir / "asset_001.png")
+    (page_assets_dir / "assets.json").write_text(
+        json.dumps(
+            {
+                "image_width": image_width,
+                "image_height": image_height,
+                "assets": [
+                    {"index": 1, "file": "asset_001.png", "left": 20, "top": 20, "width": 40, "height": 40}
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
-    def test_normalize_output_pptx_name_appends_missing_suffix(self) -> None:
-        self.assertEqual(normalize_output_pptx_name("demo"), "demo.pptx")
-        self.assertEqual(normalize_output_pptx_name("demo.pptx"), "demo.pptx")
-
-    def test_rerun_text_page_defaults_refine_rounds_to_zero(self) -> None:
-        with patch("sys.argv", ["rerun_text_page.py", "--project", "demo.json", "--page-no", "2", "--output-dir", "out"]):
-            args = parse_args()
-        self.assertEqual(args.refine_rounds, 1)
-
     def test_should_wrap_text_keeps_single_line_banner_and_badge_unwrapped(self) -> None:
         self.assertFalse(should_wrap_text("01", 118, 88, 38))
         self.assertFalse(should_wrap_text("AI 转换", 300, 58, 26))
@@ -57,8 +67,27 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertTrue(should_wrap_text("这是一个需要自动换行的长段落文本", 180, 140, 20))
 
     def test_direct_page_prompt_keeps_reference_and_elements_constraints(self) -> None:
-        prompt = build_direct_page_prompt(image_width=2048, image_height=1152)
+        prompt = build_direct_page_prompt(
+            image_width=2048,
+            image_height=1152,
+            text_placeholders={
+                "placeholders": [
+                    {
+                        "id": "text_01",
+                        "left": 100,
+                        "top": 80,
+                        "width": 420,
+                        "height": 70,
+                        "font_size": 28,
+                        "color": "123A63",
+                        "align": "LEFT",
+                    }
+                ]
+            },
+        )
         self.assertIn("第一张图是完整参考图，第二张图是去文字后的元素图", prompt)
+        self.assertIn("text_placeholders", prompt)
+        self.assertIn("默认沿用 placeholder", prompt)
         self.assertIn("元素会在导出时单独加入", prompt)
 
     def test_direct_page_refine_prompt_allows_asset_adjustments(self) -> None:
@@ -109,11 +138,13 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertEqual(result["output_pptx"], str(output_pptx))
             page_assets_dir = work_dir / "page_02" / "assets"
             manifest = json.loads((page_assets_dir / "assets.json").read_text(encoding="utf-8"))
-            self.assertTrue(str(manifest["source_image"]).endswith("page_02_aligned_for_split.png"))
+            self.assertTrue(str(manifest["source_image"]).endswith("page_02_transparent.png"))
             self.assertEqual(Path(str(manifest["assets_dir"])).name, "assets")
             self.assertFalse((work_dir / "page_02" / "page_02_enhanced.png").exists())
             self.assertFalse((work_dir / "page_02" / "page_02_transparent.png").exists())
             self.assertFalse((work_dir / "page_02" / "page_02_aligned_for_split.png").exists())
+            final_script = (work_dir / "generated_text_layout.py").read_text(encoding="utf-8")
+            self.assertIn("PAGE_ASSET_ADJUSTMENTS", final_script)
 
             first_round_messages = provider.calls[0]
             image_items = [
@@ -125,6 +156,45 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             ]
             self.assertEqual(len(image_items), 2)
             self.assertEqual(str(image_items[1]["image_url"]["url"]), str(visual_path))
+
+    def test_prepare_assets_exposes_global_alignment_as_default_asset_adjustment(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            reference_path = root / "reference.png"
+            visual_path = root / "visual.png"
+
+            reference = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
+            draw_reference = ImageDraw.Draw(reference)
+            draw_reference.rectangle((80, 40, 140, 90), outline=(0, 80, 220, 255), width=4)
+            reference.save(reference_path)
+
+            visual = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
+            draw_visual = ImageDraw.Draw(visual)
+            draw_visual.rectangle((55, 58, 115, 108), outline=(0, 80, 220, 255), width=4)
+            visual.save(visual_path)
+
+            result = prepare_direct_page_assets(
+                work_dir=work_dir,
+                page_no=1,
+                elements_image=visual_path,
+                reference_image=reference_path,
+                reference_text_boxes=[],
+                image_width=240,
+                image_height=140,
+            )
+
+            self.assertIsNotNone(result.global_alignment)
+            self.assertTrue(bool(result.global_alignment["should_apply"]))
+            self.assertEqual(
+                result.asset_adjustments,
+                {
+                    "global": {
+                        "dx": int(result.global_alignment["dx"]),
+                        "dy": int(result.global_alignment["dy"]),
+                    }
+                },
+            )
 
     def test_normalize_page_script_rejects_disallowed_code(self) -> None:
         with self.assertRaises(RuntimeError):
@@ -147,7 +217,14 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             '{"text":"协同","size":64,"color":"0B55E6","italic":null}],'
             '100, 120, 500, 90, align="LEFT", anchor="TOP")'
         )
-        self.assertEqual(normalize_page_script(script), script)
+        expected = (
+            'add_runs(slide, [{"text": "从", "size": 64, "color": "08265C", "bold": True}, '
+            '{"text": "提问", "size": 64, "color": "0B55E6", "bold": False}, '
+            '{"text": "到", "size": 64, "color": "08265C", "bold": True}, '
+            '{"text": "协同", "size": 64, "color": "0B55E6", "italic": None}], '
+            '100, 120, 500, 90, align="LEFT", anchor="TOP")'
+        )
+        self.assertEqual(normalize_page_script(script), expected)
 
     def test_build_and_execute_project_script_produces_editable_ppt(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -330,6 +407,52 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertFalse(result["office_render_available"])
             self.assertEqual(result["refine_rounds_applied"], 0)
 
+    def test_direct_single_page_generation_persists_default_global_asset_shift(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            output_pptx = root / "direct_result.pptx"
+            reference_path = root / "reference.png"
+            visual_path = root / "visual.png"
+            Image.new("RGBA", (240, 140), (255, 255, 255, 255)).save(reference_path)
+            Image.new("RGBA", (240, 140), (255, 255, 255, 255)).save(visual_path)
+
+            provider = FakeChatProvider(
+                [{"page_script": 'add_text(slide, "示例页", 18, 18, 180, 44, size=24, color="163A63", bold=True)'}]
+            )
+            _write_minimal_assets_manifest(work_dir / "page_02" / "assets", image_width=240, image_height=140)
+
+            fake_asset_result = type(
+                "FakePreparedAssets",
+                (),
+                {
+                    "manifest_path": str(work_dir / "page_02" / "assets" / "assets.json"),
+                    "manifest": {},
+                    "image_width": 240,
+                    "image_height": 140,
+                    "split_source_image": str(visual_path),
+                    "removed_intermediate_images": [],
+                    "global_alignment": {"should_apply": True, "dx": 12, "dy": -7},
+                    "asset_adjustments": {"global": {"dx": 12, "dy": -7}},
+                },
+            )()
+
+            with patch("ppt_system.direct_page_script.render_pptx_first_slide_to_png", return_value=None):
+                with patch("ppt_system.direct_page_script.prepare_direct_page_assets", return_value=fake_asset_result):
+                    generate_direct_single_page_ppt(
+                        provider,
+                        reference_path,
+                        visual_path,
+                        work_dir,
+                        output_pptx,
+                        page_no=2,
+                    )
+
+            final_script = (work_dir / "generated_text_layout.py").read_text(encoding="utf-8")
+            self.assertIn("PAGE_ASSET_ADJUSTMENTS", final_script)
+            self.assertIn('"dx": 12', final_script)
+            self.assertIn('"dy": -7', final_script)
+
     def test_direct_single_page_generation_can_refine_with_office_render(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -422,7 +545,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertTrue(output_pptx.exists())
             self.assertIn("page_results", result)
 
-    def test_export_project_applies_third_round_asset_alignment_after_text_refine(self) -> None:
+    def test_export_project_keeps_existing_asset_adjustments_after_overlap_check(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             work_dir = root / "work"
@@ -453,22 +576,30 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             provider = FakeChatProvider(
                 [
                     {"page_script": 'add_text(slide, "首轮文字", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
-                    {"page_script": 'add_text(slide, "二轮改字", 20, 24, 150, 40, size=22, color="163A63", bold=True)'},
+                    {
+                        "page_script": 'add_text(slide, "二轮改字", 20, 24, 150, 40, size=22, color="163A63", bold=True)',
+                    },
                 ]
             )
+            _write_minimal_assets_manifest(work_dir / "page_01" / "assets", image_width=400, image_height=240)
 
-            class FakeDecision:
-                should_apply = True
-                suggested_adjustments = {"global": {"dx": 0, "dy": 16}}
-                dx = 0
-                dy = 16
-                baseline_iou = 0.1
-                shifted_iou = 0.3
-                confidence = 0.2
-                reason = "apply-global-shift"
+            fake_asset_result = type(
+                "FakePreparedAssets",
+                (),
+                {
+                    "manifest_path": str(work_dir / "page_01" / "assets" / "assets.json"),
+                    "manifest": {},
+                    "image_width": 400,
+                    "image_height": 240,
+                    "split_source_image": str(visual_path),
+                    "removed_intermediate_images": [],
+                    "global_alignment": {"should_apply": True, "dx": -10, "dy": 40},
+                    "asset_adjustments": {"global": {"dx": -10, "dy": 40}},
+                },
+            )()
 
             with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
-                with patch("ppt_system.direct_project_script.analyze_global_asset_alignment", return_value=FakeDecision()):
+                with patch("ppt_system.direct_project_script.prepare_direct_page_assets", return_value=fake_asset_result):
                     with patch(
                         "ppt_system.direct_project_script.analyze_text_asset_overlaps",
                         return_value=type(
@@ -492,7 +623,9 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
 
             final_script = Path(result["text_script_path"]).read_text(encoding="utf-8")
             self.assertIn("二轮改字", final_script)
-            self.assertIn('"dy": 16', final_script)
+            self.assertIn('"dx": -10', final_script)
+            self.assertIn('"dy": 40', final_script)
+            self.assertNotIn("asset_alignment_decision", result["page_results"][0])
 
     def test_export_project_to_pptx_requires_chat_provider(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -522,6 +655,101 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 export_project_to_pptx(project, work_dir, output_pptx)
+
+    def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            output_pptx = root / "result.pptx"
+            visual_path_1 = root / "visual_01.png"
+            reference_path_1 = root / "reference_01.png"
+            visual_path_2 = root / "visual_02.png"
+            reference_path_2 = root / "reference_02.png"
+            for path in (visual_path_1, visual_path_2):
+                Image.new("RGBA", (400, 240), (255, 255, 255, 0)).save(path)
+                with Image.open(path).convert("RGBA") as image:
+                    image.paste((0, 82, 214, 255), (40, 40, 120, 100))
+                    image.save(path)
+            for path in (reference_path_1, reference_path_2):
+                Image.new("RGBA", (400, 240), (255, 255, 255, 255)).save(path)
+
+            project = {
+                "slide_width_inch": 13.333333,
+                "image_width": 400,
+                "image_height": 240,
+                "default_font": {"font_name": "Microsoft YaHei", "font_size": 24, "color": "355C7D"},
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "第一页",
+                        "summary": "摘要1",
+                        "visual_image": str(visual_path_1),
+                        "reference_image": str(reference_path_1),
+                        "texts": [],
+                    },
+                    {
+                        "page_no": 2,
+                        "title": "第二页",
+                        "summary": "摘要2",
+                        "visual_image": str(visual_path_2),
+                        "reference_image": str(reference_path_2),
+                        "texts": [],
+                    },
+                ],
+            }
+            first_run_provider = FakeChatProvider(
+                [
+                    {"page_script": 'add_text(slide, "第一页成稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+                    {"page_script": 'add_text(slide, "第二页临时稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+                ]
+            )
+            second_run_provider = FakeChatProvider(
+                [
+                    {"page_script": 'add_text(slide, "第二页成稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+                ]
+            )
+
+            original_execute = execute_generated_text_script
+            failing_state = {"triggered": False}
+
+            def fail_after_first_page(script_path: Path, *, timeout_seconds: int = 600) -> None:
+                if script_path.name == "generated_text_layout_preview_round_01.py":
+                    original_execute(script_path, timeout_seconds=timeout_seconds)
+                    if "page_02" in str(script_path):
+                        failing_state["triggered"] = True
+                        raise RuntimeError("模拟第 2 页导出失败")
+                    return
+                original_execute(script_path, timeout_seconds=timeout_seconds)
+
+            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+                with patch("ppt_system.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
+                    with self.assertRaisesRegex(RuntimeError, "模拟第 2 页导出失败"):
+                        export_project_to_pptx(
+                            project,
+                            work_dir,
+                            output_pptx,
+                            chat_provider=first_run_provider,  # type: ignore[arg-type]
+                        )
+
+            self.assertTrue(failing_state["triggered"])
+            checkpoint_path = work_dir / "page_01" / CHECKPOINT_FILE_NAME
+            self.assertTrue(checkpoint_path.exists())
+            self.assertFalse((work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists())
+            self.assertEqual(len(first_run_provider.calls), 2)
+
+            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+                result = export_project_to_pptx(
+                    project,
+                    work_dir,
+                    output_pptx,
+                    chat_provider=second_run_provider,  # type: ignore[arg-type]
+                )
+
+            self.assertTrue(output_pptx.exists())
+            self.assertEqual(len(second_run_provider.calls), 1)
+            self.assertIn("第二页成稿", Path(result["text_script_path"]).read_text(encoding="utf-8"))
+            self.assertIn("第一页成稿", Path(result["text_script_path"]).read_text(encoding="utf-8"))
+            self.assertTrue((work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists())
 
 
 if __name__ == "__main__":

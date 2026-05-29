@@ -4,6 +4,7 @@ import json
 import shutil
 import threading
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,18 +12,27 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, stream_with_context
 
-from ppt_system.concurrent_stage import drain_fail_safe_futures
 from ppt_system.content_agent import build_content_plan
 from ppt_system.export_pipeline import export_web_job_to_pptx
 from ppt_system.generation_options import default_generation_options, resolve_generation_options
 from ppt_system.generation_prompts import build_elements_prompt
 from ppt_system.page_evaluator import evaluate_plan
+from ppt_system.page_richness import PAGE_RICHNESS_LEVELS
 from ppt_system.job_store import create_job as create_job_record
 from ppt_system.job_store import delete_job as delete_job_record
 from ppt_system.job_store import get_job as get_job_record
 from ppt_system.job_store import init_db as init_job_db
 from ppt_system.job_store import list_jobs as list_job_records
 from ppt_system.job_store import update_job as update_job_record
+from ppt_system.job_targets import (
+    JOB_TARGET_EDITABLE_PPT,
+    TARGET_LABELS,
+    build_completion_summary,
+    can_upgrade_to_editable,
+    get_terminal_stage,
+    normalize_job_target,
+    should_continue_after_stage,
+)
 from ppt_system.model_config import (
     delete_model_config,
     get_active_model_config,
@@ -34,6 +44,10 @@ from ppt_system.model_config import (
 )
 from ppt_system.openai_chat_provider import OpenAIChatProvider
 from ppt_system.openai_image_provider import OpenAIImageProvider
+from ppt_system.page_image_pipeline import run_page_image_pipeline
+from ppt_system.planning_state import has_complete_planning_state
+from ppt_system.reference_preview_export import export_reference_images_to_pptx
+from ppt_system.stage_labels import normalize_stage_label
 from ppt_system.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
 
 
@@ -72,15 +86,10 @@ def build_export_options(config: dict[str, Any]) -> dict[str, Any]:
         "min_area": int(config.get("split_min_area", 8)),
         "padding": int(config.get("split_padding", 0)),
         "merge_distance": int(config.get("split_merge_distance", 6)),
-        "filter_decorative_fragments": bool(config.get("split_filter_decorative_fragments", True)),
         "skip_enhance": bool(config.get("skip_export_enhance", False)),
         "skip_transparent": bool(config.get("skip_export_transparent", False)),
-        "enhance_mode": str(config.get("export_enhance_mode", "builtin")),
-        "enhance_command": str(config.get("export_enhance_command", "")),
-        "background_mode": str(config.get("export_background_mode", "builtin")),
-        "background_command": str(config.get("export_background_command", "")),
-        "external_command_timeout_seconds": int(config.get("export_external_command_timeout_seconds", 1800)),
         "script_refine_rounds": int(config.get("text_script_refine_rounds", 1)),
+        "export_page_concurrency": max(1, int(config.get("export_page_concurrency", 1))),
     }
 
 
@@ -133,6 +142,7 @@ def build_job_state(
     style_notes: str,
     generation_options: dict[str, Any],
     style_reference_images: list[dict[str, Any]],
+    job_target: str,
 ) -> dict[str, Any]:
     pages = [
         {
@@ -160,6 +170,8 @@ def build_job_state(
             "style_notes": style_notes,
             "generation_options": generation_options,
             "style_reference_images": style_reference_images,
+            "job_target": job_target,
+            "job_target_label": TARGET_LABELS.get(job_target, TARGET_LABELS[JOB_TARGET_EDITABLE_PPT]),
         },
         "plan": {},
         "pages": pages,
@@ -228,6 +240,36 @@ def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
     state = json.loads(target.read_text(encoding="utf-8"))
     cache_job_state(job_id, state)
     return state
+
+
+def normalize_stale_job_record(record: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(record)
+    status = str(record.get("status") or "").strip()
+    job_dir = Path(str(record.get("job_dir") or ""))
+    has_status_file = status_file(job_dir).exists() if job_dir else False
+    if status == "stopping" and not has_status_file:
+        normalized["status"] = "interrupted"
+        normalized["stop_requested"] = False
+        update_job_record(
+            JOBS_DB_PATH,
+            str(record.get("job_id") or ""),
+            status="interrupted",
+            stop_requested=False,
+        )
+    return normalized
+
+
+def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    record = get_job_record(JOBS_DB_PATH, job_id)
+    if record:
+        record = normalize_stale_job_record(record)
+        state = record.get("state", {})
+        if isinstance(state, dict) and state:
+            return normalize_job_state_labels(enrich_job_state_with_record(state, record)), record
+    state = load_job_state(job_id, job_dir)
+    if not state:
+        return None, record
+    return normalize_job_state_labels(enrich_job_state_with_record(state, record)), record
 
 
 def mutate_job_state(job_dir: Path, job_id: str, updater) -> dict[str, Any]:
@@ -328,13 +370,13 @@ def finalize_job_interrupted(job_dir: Path, job_id: str, stage_key: str, message
 
 def mark_job_stopping(job_dir: Path, job_id: str, stage_key: str, message: str) -> None:
     def updater(state: dict[str, Any]) -> None:
-        state["status"] = "stopping"
+        state["status"] = "interrupted"
         state["current_stage"] = stage_key
         state["stop_requested"] = True
         for stage in state["stages"]:
             if stage["key"] == stage_key:
                 stage["summary"] = message
-                stage["status"] = "running"
+                stage["status"] = "interrupted"
                 logs = stage.setdefault("logs", [])
                 if message not in logs:
                     logs.append(message)
@@ -384,12 +426,18 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
 def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] | None) -> dict[str, Any]:
     merged = json.loads(json.dumps(state, ensure_ascii=False))
     if not record:
-        return merged
+        return normalize_job_state_labels(merged)
     job_meta = merged.setdefault("job_meta", {})
     job_meta["content"] = str(job_meta.get("content") or record.get("content") or "")
     job_meta["page_count"] = int(job_meta.get("page_count") or record.get("page_count") or 0)
     job_meta["image_quality"] = str(job_meta.get("image_quality") or record.get("image_quality") or "")
     job_meta["style_notes"] = str(job_meta.get("style_notes") or record.get("style_notes") or "")
+    job_target = normalize_job_target(
+        job_meta.get("job_target") or record.get("request", {}).get("job_target"),
+        JOB_TARGET_EDITABLE_PPT,
+    )
+    job_meta["job_target"] = job_target
+    job_meta["job_target_label"] = TARGET_LABELS.get(job_target, TARGET_LABELS[JOB_TARGET_EDITABLE_PPT])
     if not isinstance(job_meta.get("generation_options"), dict):
         job_meta["generation_options"] = resolve_generation_options(record.get("request", {}), config=read_config())
     if not job_meta.get("image_preset"):
@@ -400,7 +448,18 @@ def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] |
             job_meta["image_preset"] = {"name": str(record.get("image_preset") or ""), "label": str(record.get("image_preset") or "")}
     if not isinstance(job_meta.get("style_reference_images"), list) or not job_meta.get("style_reference_images"):
         job_meta["style_reference_images"] = list_style_reference_images(str(record["job_id"]), Path(record["job_dir"]))
-    return merged
+    return normalize_job_state_labels(merged)
+
+
+def normalize_job_state_labels(state: dict[str, Any]) -> dict[str, Any]:
+    stages = state.get("stages", [])
+    if not isinstance(stages, list):
+        return state
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        stage["label"] = normalize_stage_label(stage.get("key"), stage.get("label"))
+    return state
 
 
 def list_job_summaries(limit: int = 100) -> list[dict[str, Any]]:
@@ -435,7 +494,7 @@ def remove_job_artifacts(job_dir: Path) -> None:
 
 def ensure_job_not_stopped(job_dir: Path, job_id: str, stage_key: str) -> None:
     if should_stop_job(job_id):
-        mark_job_stopping(job_dir, job_id, stage_key, "已收到停止请求，等待当前请求完成后暂停")
+        mark_job_stopping(job_dir, job_id, stage_key, "任务已暂停")
         raise JobInterruptedError(stage_key)
 
 
@@ -518,17 +577,63 @@ def extract_element_pages_from_state(state: dict[str, Any]) -> list[dict[str, An
     return rebuilt
 
 
+def get_job_target_from_state(state: dict[str, Any]) -> str:
+    return normalize_job_target(
+        state.get("job_meta", {}).get("job_target"),
+        JOB_TARGET_EDITABLE_PPT,
+    )
+
+
+def finalize_job_completed(
+    job_dir: Path,
+    job_id: str,
+    state: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    terminal_stage: str,
+    summary: str,
+) -> None:
+    job_target = get_job_target_from_state(state)
+
+    def updater(current_state: dict[str, Any]) -> None:
+        current_state["status"] = "completed"
+        current_state["current_stage"] = terminal_stage
+        current_state["result"] = result
+        current_state["stop_requested"] = False
+        current_state["error"] = ""
+
+    mutate_job_state(job_dir, job_id, updater)
+    update_stage(
+        job_dir,
+        job_id,
+        terminal_stage,
+        status="completed",
+        summary=summary,
+        data=result.get("export", {}),
+        current_stage=terminal_stage,
+        job_status="completed",
+    )
+    append_stage_log(job_dir, job_id, terminal_stage, build_completion_summary(job_target))
+    update_job_record(JOBS_DB_PATH, job_id, stop_requested=False, status="completed", current_stage=terminal_stage, result=result)
+
+
 def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
     def updater(state: dict[str, Any]) -> None:
         pages = extract_pages_from_state(state)
         references = extract_reference_pages_from_state(state)
         elements = extract_element_pages_from_state(state)
+        job_target = get_job_target_from_state(state)
         completion_map = {
-            "planning": bool(pages),
+            "planning": has_complete_planning_state(state),
             "reference_generation": has_expected_outputs(references, len(pages)),
             "elements_generation": has_expected_outputs(elements, len(references)),
         }
         reconcile_completed_stages(state, completion_map)
+        if not should_continue_after_stage(job_target, "reference_generation"):
+            for stage in state.get("stages", []):
+                if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "pending":
+                    stage["status"] = "skipped"
+                    stage["summary"] = "当前输出模式截至参考图阶段，此阶段已跳过"
 
     return mutate_job_state(job_dir, job_id, updater)
 
@@ -544,7 +649,9 @@ def submit_reference_task(
     reference_mode: str = "generation",
 ) -> tuple[Any, int, str, Path]:
     page_no = int(page["page_no"])
-    prompt = str(page["image_prompt"])
+    prompt = str(page["image_prompt"]).strip()
+    if not prompt:
+        raise ValueError(f"第 {page_no} 页缺少参考图提示词，需重新执行规划阶段")
     image_path = stage1_dir / f"page_{page_no:02d}_reference.png"
     prompt_path = stage1_dir / f"page_{page_no:02d}_reference_prompt.txt"
     prompt_path.write_text(prompt, encoding="utf-8")
@@ -629,6 +736,8 @@ def api_config():
             "image_background": config["image_background"],
             "image_output_format": config["image_output_format"],
             "default_include_cover_page": bool(default_generation_options(config)["include_cover_page"]),
+            "default_page_richness": str(default_generation_options(config)["page_richness_default"]),
+            "page_richness_options": list(PAGE_RICHNESS_LEVELS),
             "active_chat_config_id": config.get("active_chat_config_id", ""),
             "active_image_config_id": config.get("active_image_config_id", ""),
         }
@@ -698,9 +807,20 @@ def create_job():
     page_count = int(request.form.get("page_count", config["default_pages"]))
     image_preset_name = request.form.get("image_preset", str(config.get("default_image_preset", "2k")))
     image_quality = request.form.get("image_quality", str(config.get("image_quality", "medium"))).strip().lower()
+    job_target = normalize_job_target(
+        request.form.get("job_target", JOB_TARGET_EDITABLE_PPT),
+        JOB_TARGET_EDITABLE_PPT,
+    )
     style_notes = request.form.get("style_notes", "").strip()
     reuse_style_refs_from_job_id = request.form.get("reuse_style_refs_from_job_id", "").strip()
-    generation_options = resolve_generation_options(request.form, config=config)
+    generation_payload = dict(request.form)
+    raw_page_richness_map = request.form.get("page_richness_map", "").strip()
+    if raw_page_richness_map:
+        try:
+            generation_payload["page_richness_map"] = json.loads(raw_page_richness_map)
+        except json.JSONDecodeError:
+            return jsonify({"error": "逐页内容丰富度参数格式错误。"}), 400
+    generation_options = resolve_generation_options(generation_payload, config=config)
 
     if not content:
         return jsonify({"error": "请输入内容。"}), 400
@@ -752,6 +872,7 @@ def create_job():
         style_notes,
         generation_options,
         style_reference_images,
+        job_target,
     )
     request_payload = {
         "content": content,
@@ -759,8 +880,11 @@ def create_job():
         "image_preset": image_preset_name,
         "image_quality": image_quality,
         "style_notes": style_notes,
+        "job_target": job_target,
         "generation_options": generation_options,
         "include_cover_page": generation_options["include_cover_page"],
+        "page_richness_default": generation_options["page_richness_default"],
+        "page_richness_map": generation_options["page_richness_map"],
         "style_reference_images": style_reference_images,
     }
     create_job_record(
@@ -820,6 +944,8 @@ def run_job_pipeline(
         if not state:
             finalize_job_error(job_dir, job_id, "planning", {"error": "任务状态不存在", "job_id": job_id})
             return
+        job_target = get_job_target_from_state(state)
+        terminal_stage = get_terminal_stage(job_target)
         mutate_job_state(
             job_dir,
             job_id,
@@ -852,7 +978,7 @@ def run_job_pipeline(
         should_execute_planning = should_run_stage(
             state,
             "planning",
-            output_ready=bool(pages),
+            output_ready=has_complete_planning_state(state),
         )
         if should_execute_planning:
             update_stage(
@@ -896,6 +1022,7 @@ def run_job_pipeline(
                         "bullets": page.get("bullets", []),
                         "layout_intent": page.get("layout_intent", ""),
                         "layout_family": page.get("layout_family", ""),
+                        "page_richness": page.get("page_richness", ""),
                         "element_plan": page.get("element_plan", {}),
                         "reference_mode": page.get("reference_mode", "generation"),
                         "prompt_profile": page.get("prompt_profile", "compressed"),
@@ -987,6 +1114,7 @@ def run_job_pipeline(
                             "bullets": page.get("bullets", []),
                             "layout_intent": page.get("layout_intent", ""),
                             "layout_family": page.get("layout_family", ""),
+                            "page_richness": page.get("page_richness", ""),
                             "element_plan": page.get("element_plan", []),
                             "reference_mode": page.get("reference_mode", "generation"),
                             "prompt_profile": page.get("prompt_profile", "compressed"),
@@ -1009,7 +1137,7 @@ def run_job_pipeline(
             append_stage_log(job_dir, job_id, "planning", "检测到已有规划结果，继续从已保存进度执行")
 
         stage1_concurrency = max(1, int(config.get("stage1_concurrency", 1)))
-        stage1_stop_requested = False
+        stage2_concurrency = max(1, int(config["stage2_concurrency"]))
         pending_reference_pages = []
         for page in pages:
             page_no = int(page["page_no"])
@@ -1026,6 +1154,27 @@ def run_job_pipeline(
                 )
                 continue
             pending_reference_pages.append(page)
+
+        state = load_job_state(job_id, job_dir) or state
+        page_prompt_map: dict[int, str] = {}
+        for sp in state.get("pages", []):
+            page_prompt_map[int(sp["page_no"])] = str(sp.get("elements_prompt", ""))
+        fallback_elements_prompt = build_elements_prompt()
+        element_results: list[dict[str, Any]] = list(existing_elements)
+        pending_element_pages: list[int] = []
+        for ref in references:
+            page_no = int(ref["page_no"])
+            existing_element = next((item for item in element_results if int(item["page_no"]) == page_no), None)
+            if existing_element:
+                update_page_state(
+                    job_dir,
+                    job_id,
+                    page_no,
+                    status="completed",
+                    element_image=existing_element["image"],
+                )
+                continue
+            pending_element_pages.append(page_no)
 
         should_execute_reference_generation = should_run_stage(
             state,
@@ -1045,79 +1194,141 @@ def run_job_pipeline(
             append_stage_log(job_dir, job_id, "reference_generation", "检测到已有参考图结果，继续从已保存进度执行")
         append_stage_log(job_dir, job_id, "reference_generation", f"第一阶段并发数：{stage1_concurrency}")
 
+        should_execute_elements_generation = should_run_stage(
+            state,
+            "elements_generation",
+            output_ready=has_expected_outputs(element_results, len(pages)),
+        )
+        should_generate_elements = should_continue_after_stage(job_target, "reference_generation")
+        if should_generate_elements:
+            if should_execute_elements_generation:
+                update_stage(
+                    job_dir,
+                    job_id,
+                    "elements_generation",
+                    status="running",
+                    summary="正在按页流水线生成去文字元素图",
+                    current_stage="elements_generation",
+                )
+            else:
+                append_stage_log(job_dir, job_id, "elements_generation", "检测到已有元素图结果，继续从已保存进度执行")
+            append_stage_log(job_dir, job_id, "elements_generation", f"第二阶段并发数：{stage2_concurrency}")
+            append_stage_log(job_dir, job_id, "elements_generation", "按页动态 Prompt 生成元素图")
+            append_stage_log(job_dir, job_id, "elements_generation", "参考图单页完成后将立即触发对应元素图生成")
+
         style_inputs = style_reference_paths if bool(config.get("use_style_refs_for_first_stage", True)) else []
-        with ThreadPoolExecutor(max_workers=stage1_concurrency) as executor:
-            futures: dict[Any, tuple[dict[str, Any], int, str, Path]] = {}
-            pending_index = 0
-            def refill_reference_tasks() -> None:
-                nonlocal pending_index, stage1_stop_requested
-                if should_stop_job(job_id):
-                    stage1_stop_requested = True
-                    mark_job_stopping(
-                        job_dir,
-                        job_id,
-                        "reference_generation",
-                        "已收到停止请求，等待当前已发出的参考图完成后暂停",
-                    )
-                    return
 
-                while (not stage1_stop_requested) and pending_index < len(pending_reference_pages) and len(futures) < stage1_concurrency:
-                    page = pending_reference_pages[pending_index]
-                    reference_mode = str(page.get("reference_mode", "generation"))
-                    future, page_no, prompt, image_path = submit_reference_task(
-                        executor,
-                        job_dir,
-                        job_id,
-                        page,
-                        stage1_dir,
-                        image_provider,
-                        style_inputs if reference_mode == "edit_with_refs" else [],
-                        reference_mode=reference_mode,
-                    )
-                    futures[future] = (page, page_no, prompt, image_path)
-                    pending_index += 1
-
-            def on_reference_success(task: tuple[dict[str, Any], int, str, Path], generation_meta: dict[str, Any]) -> None:
-                page, page_no, prompt, image_path = task
-                reference_item = {
-                    "page_no": page_no,
-                    "title": page["title"],
-                    "prompt": prompt,
-                    "image": f"/runs/{job_id}/01_reference_pages/{image_path.name}",
-                    "generation": generation_meta,
-                }
-                references.append(reference_item)
-                update_page_state(
-                    job_dir,
-                    job_id,
-                    page_no,
-                    status="reference_done",
-                    reference_image=reference_item["image"],
-                )
-                mutate_job_state(
-                    job_dir,
-                    job_id,
-                    lambda current_state, item=reference_item: current_state.setdefault("reference_pages", []).append(item),
-                )
-                append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图已完成")
-
-            def on_reference_error(task: tuple[dict[str, Any], int, str, Path], exc: BaseException) -> None:
-                _, page_no, _, _ = task
-                update_page_state(job_dir, job_id, page_no, status="planned")
-                append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图生成失败：{exc}")
-
-            refill_reference_tasks()
-            stage1_error = drain_fail_safe_futures(
-                futures,
-                refill=refill_reference_tasks,
-                on_success=on_reference_success,
-                on_error=on_reference_error,
+        def submit_reference(executor: ThreadPoolExecutor, page: dict[str, Any]) -> tuple[Any, tuple[dict[str, Any], int, str, Path]]:
+            reference_mode = str(page.get("reference_mode", "generation"))
+            future, page_no, prompt, image_path = submit_reference_task(
+                executor,
+                job_dir,
+                job_id,
+                page,
+                stage1_dir,
+                image_provider,
+                style_inputs if reference_mode == "edit_with_refs" else [],
+                reference_mode=reference_mode,
             )
+            return future, (page, page_no, prompt, image_path)
 
-        if stage1_stop_requested:
-            raise JobInterruptedError("reference_generation")
-        if stage1_error is not None:
-            raise stage1_error
+        def submit_elements(executor: ThreadPoolExecutor, page_no: int) -> tuple[Any, tuple[int, Path]]:
+            per_page_prompt = str(page_prompt_map.get(page_no, "")) or fallback_elements_prompt
+            future, task_page_no, out_path = submit_elements_task(
+                executor,
+                job_dir,
+                job_id,
+                page_no,
+                per_page_prompt,
+                stage1_dir,
+                stage2_dir,
+                image_provider,
+            )
+            return future, (task_page_no, out_path)
+
+        def on_reference_success(task: tuple[dict[str, Any], int, str, Path], generation_meta: dict[str, Any]) -> None:
+            page, page_no, prompt, image_path = task
+            reference_item = {
+                "page_no": page_no,
+                "title": page["title"],
+                "prompt": prompt,
+                "image": f"/runs/{job_id}/01_reference_pages/{image_path.name}",
+                "generation": generation_meta,
+            }
+            references.append(reference_item)
+            update_page_state(
+                job_dir,
+                job_id,
+                page_no,
+                status="reference_done",
+                reference_image=reference_item["image"],
+            )
+            mutate_job_state(
+                job_dir,
+                job_id,
+                lambda current_state, item=reference_item: current_state.setdefault("reference_pages", []).append(item),
+            )
+            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图已完成")
+
+        def on_reference_error(task: tuple[dict[str, Any], int, str, Path], exc: BaseException) -> None:
+            _, page_no, _, _ = task
+            update_page_state(job_dir, job_id, page_no, status="planned")
+            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图生成失败：{exc}")
+
+        def on_elements_success(task: tuple[int, Path], generation_meta: dict[str, Any]) -> None:
+            page_no, out_path = task
+            used_prompt = str(page_prompt_map.get(page_no, "")) or fallback_elements_prompt
+            element_item = {
+                "page_no": page_no,
+                "prompt": used_prompt,
+                "image": f"/runs/{job_id}/02_elements_pages/{out_path.name}",
+                "generation": generation_meta,
+            }
+            element_results.append(element_item)
+            update_page_state(
+                job_dir,
+                job_id,
+                page_no,
+                status="completed",
+                element_image=element_item["image"],
+            )
+            mutate_job_state(
+                job_dir,
+                job_id,
+                lambda current_state, item=element_item: current_state.setdefault("element_pages", []).append(item),
+            )
+            append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图生成完成")
+
+        def on_elements_error(task: tuple[int, Path], exc: BaseException) -> None:
+            page_no, _ = task
+            update_page_state(job_dir, job_id, page_no, status="reference_done")
+            append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图生成失败：{exc}")
+
+        def on_pipeline_stop(stage_key: str) -> None:
+            message = "任务已暂停"
+            mark_job_stopping(job_dir, job_id, stage_key, message)
+
+        pipeline_result = run_page_image_pipeline(
+            pending_reference_pages=pending_reference_pages if should_execute_reference_generation else [],
+            pending_element_page_numbers=pending_element_pages,
+            reference_concurrency=stage1_concurrency,
+            element_concurrency=stage2_concurrency,
+            enable_elements=should_generate_elements,
+            get_page_no=lambda page: int(page["page_no"]),
+            submit_reference=submit_reference,
+            submit_elements=submit_elements,
+            on_reference_success=on_reference_success,
+            on_reference_error=on_reference_error,
+            on_elements_success=on_elements_success,
+            on_elements_error=on_elements_error,
+            should_stop=lambda: should_stop_job(job_id),
+            on_stop=on_pipeline_stop,
+        )
+
+        if pipeline_result.stopped_stage:
+            raise JobInterruptedError(pipeline_result.stopped_stage)
+        if pipeline_result.first_error is not None:
+            raise pipeline_result.first_error
 
         references.sort(key=lambda item: int(item["page_no"]))
 
@@ -1134,120 +1345,55 @@ def run_job_pipeline(
             data={"pages": references},
         )
 
-        state = load_job_state(job_id, job_dir) or state
-        page_prompt_map: dict[int, str] = {}
-        for sp in state.get("pages", []):
-            page_prompt_map[int(sp["page_no"])] = str(sp.get("elements_prompt", ""))
-        fallback_elements_prompt = build_elements_prompt()
-
-        element_results: list[dict[str, Any]] = list(existing_elements)
-        stage2_concurrency = max(1, int(config["stage2_concurrency"]))
-        stage2_stop_requested = False
-        pending_element_pages: list[int] = []
-        for ref in references:
-            page_no = int(ref["page_no"])
-            existing_element = next((item for item in element_results if int(item["page_no"]) == page_no), None)
-            if existing_element:
-                update_page_state(
-                    job_dir,
-                    job_id,
-                    page_no,
-                    status="completed",
-                    element_image=existing_element["image"],
-                )
-                continue
-            pending_element_pages.append(page_no)
-
-        should_execute_elements_generation = should_run_stage(
-            state,
-            "elements_generation",
-            output_ready=has_expected_outputs(element_results, len(references)),
-        )
-        if should_execute_elements_generation:
-            update_stage(
+        if not should_continue_after_stage(job_target, "reference_generation"):
+            job = {
+                "job_id": job_id,
+                "mode": config["generation_mode"],
+                "content": content,
+                "plan": plan,
+                "pages": pages,
+                "model_profiles": {
+                    "chat": {
+                        "id": chat_profile.get("id", ""),
+                        "name": chat_profile.get("name", ""),
+                        "model": chat_provider.model,
+                        "base_url": chat_provider.api_base_url,
+                    },
+                    "image": {
+                        "id": image_profile.get("id", ""),
+                        "name": image_profile.get("name", ""),
+                        "model": image_provider.model,
+                        "base_url": image_provider.api_base_url,
+                    },
+                },
+                "reference_pages": references,
+                "element_pages": [],
+                "export": {},
+            }
+            preview_pptx_path = job_dir / "result.reference_only.pptx"
+            preview_export = export_reference_images_to_pptx(
+                references,
+                job_dir,
+                preview_pptx_path,
+                image_width=int(active_config["image_width"]),
+                image_height=int(active_config["image_height"]),
+            )
+            job["export"] = {
+                "pptx_path": str(preview_pptx_path),
+                "pptx_url": f"/runs/{job_id}/{preview_pptx_path.relative_to(job_dir).as_posix()}",
+                "page_count": int(preview_export["page_count"]),
+                "delivery_mode": "reference_only",
+            }
+            (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+            finalize_job_completed(
                 job_dir,
                 job_id,
-                "elements_generation",
-                status="running",
-                summary="正在并发生成去文字元素图",
-                current_stage="elements_generation",
+                load_job_state(job_id, job_dir) or state,
+                job,
+                terminal_stage=terminal_stage,
+                summary=f"已完成 {len(references)} 张参考图，并导出图片版 PPT",
             )
-        else:
-            append_stage_log(job_dir, job_id, "elements_generation", "检测到已有元素图结果，继续从已保存进度执行")
-        append_stage_log(job_dir, job_id, "elements_generation", "按页动态 Prompt 生成元素图")
-
-        with ThreadPoolExecutor(max_workers=stage2_concurrency) as executor:
-            futures: dict[Any, tuple[int, Path]] = {}
-            pending_index = 0
-            def refill_elements_tasks() -> None:
-                nonlocal pending_index, stage2_stop_requested
-                if should_stop_job(job_id):
-                    stage2_stop_requested = True
-                    mark_job_stopping(
-                        job_dir,
-                        job_id,
-                        "elements_generation",
-                        "已收到停止请求，等待当前已发出的元素图完成后暂停",
-                    )
-                    return
-
-                while (not stage2_stop_requested) and pending_index < len(pending_element_pages) and len(futures) < stage2_concurrency:
-                    page_no = pending_element_pages[pending_index]
-                    per_page_prompt = str(page_prompt_map.get(page_no, "")) or fallback_elements_prompt
-                    future, task_page_no, out_path = submit_elements_task(
-                        executor,
-                        job_dir,
-                        job_id,
-                        page_no,
-                        per_page_prompt,
-                        stage1_dir,
-                        stage2_dir,
-                        image_provider,
-                    )
-                    futures[future] = (task_page_no, out_path)
-                    pending_index += 1
-
-            def on_elements_success(task: tuple[int, Path], generation_meta: dict[str, Any]) -> None:
-                page_no, out_path = task
-                used_prompt = str(page_prompt_map.get(page_no, "")) or fallback_elements_prompt
-                element_item = {
-                    "page_no": page_no,
-                    "prompt": used_prompt,
-                    "image": f"/runs/{job_id}/02_elements_pages/{out_path.name}",
-                    "generation": generation_meta,
-                }
-                element_results.append(element_item)
-                update_page_state(
-                    job_dir,
-                    job_id,
-                    page_no,
-                    status="completed",
-                    element_image=element_item["image"],
-                )
-                mutate_job_state(
-                    job_dir,
-                    job_id,
-                    lambda current_state, item=element_item: current_state.setdefault("element_pages", []).append(item),
-                )
-                append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图生成完成")
-
-            def on_elements_error(task: tuple[int, Path], exc: BaseException) -> None:
-                page_no, _ = task
-                update_page_state(job_dir, job_id, page_no, status="reference_done")
-                append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图生成失败：{exc}")
-
-            refill_elements_tasks()
-            stage2_error = drain_fail_safe_futures(
-                futures,
-                refill=refill_elements_tasks,
-                on_success=on_elements_success,
-                on_error=on_elements_error,
-            )
-
-        if stage2_stop_requested:
-            raise JobInterruptedError("elements_generation")
-        if stage2_error is not None:
-            raise stage2_error
+            return
 
         element_results.sort(key=lambda item: item["page_no"])
         job = {
@@ -1323,7 +1469,7 @@ def run_job_pipeline(
                     job_dir,
                     job_id,
                     "ppt_export",
-                    "已收到停止请求，等待当前页后处理完成后暂停",
+                    "任务已暂停",
                 )
                 return True
             return False
@@ -1359,17 +1505,14 @@ def run_job_pipeline(
             current_state["stop_requested"] = False
 
         mutate_job_state(job_dir, job_id, complete_job)
-        update_stage(
+        finalize_job_completed(
             job_dir,
             job_id,
-            "ppt_export",
-            status="completed",
-            summary=f"已导出 PPTX，共 {int(export_result.get('page_count', 0))} 页",
-            data=export_result,
-            current_stage="completed",
-            job_status="completed",
+            load_job_state(job_id, job_dir) or state,
+            job,
+            terminal_stage=terminal_stage,
+            summary=f"已导出可编辑 PPT，共 {int(export_result.get('page_count', 0))} 页",
         )
-        update_job_record(JOBS_DB_PATH, job_id, stop_requested=False)
     except JobInterruptedError as exc:
         finalize_job_interrupted(job_dir, job_id, str(exc), "任务已暂停，可稍后继续")
         update_job_record(JOBS_DB_PATH, job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
@@ -1382,25 +1525,35 @@ def run_job_pipeline(
             stage_key = "elements_generation"
         elif current_state.get("current_stage") == "planning":
             stage_key = "planning"
-        finalize_job_error(job_dir, job_id, stage_key, {"error": str(exc), "job_id": job_id, "stage": stage_key})
+        finalize_job_error(
+            job_dir,
+            job_id,
+            stage_key,
+            {
+                "error": str(exc),
+                "job_id": job_id,
+                "stage": stage_key,
+                "exception_type": exc.__class__.__name__,
+                "traceback": traceback.format_exc(),
+            },
+        )
 
 
 @app.get("/api/jobs/<job_id>")
 def api_job_status(job_id: str):
     config = read_config()
     job_dir = ROOT / str(config["output_dir"]) / job_id
-    state = load_job_state(job_id, job_dir)
+    state, _record = get_job_state_snapshot(job_id, job_dir)
     if not state:
         return jsonify({"error": "任务不存在"}), 404
-    record = get_job_record(JOBS_DB_PATH, job_id)
-    return jsonify(enrich_job_state_with_record(state, record))
+    return jsonify(state)
 
 
 @app.get("/api/jobs/<job_id>/stream")
 def api_job_stream(job_id: str):
     config = read_config()
     job_dir = ROOT / str(config["output_dir"]) / job_id
-    initial_state = load_job_state(job_id, job_dir)
+    initial_state, _record = get_job_state_snapshot(job_id, job_dir)
     if not initial_state:
         return jsonify({"error": "任务不存在"}), 404
 
@@ -1410,13 +1563,12 @@ def api_job_stream(job_id: str):
         heartbeat_at = time.monotonic()
         yield "retry: 1500\n\n"
         while True:
-            state = load_job_state(job_id, job_dir)
+            state, _record = get_job_state_snapshot(job_id, job_dir)
             if not state:
                 yield 'event: error\ndata: {"error":"任务不存在"}\n\n'
                 break
 
-            record = get_job_record(JOBS_DB_PATH, job_id)
-            payload = json.dumps(enrich_job_state_with_record(state, record), ensure_ascii=False)
+            payload = json.dumps(state, ensure_ascii=False)
             if payload != last_payload:
                 last_payload = payload
                 yield f"event: job\ndata: {payload}\n\n"
@@ -1452,8 +1604,9 @@ def api_delete_job(job_id: str):
     record = get_job_record(JOBS_DB_PATH, job_id)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
+    record = normalize_stale_job_record(record)
     if record["status"] in {"queued", "running", "stopping"}:
-        return jsonify({"error": "运行中任务不能删除，请先停止并等待暂停后再删除。"}), 400
+        return jsonify({"error": "运行中任务不能删除，请先暂停任务后再删除。"}), 400
     remove_job_artifacts(Path(record["job_dir"]))
     delete_job_record(JOBS_DB_PATH, job_id)
     with JOB_STATUS_LOCK:
@@ -1498,12 +1651,28 @@ def api_interrupt_job(job_id: str):
         return jsonify({"error": "任务不存在"}), 404
     if record["status"] not in {"queued", "running"}:
         return jsonify({"error": "只有运行中任务可以中断。"}), 400
-    update_job_record(JOBS_DB_PATH, job_id, stop_requested=True, status="stopping")
+    current_stage = str(record.get("current_stage") or "queued")
+    update_job_record(
+        JOBS_DB_PATH,
+        job_id,
+        stop_requested=True,
+        status="interrupted",
+        current_stage=current_stage,
+    )
     job_dir = Path(record["job_dir"])
 
     def updater(state: dict[str, Any]) -> None:
         state["stop_requested"] = True
-        state["status"] = "stopping"
+        state["status"] = "interrupted"
+        state["current_stage"] = str(state.get("current_stage") or current_stage)
+        for stage in state.get("stages", []):
+            if stage.get("key") == state["current_stage"]:
+                stage["status"] = "interrupted"
+                stage["summary"] = "任务已暂停"
+                logs = stage.setdefault("logs", [])
+                if "任务已暂停" not in logs:
+                    logs.append("任务已暂停")
+                break
 
     mutate_job_state(job_dir, job_id, updater)
     return jsonify({"ok": True})
@@ -1514,10 +1683,14 @@ def api_resume_job(job_id: str):
     record = get_job_record(JOBS_DB_PATH, job_id)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
-    if record["status"] not in {"interrupted", "error"}:
+    current_state = record.get("state", {})
+    can_resume = record["status"] in {"interrupted", "error"} or can_upgrade_to_editable(current_state)
+    if not can_resume:
         return jsonify({"error": "当前任务状态不支持继续。"}), 400
     request_payload = record.get("request", {})
     config = read_config()
+    next_job_target = JOB_TARGET_EDITABLE_PPT
+    request_payload["job_target"] = next_job_target
     generation_options = resolve_generation_options(request_payload.get("generation_options", request_payload), config=config)
     try:
         image_preset = resolve_image_preset(config, str(request_payload.get("image_preset", config["default_image_preset"])))
@@ -1533,12 +1706,18 @@ def api_resume_job(job_id: str):
     refs_dir = job_dir / "style_refs"
     stage1_dir = job_dir / "01_reference_pages"
     stage2_dir = job_dir / "02_elements_pages"
-    update_job_record(JOBS_DB_PATH, job_id, stop_requested=False, status="queued")
+    update_job_record(JOBS_DB_PATH, job_id, stop_requested=False, status="queued", request=request_payload)
 
     def updater(state: dict[str, Any]) -> None:
         state["stop_requested"] = False
         state["status"] = "queued"
         state["error"] = ""
+        state.setdefault("job_meta", {})["job_target"] = next_job_target
+        state["job_meta"]["job_target_label"] = TARGET_LABELS[next_job_target]
+        for stage in state.get("stages", []):
+            if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "skipped":
+                stage["status"] = "pending"
+                stage["summary"] = "等待继续执行"
 
     mutate_job_state(job_dir, job_id, updater)
     reconcile_resume_state(job_dir, job_id)

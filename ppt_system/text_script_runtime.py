@@ -1,22 +1,14 @@
 from __future__ import annotations
 
-import ast
 import json
-import runpy
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+from ppt_system.text_script_schema import normalize_page_script
 
-CALL_CONTRACTS: dict[str, dict[str, Any]] = {
-    "add_text": {"min_args": 6, "second_arg_kind": "literal"},
-    "add_center_text": {"min_args": 6, "second_arg_kind": "literal"},
-    "add_runs": {"min_args": 6, "second_arg_kind": "literal"},
-    "add_text_ref": {"min_args": 7, "second_arg_kind": "page_texts"},
-    "add_center_text_ref": {"min_args": 7, "second_arg_kind": "page_texts"},
-}
-ALLOWED_SCRIPT_CALLS = set(CALL_CONTRACTS)
-ALLOWED_ALIGNS = {"LEFT", "CENTER", "RIGHT", "JUSTIFY"}
-ALLOWED_ANCHORS = {"TOP", "MIDDLE", "BOTTOM"}
+
 ASSET_RELATIVE_FIELDS = ("dx", "dy", "dw", "dh")
 ASSET_ABSOLUTE_FIELDS = (
     ("left", "left"),
@@ -31,13 +23,83 @@ ASSET_ABSOLUTE_FIELDS = (
 
 
 def execute_generated_text_script(script_path: Path, *, timeout_seconds: int = 600) -> None:
-    namespace = runpy.run_path(str(script_path))
-    build_deck = namespace.get("build_deck")
-    if not callable(build_deck):
-        raise RuntimeError(f"生成脚本缺少 build_deck 函数：{script_path}")
-    output_path = Path(build_deck())
+    worker_script = Path(__file__).with_name("text_script_worker.py")
+    command = [sys.executable, str(worker_script), str(Path(script_path).resolve())]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=False,
+            timeout=max(1, int(timeout_seconds)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _decode_subprocess_output(exc.stdout).strip()
+        stderr = _decode_subprocess_output(exc.stderr).strip()
+        detail_parts = [f"生成脚本执行超时：{script_path}，超过 {int(timeout_seconds)} 秒"]
+        if stdout:
+            detail_parts.append(f"stdout:\n{stdout}")
+        if stderr:
+            detail_parts.append(f"stderr:\n{stderr}")
+        raise TimeoutError("\n".join(detail_parts)) from exc
+
+    stdout = _decode_subprocess_output(completed.stdout).strip()
+    stderr = _decode_subprocess_output(completed.stderr).strip()
+    payload = _load_worker_payload(stdout, stderr, script_path)
+    if completed.returncode != 0:
+        detail_parts = [f"生成脚本执行失败：{script_path}，退出码 {completed.returncode}"]
+        if isinstance(payload, dict):
+            error = str(payload.get("error", "")).strip()
+            traceback_text = str(payload.get("traceback", "")).strip()
+            script_stdout = str(payload.get("script_stdout", "")).strip()
+            script_stderr = str(payload.get("script_stderr", "")).strip()
+            if error:
+                detail_parts.append(f"error:\n{error}")
+            if traceback_text:
+                detail_parts.append(f"traceback:\n{traceback_text}")
+            if script_stdout:
+                detail_parts.append(f"script_stdout:\n{script_stdout}")
+            if script_stderr:
+                detail_parts.append(f"script_stderr:\n{script_stderr}")
+        elif stdout:
+            detail_parts.append(f"stdout:\n{stdout}")
+        if stderr:
+            detail_parts.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n".join(detail_parts))
+
+    if not bool(payload.get("ok")):
+        raise RuntimeError(f"生成脚本执行返回失败结果：{payload}")
+    output_path = Path(str(payload.get("output_path", "")).strip())
     if not output_path.exists():
         raise RuntimeError(f"执行生成的文字脚本后未发现输出文件：{output_path}")
+
+
+def _decode_subprocess_output(raw_output: Any) -> str:
+    if raw_output is None:
+        return ""
+    if isinstance(raw_output, str):
+        return raw_output
+    if isinstance(raw_output, bytes):
+        return raw_output.decode("utf-8", errors="replace")
+    return str(raw_output)
+
+
+def _load_worker_payload(stdout: str, stderr: str, script_path: Path) -> dict[str, Any]:
+    if not stdout:
+        detail_parts = [f"生成脚本执行后没有返回结果：{script_path}"]
+        if stderr:
+            detail_parts.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n".join(detail_parts))
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        detail_parts = [f"生成脚本执行返回了非 JSON 输出：{script_path}", f"stdout:\n{stdout}"]
+        if stderr:
+            detail_parts.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n".join(detail_parts)) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"生成脚本执行返回结果不是对象：{payload!r}")
+    return payload
 
 
 def build_project_script_source(
@@ -350,27 +412,6 @@ if __name__ == "__main__":
     print(path.resolve())
 """
 
-
-def normalize_page_script(script: str) -> str:
-    normalized_lines: list[str] = []
-    for raw_line in _coalesce_script_lines(str(script)):
-        line = raw_line.rstrip()
-        stripped = line.strip()
-        if not stripped:
-            normalized_lines.append("")
-            continue
-        if stripped.startswith("#"):
-            normalized_lines.append(stripped)
-            continue
-        sanitized = _sanitize_script_line(stripped)
-        _validate_script_call(sanitized)
-        stripped = sanitized
-        normalized_lines.append(stripped)
-    while normalized_lines and not normalized_lines[-1]:
-        normalized_lines.pop()
-    return "\n".join(normalized_lines)
-
-
 def normalize_asset_adjustments(adjustments: Any) -> dict[str, Any]:
     if not isinstance(adjustments, dict):
         return {}
@@ -406,130 +447,6 @@ def normalize_asset_adjustments(adjustments: Any) -> dict[str, Any]:
     if asset_map:
         normalized["asset_map"] = asset_map
     return normalized
-
-
-def _validate_script_call(line: str) -> None:
-    node = ast.parse(line, mode="exec")
-    if len(node.body) != 1 or not isinstance(node.body[0], ast.Expr):
-        raise RuntimeError(f"脚本行不合法：{line}")
-    expression = node.body[0].value
-    if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
-        raise RuntimeError(f"脚本调用不合法：{line}")
-
-    function_name = expression.func.id
-    contract = CALL_CONTRACTS.get(function_name)
-    if contract is None:
-        raise RuntimeError(f"脚本调用超出白名单：{function_name}")
-    if len(expression.args) < int(contract["min_args"]):
-        raise RuntimeError(f"脚本参数不足：{line}")
-
-    first_arg = expression.args[0]
-    if not isinstance(first_arg, ast.Name) or first_arg.id != "slide":
-        raise RuntimeError(f"第一个参数必须是 slide：{line}")
-
-    second_arg_kind = str(contract["second_arg_kind"])
-    if second_arg_kind == "page_texts":
-        second_arg = expression.args[1]
-        if not isinstance(second_arg, ast.Name) or second_arg.id != "page_texts":
-            raise RuntimeError(f"第二个参数必须是 page_texts：{line}")
-        literal_args = expression.args[2:]
-    else:
-        literal_args = expression.args[1:]
-
-    for arg in literal_args:
-        _literal_eval(arg)
-    for keyword in expression.keywords:
-        if keyword.arg is None:
-            raise RuntimeError(f"不允许使用 **kwargs：{line}")
-        value = _literal_eval(keyword.value)
-        if keyword.arg == "align":
-            align = str(value).upper()
-            if align not in ALLOWED_ALIGNS:
-                raise RuntimeError(f"align 不合法：{align}")
-        if keyword.arg == "anchor":
-            anchor = str(value).upper()
-            if anchor not in ALLOWED_ANCHORS:
-                raise RuntimeError(f"anchor 不合法：{anchor}")
-
-
-def _sanitize_script_line(line: str) -> str:
-    """对模型偶发返回的损坏转义做最小修复，避免整次导出中断。"""
-    sanitized = str(line).replace("\\\r", "\\r").replace("\\\n", "\\n")
-    if sanitized.count('"') % 2 != 0:
-        sanitized = sanitized.replace("\\", "\\\\")
-    return sanitized
-
-
-def _coalesce_script_lines(script: str) -> list[str]:
-    """把模型返回的多行函数调用拼回单行，再进入 AST 校验。"""
-    result: list[str] = []
-    buffer: list[str] = []
-    paren_depth = 0
-
-    for raw_line in str(script).splitlines():
-        stripped = raw_line.strip()
-        if not stripped:
-            if not buffer:
-                result.append("")
-            continue
-        if stripped.startswith("#") and not buffer:
-            result.append(stripped)
-            continue
-
-        buffer.append(stripped)
-        paren_depth += stripped.count("(") - stripped.count(")")
-        if paren_depth > 0:
-            continue
-
-        result.append(" ".join(buffer))
-        buffer = []
-        paren_depth = 0
-
-    if buffer:
-        result.append(" ".join(buffer))
-    return result
-
-
-def _literal_eval(node: ast.AST) -> Any:
-    try:
-        return _eval_allowed_literal_node(node)
-    except Exception as exc:
-        raise RuntimeError(f"脚本参数必须是字面量：{ast.dump(node)}") from exc
-
-
-def _eval_allowed_literal_node(node: ast.AST) -> Any:
-    """递归解析白名单字面量，同时兼容 JSON 风格 true/false/null。"""
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.Name):
-        json_literal_map = {
-            "true": True,
-            "false": False,
-            "null": None,
-        }
-        lowered = node.id.lower()
-        if lowered in json_literal_map:
-            return json_literal_map[lowered]
-        raise ValueError(f"unsupported name literal: {node.id}")
-    if isinstance(node, ast.List):
-        return [_eval_allowed_literal_node(item) for item in node.elts]
-    if isinstance(node, ast.Tuple):
-        return tuple(_eval_allowed_literal_node(item) for item in node.elts)
-    if isinstance(node, ast.Set):
-        return {_eval_allowed_literal_node(item) for item in node.elts}
-    if isinstance(node, ast.Dict):
-        if len(node.keys) != len(node.values):
-            raise ValueError("dict key/value length mismatch")
-        return {
-            _eval_allowed_literal_node(key): _eval_allowed_literal_node(value)
-            for key, value in zip(node.keys, node.values)
-        }
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-        operand = _eval_allowed_literal_node(node.operand)
-        if not isinstance(operand, (int, float, complex)):
-            raise ValueError("unary operator only supports numeric literals")
-        return +operand if isinstance(node.op, ast.UAdd) else -operand
-    raise ValueError(f"unsupported literal node: {type(node).__name__}")
 
 
 def _build_page_function_source(page_no: int, script: str) -> str:

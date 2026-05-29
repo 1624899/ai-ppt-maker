@@ -25,7 +25,7 @@
 - 模型访问：`openai_chat_provider.py`、`openai_image_provider.py`
 - Web 任务状态：`job_store.py`、`stage_resume.py`
 - 导出编排：`export_pipeline.py`、`direct_project_script.py`、`direct_page_script.py`
-- 元素处理：`image_ops.py`、`background_removal.py`、`splitter.py`、`component_filter.py`、`component_postprocess.py`
+- 元素处理：`image_ops.py`、`background_removal.py`、`splitter.py`、`component_postprocess.py`
 - PPT 真渲染：`ppt_calibration_renderer.py`
 - 脚本运行时：`text_script_runtime.py`、`text_style_runtime.py`
 - 风格运行时：`style_runtime.py`、`page_evaluator.py`

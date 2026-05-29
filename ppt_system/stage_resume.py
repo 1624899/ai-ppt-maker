@@ -39,7 +39,7 @@ def reconcile_completed_stages(
         stage_key = str(stage.get("key", ""))
         if not completion_map.get(stage_key):
             continue
-        if str(stage.get("status", "")) == "completed":
+        if str(stage.get("status", "")) in {"completed", "skipped"}:
             continue
         stage["status"] = "completed"
         changed = True

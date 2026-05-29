@@ -20,6 +20,7 @@ from ppt_system.text_script_runtime import (
     normalize_asset_adjustments,
     normalize_page_script,
 )
+from ppt_system.text_placeholder_detection import placeholder_bboxes, save_text_placeholders
 
 
 DEFAULT_SLIDE_WIDTH_INCH = 13.333333
@@ -49,6 +50,18 @@ class DirectPageRefineResult:
     asset_adjustments: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class PreparedDirectPageAssets:
+    manifest_path: str
+    manifest: dict[str, Any]
+    image_width: int
+    image_height: int
+    split_source_image: str
+    removed_intermediate_images: list[str]
+    global_alignment: dict[str, Any] | None
+    asset_adjustments: dict[str, Any]
+
+
 def normalize_output_pptx_name(output_name: str) -> str:
     """统一补全导出文件后缀，避免生成无扩展名文件。"""
     resolved = str(output_name or "").strip() or "result.pptx"
@@ -59,29 +72,42 @@ def normalize_output_pptx_name(output_name: str) -> str:
 
 def resolve_canvas_size(reference_image: Path, elements_image: Path) -> tuple[int, int]:
     """优先读取参考图尺寸，失败时退回元素图。"""
+    errors: list[str] = []
     for image_path in (reference_image, elements_image):
-        with Image.open(image_path) as image:
-            return int(image.width), int(image.height)
-    raise RuntimeError("无法读取页面尺寸。")
+        try:
+            with Image.open(image_path) as image:
+                return int(image.width), int(image.height)
+        except Exception as exc:
+            errors.append(f"{image_path}: {exc}")
+    detail = "；".join(errors) if errors else "没有可用图片"
+    raise RuntimeError(f"无法读取页面尺寸：{detail}")
 
 
 def build_direct_page_prompt(
     *,
     image_width: int,
     image_height: int,
+    text_placeholders: dict[str, Any] | None = None,
 ) -> str:
     """构建首轮依赖参考图和元素图的单页脚本提示词。"""
     payload = {
         "canvas": {"width": int(image_width), "height": int(image_height)},
         "task": "single_page_text_only",
+        "text_placeholders": []
+        if not isinstance(text_placeholders, dict)
+        else list(text_placeholders.get("placeholders", [])),
     }
     return (
         "第一张图是完整参考图，第二张图是去文字后的元素图。"
+        "系统已用 OpenCV 根据“参考图 - 去文字元素图”估计出 text_placeholders。"
+        "你的首要任务是识别并填写每个 placeholder 对应的真实文字内容。"
+        "默认沿用 placeholder 的 left/top/width/height/font_size/color/align/line_count。"
+        "只有当 bbox 明显漏字、包进图形、颜色或字号明显不准时，才允许做小幅微调。"
         "创建ppt，只需要文字部分。"
-        "按原位置不变创建文本框并输入文字。"
+        "按占位框位置创建文本框并输入文字。"
         "要求文本属性一致，文字背景无填充。"
         "根据我的要求创建.pptx文件。"
-        "不要参考任何流程、任何其他文件，只根据这两张图肉眼可见的信息生成单页 page_script。"
+        "不要参考任何流程、任何其他文件，只根据 text_placeholders 和这两张图肉眼可见的信息生成单页 page_script。"
         "字号单位是 PowerPoint pt，请按最终 PPT 实际观感估算，不要为了醒目而故意放大。"
         "如果参考图里是多条独立单行 bullet，就按单行分别创建，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
@@ -119,7 +145,7 @@ def build_direct_page_refine_prompt(
         "第一张图是完整参考图，第二张图是当前 PPT 的真实导出渲染图。"
         "请直接修正 page_script，让第二张图尽量贴近第一张图。"
         "重点检查：字号、位置、宽高、对齐、换行、是否压线、是否偏离元素中心、文本是否过大或过小。"
-        "本轮只修文字，不要修改元素贴图位置与尺寸；元素偏移会在后续规则检测触发的第三轮单独处理。"
+        "本轮只修文字，不要修改元素贴图位置与尺寸；元素位置沿用前置资产拟合对齐结果。"
         "不要输出新的图形、背景或边框。"
         "如果参考图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
@@ -181,11 +207,10 @@ def prepare_direct_page_assets(
     min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
-    filter_decorative_fragments: bool = True,
     skip_enhance: bool = False,
     skip_transparent: bool = False,
     cleanup_intermediate_images: bool = True,
-) -> dict[str, Any]:
+) -> PreparedDirectPageAssets:
     """把元素图处理成分割后的 PNG 资产，供生成脚本与文字框叠加。"""
     page_dir = work_dir / f"page_{int(page_no):02d}"
     assets_dir = page_dir / "assets"
@@ -212,7 +237,6 @@ def prepare_direct_page_assets(
             text_boxes=list(reference_text_boxes or []),
             alpha_threshold=int(alpha_threshold),
         )
-        current_source = aligned_path
 
     manifest = split_transparent_png(
         current_source,
@@ -223,7 +247,6 @@ def prepare_direct_page_assets(
         min_height=int(min_height),
         padding=int(padding),
         merge_distance=int(merge_distance),
-        filter_decorative_fragments=bool(filter_decorative_fragments),
     )
     if int(manifest.get("count", 0)) <= 0:
         raise RuntimeError(f"第 {page_no} 页元素分割结果为空，无法继续导出。")
@@ -231,16 +254,10 @@ def prepare_direct_page_assets(
     if bool(cleanup_intermediate_images):
         removed_intermediate_images = cleanup_split_intermediate_images(page_dir, page_no=page_no)
     manifest_path = assets_dir / "assets.json"
-    return {
-        "manifest_path": str(manifest_path),
-        "manifest": manifest,
-        "image_width": int(image_width),
-        "image_height": int(image_height),
-        "split_source_image": str(current_source),
-        "removed_intermediate_images": removed_intermediate_images,
-        "global_alignment": None
-        if alignment_decision is None
-        else {
+    global_alignment = None
+    asset_adjustments: dict[str, Any] = {}
+    if alignment_decision is not None:
+        global_alignment = {
             "should_apply": bool(alignment_decision.should_apply),
             "dx": int(alignment_decision.dx),
             "dy": int(alignment_decision.dy),
@@ -248,8 +265,24 @@ def prepare_direct_page_assets(
             "shifted_iou": float(alignment_decision.shifted_iou),
             "confidence": float(alignment_decision.confidence),
             "reason": alignment_decision.reason,
-        },
-    }
+        }
+        if bool(alignment_decision.should_apply) and (int(alignment_decision.dx) or int(alignment_decision.dy)):
+            asset_adjustments = {
+                "global": {
+                    "dx": int(alignment_decision.dx),
+                    "dy": int(alignment_decision.dy),
+                }
+            }
+    return PreparedDirectPageAssets(
+        manifest_path=str(manifest_path),
+        manifest=manifest,
+        image_width=int(image_width),
+        image_height=int(image_height),
+        split_source_image=str(current_source),
+        removed_intermediate_images=removed_intermediate_images,
+        global_alignment=global_alignment,
+        asset_adjustments=asset_adjustments,
+    )
 
 
 def render_direct_comparison_image(reference_image: Path, preview_image: Path, output_path: Path) -> Path:
@@ -303,11 +336,13 @@ def _request_direct_page_script(
     elements_image: Path,
     image_width: int,
     image_height: int,
+    text_placeholders: dict[str, Any] | None = None,
 ) -> str:
     """首轮基于参考图和元素图请求模型生成单页文字脚本。"""
     prompt = build_direct_page_prompt(
         image_width=image_width,
         image_height=image_height,
+        text_placeholders=text_placeholders,
     )
     messages = [
         {
@@ -394,11 +429,19 @@ def _generate_direct_single_page_script_with_metadata(
 
     work_dir.mkdir(parents=True, exist_ok=True)
     image_width, image_height = resolve_canvas_size(resolved_reference, resolved_elements)
-    prepare_direct_page_assets(
+    page_dir = work_dir / f"page_{int(page_no):02d}"
+    text_placeholders = save_text_placeholders(
+        resolved_reference,
+        resolved_elements,
+        page_dir / "text_placeholders.json",
+        slide_width_inch=slide_width_inch,
+    )
+    asset_result = prepare_direct_page_assets(
         work_dir=work_dir,
         page_no=page_no,
         elements_image=resolved_elements,
         reference_image=resolved_reference,
+        reference_text_boxes=placeholder_bboxes(text_placeholders),
         image_width=image_width,
         image_height=image_height,
     )
@@ -410,13 +453,15 @@ def _generate_direct_single_page_script_with_metadata(
         slide_width_inch=slide_width_inch,
         page_no=page_no,
     )
-    project["asset_adjustments"] = {str(int(page_no)): {}}
+    current_asset_adjustments: dict[str, Any] = dict(asset_result.asset_adjustments)
+    project["asset_adjustments"] = {str(int(page_no)): dict(current_asset_adjustments)}
     current_script = _request_direct_page_script(
         provider,
         reference_image=resolved_reference,
         elements_image=resolved_elements,
         image_width=image_width,
         image_height=image_height,
+        text_placeholders=text_placeholders,
     )
 
     metadata = DirectPageGenerationMetadata(
@@ -425,8 +470,6 @@ def _generate_direct_single_page_script_with_metadata(
         office_preview_paths=[],
         comparison_paths=[],
     )
-    current_asset_adjustments: dict[str, Any] = {}
-
     for round_index in range(max(0, int(refine_rounds))):
         preview_pptx = work_dir / f"render_preview_round_{round_index + 1:02d}.pptx"
         preview_script_path = work_dir / f"generated_text_layout_preview_round_{round_index + 1:02d}.py"

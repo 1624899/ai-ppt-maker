@@ -5,6 +5,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from ppt_system.api_url import normalize_api_base_url
+
 
 MODEL_TYPES = {"chat", "image"}
 
@@ -99,7 +101,7 @@ def set_active_model_config(config: dict[str, Any], model_type: str, config_id: 
 def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     item = {
         "name": str(payload.get("name", "")).strip(),
-        "base_url": str(payload.get("base_url", "")).strip().rstrip("/"),
+        "base_url": normalize_api_base_url(str(payload.get("base_url", ""))),
         "api_key": str(payload.get("api_key", "")).strip(),
         "model": str(payload.get("model", "")).strip(),
         "enabled": bool(payload.get("enabled", True)),

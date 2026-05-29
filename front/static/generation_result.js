@@ -1,5 +1,5 @@
 (function attachGenerationResultPresenter(globalScope) {
-  // 统一封装“最终交付结果”任务，避免页面各处直接依赖后端导出字段细节。
+  // 统一封装右侧流程状态卡，聚合阶段进度、当前说明与最终交付入口。
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;",
@@ -19,92 +19,102 @@
       ppt_export: "PPT 组装",
       completed: "全部完成",
     };
-    return map[stageKey] || "处理中";
+    return map[String(stageKey || "").trim()] || "处理中";
+  }
+
+  function getStatusLabel(status) {
+    const map = {
+      pending: "等待中",
+      queued: "等待中",
+      running: "进行中",
+      stopping: "已暂停",
+      interrupted: "已暂停",
+      skipped: "已跳过",
+      completed: "已完成",
+      error: "失败",
+    };
+    return map[String(status || "").trim()] || "处理中";
+  }
+
+  function getStatusTone(status) {
+    if (status === "completed") {
+      return "completed";
+    }
+    if (status === "error") {
+      return "error";
+    }
+    if (status === "interrupted") {
+      return "interrupted";
+    }
+    if (status === "running" || status === "stopping") {
+      return "running";
+    }
+    return "pending";
   }
 
   function getActiveStage(job) {
     const stages = Array.isArray(job?.stages) ? job.stages : [];
     const currentStageKey = String(job?.current_stage || "").trim();
     if (!currentStageKey) {
-      return {};
+      return null;
     }
-    return stages.find((stage) => stage.key === currentStageKey) || {
-      key: currentStageKey,
-      label: getStageLabel(currentStageKey),
-      status: job?.status || "pending",
-      summary: "",
-    };
+    return stages.find((stage) => stage.key === currentStageKey) || null;
   }
 
-  function normalizeStatus(job, activeStage, exportStage) {
-    if (job?.status === "completed") {
-      return "completed";
+  function getStageProgress(stages) {
+    const safeStages = Array.isArray(stages) ? stages : [];
+    const total = safeStages.length;
+    if (!total) {
+      return {
+        completed: 0,
+        total: 0,
+        percent: 0,
+      };
     }
-    if (job?.status === "error") {
-      return "error";
-    }
-    if (job?.status === "interrupted") {
-      return "interrupted";
-    }
-    if (job?.status === "stopping") {
-      return "running";
-    }
-    if (job?.status === "running") {
-      return "running";
-    }
-    if (activeStage?.status === "running") {
-      return "running";
-    }
-    if (activeStage?.status === "completed" && exportStage?.status !== "completed") {
-      return "running";
-    }
-    return exportStage?.status || "pending";
-  }
-
-  function getStatusLabel(status) {
-    const map = {
-      pending: "等待中",
-      running: "进行中",
-      completed: "已完成",
-      error: "失败",
-      interrupted: "已暂停",
+    const completed = safeStages.filter((stage) => stage?.status === "completed").length;
+    return {
+      completed,
+      total,
+      percent: Math.max(6, Math.min(100, Math.round((completed / total) * 100))),
     };
-    return map[status] || "处理中";
   }
 
   function getStageSummary(job, activeStage, exportStage) {
+    const isReferenceOnly = job?.job_meta?.job_target === "reference_only";
     if (job?.status === "completed") {
-      return exportStage?.summary || "可编辑 PPTX 已组装完成";
+      if (isReferenceOnly) {
+        return exportStage?.summary || "参考图与图片版 PPT 已完成，可继续转为可编辑 PPT。";
+      }
+      return exportStage?.summary || "PPT 已组装完成，可以直接下载。";
     }
     if (job?.status === "error") {
-      return job?.error || exportStage?.summary || "导出失败，请查看阶段日志";
+      return job?.error || exportStage?.summary || "任务执行失败，请查看错误日志。";
     }
     if (job?.status === "interrupted") {
-      return "导出链路已暂停，可继续从当前进度恢复";
+      return "任务已暂停，可继续从当前进度恢复。";
     }
     if (job?.status === "stopping") {
-      return "已收到停止请求，等待当前页处理完成后暂停";
+      return "任务已暂停，可继续从当前进度恢复。";
     }
     if (activeStage?.key === "queued") {
-      return "任务已创建，等待开始执行整条生成与导出链路";
+      return "任务已创建，等待进入执行队列。";
     }
     if (activeStage?.key === "planning") {
-      return "正在进行模型规划，完成后会继续生成参考图、元素图，并自动进入 PPT 组装";
+      return "正在拆解内容并规划页面结构。";
     }
     if (activeStage?.key === "reference_generation") {
-      return "正在生成带文字参考图，完成后会继续生成去文字元素图";
+      return "正在生成带文字参考图。";
+    }
+    if (activeStage?.status === "skipped") {
+      return activeStage?.summary || "当前输出模式不需要执行该阶段。";
     }
     if (activeStage?.key === "elements_generation") {
-      return "正在生成去文字元素图，完成后会自动进入 CLI 后处理与 PPT 组装";
+      return "正在生成去文字元素图。";
     }
     if (activeStage?.key === "ppt_export") {
-      return activeStage?.summary || exportStage?.summary || "正在执行图像后处理并导出 PPTX";
+      return activeStage?.summary || exportStage?.summary || "正在后处理并组装 PPT。";
     }
-    return exportStage?.summary || "等待进入 CLI 后处理与 PPT 组装";
-  }
-
-  function sumAssetCount(assetPages) {
-    return assetPages.reduce((total, item) => total + Number(item?.asset_count || 0), 0);
+    return "等待进入下一阶段。";
   }
 
   function buildActions(exportResult) {
@@ -112,124 +122,124 @@
     if (exportResult?.pptx_url) {
       actions.push({
         kind: "primary",
-        label: "下载组装好的 PPT",
+        label: exportResult?.delivery_mode === "reference_only" ? "下载图片版 PPT" : "下载 PPT",
         href: exportResult.pptx_url,
       });
     }
     if (exportResult?.project_url) {
       actions.push({
         kind: "secondary",
-        label: "查看项目快照",
+        label: "查看快照",
         href: exportResult.project_url,
       });
     }
     return actions;
   }
 
-  function getDeliveryType(job, exportResult, activeStage) {
-    if (exportResult?.pptx_url) {
-      return "可编辑 PPTX";
-    }
-    if (activeStage?.key === "ppt_export") {
-      return "PPT 组装中";
-    }
-    if (job?.status === "interrupted") {
-      return "已暂停";
-    }
-    if (job?.status === "error") {
-      return "导出失败";
-    }
-    return "前置生成中";
+  function buildStageDots(stages, currentStageKey) {
+    const safeStages = Array.isArray(stages) ? stages : [];
+    return safeStages.map((stage) => {
+      const tone =
+        stage?.status === "completed"
+          ? "completed"
+          : stage?.status === "error"
+            ? "error"
+            : stage?.key === currentStageKey || stage?.status === "running"
+              ? "running"
+              : stage?.status === "interrupted"
+                ? "interrupted"
+                : "pending";
+      return {
+        label: getStageLabel(stage?.key),
+        tone,
+      };
+    });
   }
 
-  function buildMetrics(job, exportResult, activeStage) {
-    const assetPages = Array.isArray(exportResult?.assets?.pages) ? exportResult.assets.pages : [];
-    const pageCount = Number(exportResult?.page_count || job?.reference_pages?.length || job?.pages?.length || 0);
-    const currentStage = activeStage?.label || getStageLabel(job?.current_stage);
-    const deliveryType = getDeliveryType(job, exportResult, activeStage);
-    const assetCount = sumAssetCount(assetPages);
-    return [
-      {label: "最终交付", value: deliveryType},
-      {label: "交付页数", value: pageCount > 0 ? `${pageCount} 页` : "待生成"},
-      {label: "后处理素材", value: assetCount > 0 ? `${assetCount} 个元素` : "待处理"},
-      {label: "当前阶段", value: currentStage},
-    ];
-  }
-
-  function buildGenerationResultTask(job) {
+  function buildFlowCard(job) {
     const exportStage = (job?.stages || []).find((stage) => stage.key === "ppt_export") || {};
     const exportResult = job?.result?.export || {};
     const activeStage = getActiveStage(job);
-    const status = normalizeStatus(job, activeStage, exportStage);
+    const progress = getStageProgress(job?.stages);
     return {
-      status,
-      title: "最终交付",
-      description: "前端内容规划与生图完成后，系统会自动进入 CLI 后处理组装层，最终直接交付可编辑 PPTX。",
+      tone: getStatusTone(job?.status),
+      title: "流程状态",
+      statusLabel: getStatusLabel(job?.status),
+      progressText: progress.total ? `${progress.completed}/${progress.total} 阶段` : "等待开始",
+      progressPercent: progress.percent,
+      currentStageLabel: getStageLabel(activeStage?.key || job?.current_stage || job?.status),
       summary: getStageSummary(job, activeStage, exportStage),
-      metrics: buildMetrics(job, exportResult, activeStage),
+      allowErrorLog: job?.status === "error",
+      stageDots: buildStageDots(job?.stages, job?.current_stage),
       actions: buildActions(exportResult),
     };
   }
 
-  function renderLinks(linksContainer, actions) {
+  function renderLinks(linksContainer) {
     if (!linksContainer) {
       return;
     }
-    const links = actions.map((action) => {
-      return `<a href="${escapeHtml(action.href)}" target="_blank" rel="noreferrer">${escapeHtml(action.label)}</a>`;
-    });
-    linksContainer.hidden = links.length === 0;
-    linksContainer.innerHTML = links.join(" · ");
+    linksContainer.hidden = true;
+    linksContainer.innerHTML = "";
   }
 
-  function renderCard(container, task) {
+  function renderCard(container, card) {
     if (!container) {
       return;
     }
-    const metricHtml = task.metrics
+    const stageDotsHtml = card.stageDots
       .map((item) => {
         return `
-          <div class="delivery-metric">
-            <span>${escapeHtml(item.label)}</span>
-            <strong>${escapeHtml(item.value)}</strong>
-          </div>
+          <span class="flow-stage-dot is-${escapeHtml(item.tone)}">${escapeHtml(item.label)}</span>
         `;
       })
       .join("");
-    const actionHtml = task.actions
+    const actionHtml = card.actions
       .map((action) => {
         const actionClass = action.kind === "primary" ? "primary-button" : "secondary-button";
         return `
-          <a class="delivery-action ${actionClass}" href="${escapeHtml(action.href)}" target="_blank" rel="noreferrer">
+          <a class="flow-card-action ${actionClass}" href="${escapeHtml(action.href)}" target="_blank" rel="noreferrer">
             ${escapeHtml(action.label)}
           </a>
         `;
       })
       .join("");
+    const errorActionHtml = card.allowErrorLog
+      ? `<button class="secondary-button compact-button" type="button" data-action="open-error-log">查看错误日志</button>`
+      : "";
     container.innerHTML = `
-      <section class="delivery-card is-${escapeHtml(task.status)}">
-        <div class="delivery-card-head">
-          <div class="delivery-copy">
-            <div class="delivery-head-top">
-              <h3>${escapeHtml(task.title)}</h3>
-              <span class="stage-status is-${escapeHtml(task.status)}">${escapeHtml(getStatusLabel(task.status))}</span>
-            </div>
-            <p>${escapeHtml(task.description)}</p>
-            <p class="delivery-summary">${escapeHtml(task.summary)}</p>
+      <section class="result-stage-overview flow-card is-${escapeHtml(card.tone)}">
+        <div class="result-stage-overview-head">
+          <div class="result-stage-overview-head-main">
+            <span class="result-stage-overview-kicker">${escapeHtml(card.title)}</span>
+            <h3 class="flow-card-stage">${escapeHtml(card.currentStageLabel)}</h3>
+          </div>
+          <div class="result-stage-overview-side">
+            ${errorActionHtml}
+            <span class="stage-status is-${escapeHtml(card.tone)}">${escapeHtml(card.statusLabel)}</span>
           </div>
         </div>
-        <div class="delivery-metrics">${metricHtml}</div>
-        <div class="delivery-actions">${actionHtml}</div>
+        <div class="flow-progress-block">
+          <div class="flow-progress-meta">
+            <span>${escapeHtml(card.progressText)}</span>
+            <strong>${escapeHtml(String(card.progressPercent))}%</strong>
+          </div>
+          <div class="flow-progress-track" aria-hidden="true">
+            <div class="flow-progress-bar is-${escapeHtml(card.tone)}" style="width: ${escapeHtml(String(card.progressPercent))}%;"></div>
+          </div>
+          <div class="flow-stage-dots">${stageDotsHtml}</div>
+        </div>
+        <div class="result-stage-overview-summary${card.allowErrorLog ? " is-bounded" : ""}">${escapeHtml(card.summary)}</div>
+        <div class="flow-card-actions">${actionHtml}</div>
       </section>
     `;
   }
 
   globalScope.PptGenerationResult = {
-    buildGenerationResultTask,
-    render({container, linksContainer, job}) {
-      const task = buildGenerationResultTask(job);
-      renderCard(container, task);
-      renderLinks(linksContainer, task.actions);
+    buildFlowCard,
+    render({ container, linksContainer, job }) {
+      renderCard(container, buildFlowCard(job));
+      renderLinks(linksContainer);
     },
   };
 })(window);

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import time
 from pathlib import Path
 from typing import Any
@@ -8,18 +7,22 @@ from typing import Any
 import requests
 from requests import RequestException
 
+from ppt_system.api_url import normalize_api_base_url
 from ppt_system.http_retry_policy import (
     build_transport_error_message,
     is_retryable_status_code,
     transport_retry_budget,
 )
+from ppt_system.image_response import save_image_from_response_payload
 
 
 class OpenAIImageProvider:
     def __init__(self, config: dict[str, Any], profile: dict[str, Any] | None = None) -> None:
         profile = profile or {}
         self.api_key = str(profile.get("api_key", "")).strip()
-        self.api_base_url = str(profile.get("base_url", config.get("api_base_url", "https://api.openai.com/v1"))).rstrip("/")
+        self.api_base_url = normalize_api_base_url(
+            str(profile.get("base_url", config.get("api_base_url", "https://api.openai.com/v1")))
+        )
         self.model = str(profile.get("model", config.get("image_model", "gpt-image-2")))
         self.size = str(config.get("active_image_size", config.get("image_size", "2048x1152")))
         self.pixel_size = f"{int(config.get('image_width', 2048))}x{int(config.get('image_height', 1152))}"
@@ -215,20 +218,11 @@ class OpenAIImageProvider:
         return is_retryable_status_code(response.status_code)
 
     def _save_response_image(self, response_json: dict[str, Any], output_path: Path) -> dict[str, Any]:
-        data = response_json.get("data", [])
-        if not data:
-            raise RuntimeError(f"图像接口没有返回 data：{response_json}")
-
-        image = data[0]
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        if image.get("b64_json"):
-            output_path.write_bytes(base64.b64decode(image["b64_json"]))
-        elif image.get("url"):
-            image_response = requests.get(image["url"], timeout=min(self.timeout, self.total_timeout))
-            image_response.raise_for_status()
-            output_path.write_bytes(image_response.content)
-        else:
-            raise RuntimeError(f"图像接口没有返回 b64_json 或 url：{response_json}")
+        image = save_image_from_response_payload(
+            response_json,
+            output_path,
+            timeout=min(self.timeout, self.total_timeout),
+        )
 
         return {
             "provider": "openai_compatible",

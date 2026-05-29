@@ -8,13 +8,14 @@ const modeText = document.querySelector("#modeText");
 const jobMeta = document.querySelector("#jobMeta");
 const resultLinks = document.querySelector("#resultLinks");
 const deliveryResult = document.querySelector("#deliveryResult");
-const resultHeadMeta = document.querySelector("#resultHeadMeta");
-const resultStageOverview = document.querySelector("#resultStageOverview");
 const pageTemplate = document.querySelector("#pageTemplate");
 const contentInput = document.querySelector("#content");
 const pageCount = document.querySelector("#pageCount");
 const imagePreset = document.querySelector("#imagePreset");
+const jobTarget = document.querySelector("#jobTarget");
 const imageQuality = document.querySelector("#imageQuality");
+const pageRichnessDefault = document.querySelector("#pageRichnessDefault");
+const pageRichnessList = document.querySelector("#pageRichnessList");
 const includeCoverPage = document.querySelector("#includeCoverPage");
 const reuseStyleRefsJobId = document.querySelector("#reuseStyleRefsJobId");
 const styleImages = document.querySelector("#styleImages");
@@ -57,6 +58,7 @@ const modelFormMessage = document.querySelector("#modelFormMessage");
 const imageLightbox = window.createImageLightbox ? window.createImageLightbox() : null;
 const generationResultPresenter = window.PptGenerationResult || null;
 const workspaceStatusPresenter = window.PptWorkspaceStatus || null;
+const errorLogDialog = window.PptErrorLogDialog || null;
 
 let config = null;
 let modelConfigs = null;
@@ -72,6 +74,13 @@ let historyItems = [];
 let selectedHistoryJobId = "";
 let styleReferenceHydrationKey = "";
 
+const pageRichnessHelpers = window.PptPageRichness || null;
+const PAGE_RICHNESS_OPTIONS = pageRichnessHelpers?.listOptions?.() || [
+  {value: "low", label: "低"},
+  {value: "medium", label: "中"},
+  {value: "high", label: "高"},
+];
+
 imageLightbox?.bindRoot(document);
 
 function formatStageKey(stage) {
@@ -84,6 +93,16 @@ function formatStageKey(stage) {
     completed: "全部完成",
   };
   return map[stage] || "处理中";
+}
+
+function normalizeStageLabel(stage) {
+  const text = String(stage?.label || "").trim();
+  const compact = text.replace(/\s+/g, "");
+  const hasCorruptedMarker = /[?？\uFFFD]/.test(compact);
+  if (!compact || /^[?？\uFFFD]+$/.test(compact) || (hasCorruptedMarker && compact.length <= 12)) {
+    return formatStageKey(stage?.key);
+  }
+  return text;
 }
 
 function updatePresetSummary() {
@@ -128,13 +147,177 @@ function renderWorkspaceStatus(job = currentJob) {
     config,
     job,
     taskContextContainer: taskContextCard,
-    resultHeadMetaContainer: resultHeadMeta,
-    stageOverviewContainer: resultStageOverview,
   });
+}
+
+function setJobMetaText(message) {
+  if (jobMeta) {
+    jobMeta.textContent = message;
+  }
+}
+
+function buildJobMetaText(job) {
+  if (!job?.job_id) {
+    return "等待提交任务";
+  }
+  const pageCount = Number(job.reference_pages?.length || job.job_meta?.page_count || job.pages?.length || 0);
+  const targetLabel = String(job.job_meta?.job_target_label || "PPT");
+  if (job.status === "completed") {
+    return `任务 ${job.job_id} 已完成，共 ${pageCount} 页，可直接下载${targetLabel}`;
+  }
+  if (job.status === "stopping") {
+    return `任务 ${job.job_id} 已暂停，可继续从当前进度恢复`;
+  }
+  if (job.status === "interrupted") {
+    return `任务 ${job.job_id} 已暂停，可继续从当前进度恢复`;
+  }
+  if (job.status === "error") {
+    return `任务 ${job.job_id} 执行失败，请打开错误日志查看详情`;
+  }
+  return `任务 ${job.job_id} 正在${formatStageKey(job.current_stage || "queued")}`;
+}
+
+function showErrorLog(message, options = {}) {
+  const safeMessage = String(message || "").trim() || "未提供详细错误信息。";
+  errorLogDialog?.open({
+    title: options.title || "错误日志",
+    subtitle: options.subtitle || "这里集中展示本次失败的详细信息。",
+    content: safeMessage,
+  });
+}
+
+function showJobError(job, fallbackMessage = "") {
+  if (!job) {
+    showErrorLog(fallbackMessage);
+    return;
+  }
+  errorLogDialog?.openForJob(job, fallbackMessage);
 }
 
 function defaultIncludeCoverPageValue() {
   return config?.default_include_cover_page !== false;
+}
+
+function defaultPageRichnessValue() {
+  return config?.default_page_richness || "medium";
+}
+
+function normalizePageRichnessValue(value, fallback = "medium") {
+  if (pageRichnessHelpers?.normalizeValue) {
+    return pageRichnessHelpers.normalizeValue(value, fallback);
+  }
+  const normalized = String(value || "").trim().toLowerCase();
+  if (PAGE_RICHNESS_OPTIONS.some((item) => item.value === normalized)) {
+    return normalized;
+  }
+  return String(fallback || "medium");
+}
+
+function formatPageRichnessText(value, fallback = "medium") {
+  if (pageRichnessHelpers?.formatText) {
+    return pageRichnessHelpers.formatText(value, fallback);
+  }
+  return `丰富度 ${normalizePageRichnessValue(value, fallback)}`;
+}
+
+function buildPageRichnessMap(pageTotal, sourceMap = {}, defaultValue = defaultPageRichnessValue()) {
+  const safeTotal = Math.max(0, Number(pageTotal) || 0);
+  const normalizedDefault = normalizePageRichnessValue(defaultValue, "medium");
+  const nextMap = {};
+  for (let pageNo = 1; pageNo <= safeTotal; pageNo += 1) {
+    nextMap[String(pageNo)] = normalizePageRichnessValue(sourceMap?.[String(pageNo)], normalizedDefault);
+  }
+  return nextMap;
+}
+
+function buildPageRichnessState(pageTotal, sourceState = {}, defaultValue = defaultPageRichnessValue()) {
+  const safeTotal = Math.max(0, Number(pageTotal) || 0);
+  const normalizedDefault = normalizePageRichnessValue(defaultValue, "medium");
+  const nextState = {};
+  for (let pageNo = 1; pageNo <= safeTotal; pageNo += 1) {
+    const rawItem = sourceState?.[String(pageNo)];
+    const value =
+      rawItem && typeof rawItem === "object"
+        ? normalizePageRichnessValue(rawItem.value, normalizedDefault)
+        : normalizePageRichnessValue(rawItem, normalizedDefault);
+    const customized =
+      rawItem && typeof rawItem === "object"
+        ? Boolean(rawItem.customized)
+        : Object.prototype.hasOwnProperty.call(sourceState || {}, String(pageNo)) && value !== normalizedDefault;
+    nextState[String(pageNo)] = {
+      value: customized ? value : normalizedDefault,
+      customized,
+    };
+  }
+  return nextState;
+}
+
+function readCurrentPageRichnessState() {
+  const nextState = {};
+  if (!pageRichnessList) {
+    return nextState;
+  }
+  pageRichnessList.querySelectorAll("select[data-page-richness-page]").forEach((selectNode) => {
+    const pageNo = String(selectNode.dataset.pageRichnessPage || "").trim();
+    if (!pageNo) {
+      return;
+    }
+    nextState[pageNo] = {
+      value: normalizePageRichnessValue(selectNode.value, defaultPageRichnessValue()),
+      customized: selectNode.dataset.pageRichnessCustomized === "1",
+    };
+  });
+  return nextState;
+}
+
+function readExplicitPageRichnessMap(defaultValue = defaultPageRichnessValue()) {
+  const normalizedDefault = normalizePageRichnessValue(defaultValue, "medium");
+  const nextMap = {};
+  const currentState = readCurrentPageRichnessState();
+  for (const [pageNo, item] of Object.entries(currentState)) {
+    if (!item?.customized) {
+      continue;
+    }
+    nextMap[pageNo] = normalizePageRichnessValue(item.value, normalizedDefault);
+  }
+  return nextMap;
+}
+
+function renderPageRichnessControls(pageTotal = Number(pageCount?.value || 0), sourceState = null) {
+  if (!pageRichnessList) {
+    return;
+  }
+  const safeTotal = Math.max(0, Number(pageTotal) || 0);
+  const defaultValue = normalizePageRichnessValue(pageRichnessDefault?.value, defaultPageRichnessValue());
+  const richnessState = buildPageRichnessState(
+    safeTotal,
+    sourceState || readCurrentPageRichnessState(),
+    defaultValue
+  );
+  pageRichnessList.innerHTML = "";
+  for (let pageNo = 1; pageNo <= safeTotal; pageNo += 1) {
+    const row = document.createElement("label");
+    row.className = "page-richness-row";
+    row.innerHTML = `<span>第 ${pageNo} 页</span>`;
+    const selectNode = document.createElement("select");
+    selectNode.name = `page_richness_${pageNo}`;
+    selectNode.dataset.pageRichnessPage = String(pageNo);
+    for (const optionItem of PAGE_RICHNESS_OPTIONS) {
+      const option = document.createElement("option");
+      option.value = optionItem.value;
+      option.textContent = optionItem.label;
+      option.selected = optionItem.value === richnessState[String(pageNo)]?.value;
+      selectNode.appendChild(option);
+    }
+    selectNode.dataset.pageRichnessCustomized = richnessState[String(pageNo)]?.customized ? "1" : "0";
+    selectNode.addEventListener("change", () => {
+      const normalizedValue = normalizePageRichnessValue(selectNode.value, defaultValue);
+      selectNode.value = normalizedValue;
+      selectNode.dataset.pageRichnessCustomized = normalizedValue === defaultValue ? "0" : "1";
+    });
+    row.appendChild(selectNode);
+    pageRichnessList.appendChild(row);
+  }
 }
 
 function formatStyleImageHint(message) {
@@ -239,10 +422,13 @@ function resetFormToDefaults() {
   contentEditor.value = "";
   pageCount.value = String(config.default_pages);
   imagePreset.value = config.default_image_preset;
+  jobTarget.value = "editable_ppt";
   imageQuality.value = config.image_quality || "medium";
+  pageRichnessDefault.value = defaultPageRichnessValue();
   includeCoverPage.checked = defaultIncludeCoverPageValue();
   styleNotes.value = "";
   clearStyleReferenceBinding();
+  renderPageRichnessControls(Number(pageCount.value || config.default_pages), {});
   syncContentPreview();
   updatePresetSummary();
 }
@@ -253,9 +439,15 @@ function applyJobParamsToForm(job, historyItem = null) {
   const nextPageCount = Number(meta.page_count || historyItem?.page_count || pageCount.value || 1);
   const nextPresetName = String(meta.image_preset?.name || historyItem?.image_preset || imagePreset.value || "");
   const nextQuality = String(meta.image_quality || historyItem?.image_quality || imageQuality.value || "medium");
+  const nextJobTarget = String(meta.job_target || historyItem?.job_target || jobTarget.value || "editable_ppt");
   const nextStyleNotes = String(meta.style_notes || historyItem?.style_notes || "");
   const nextIncludeCoverPage =
     meta.generation_options?.include_cover_page ?? defaultIncludeCoverPageValue();
+  const nextPageRichnessDefault = normalizePageRichnessValue(
+    meta.generation_options?.page_richness_default,
+    defaultPageRichnessValue()
+  );
+  const nextPageRichnessMap = meta.generation_options?.page_richness_map || {};
 
   contentInput.value = nextContent;
   pageCount.value = String(nextPageCount);
@@ -265,8 +457,13 @@ function applyJobParamsToForm(job, historyItem = null) {
   if (nextQuality && [...imageQuality.options].some((option) => option.value === nextQuality)) {
     imageQuality.value = nextQuality;
   }
+  if (nextJobTarget && [...jobTarget.options].some((option) => option.value === nextJobTarget)) {
+    jobTarget.value = nextJobTarget;
+  }
+  pageRichnessDefault.value = nextPageRichnessDefault;
   includeCoverPage.checked = Boolean(nextIncludeCoverPage);
   styleNotes.value = nextStyleNotes;
+  renderPageRichnessControls(nextPageCount, nextPageRichnessMap);
   syncContentPreview();
   updatePresetSummary();
 }
@@ -301,6 +498,8 @@ async function loadConfig() {
     imagePreset.appendChild(option);
   }
   imageQuality.value = config.image_quality || "medium";
+  pageRichnessDefault.value = defaultPageRichnessValue();
+  renderPageRichnessControls(Number(pageCount.value || config.default_pages), {});
   updatePresetSummary();
   renderWorkspaceStatus(null);
   await loadModelConfigs();
@@ -363,13 +562,14 @@ function currentModelItems() {
 
 function updateSubmitButtonState() {
   const status = currentJob?.status || "";
-  let label = "生成并导出 PPT";
+  const target = currentJob?.job_meta?.job_target || jobTarget?.value || "editable_ppt";
+  let label = target === "reference_only" ? "生成图片版 PPT" : "生成可编辑 PPT";
   if (status === "stopping") {
-    label = "暂停中...";
+    label = "任务已暂停";
   } else if (status === "interrupted") {
     label = "任务已暂停";
   } else if (status === "queued" || status === "running") {
-    label = "导出中...";
+    label = "生成中...";
   }
   submitButton.querySelector("span:last-child").textContent = label;
 }
@@ -398,7 +598,7 @@ function resetWorkspaceView(message = "等待提交任务") {
     placeholder.remove();
   }
   mainPreviewCaption.textContent = "等待生成";
-  jobMeta.textContent = message;
+  setJobMetaText(message);
   if (resultLinks) {
     resultLinks.innerHTML = "";
     resultLinks.hidden = true;
@@ -474,8 +674,9 @@ function getStageStatusLabel(status) {
     pending: "等待中",
     queued: "排队中",
     running: "进行中",
-    stopping: "暂停中",
+    stopping: "已暂停",
     interrupted: "已暂停",
+    skipped: "已跳过",
     completed: "已完成",
     error: "失败",
   };
@@ -504,13 +705,16 @@ function currentStageLabel(job) {
     completed: "全部阶段已完成",
   };
   if (job.status === "stopping") {
-    return "已收到停止请求，等待当前已发出的任务完成后暂停";
+    return "任务已暂停，可点击继续从当前进度恢复";
   }
   if (job.status === "interrupted") {
     return "任务已暂停，可点击继续从当前进度恢复";
   }
   if (job.status === "error") {
     return `任务失败：${job.error || "请查看阶段日志"}`;
+  }
+  if (job.status === "completed" && job.job_meta?.job_target === "reference_only") {
+    return "参考图与图片版 PPT 已完成";
   }
   return labels[job.current_stage] || "任务运行中";
 }
@@ -813,6 +1017,9 @@ function renderPageMetaTags(page) {
   if (page.layout_family) {
     parts.push(`<span class="meta-tag layout-tag">${escapeHtml(page.layout_family)}</span>`);
   }
+  if (page.page_richness) {
+    parts.push(`<span class="meta-tag richness-tag">${escapeHtml(formatPageRichnessText(page.page_richness))}</span>`);
+  }
   if (page.reference_mode) {
     parts.push(`<span class="meta-tag mode-tag">${escapeHtml(page.reference_mode)}</span>`);
   }
@@ -903,7 +1110,7 @@ function renderStageTimeline(job) {
       <summary class="stage-summary">
         <div class="stage-summary-main">
           <div class="stage-summary-top">
-            <h3>${escapeHtml(stage.label)}</h3>
+            <h3>${escapeHtml(normalizeStageLabel(stage))}</h3>
             <span class="stage-status is-${escapeHtml(stage.status)}">${escapeHtml(getStageStatusLabel(stage.status))}</span>
           </div>
           <p>${escapeHtml(stage.summary || "")}</p>
@@ -919,6 +1126,7 @@ function renderStageTimeline(job) {
 }
 
 function renderJob(job) {
+  const previousStatus = currentJob?.status || "";
   currentJob = job;
   selectedHistoryJobId = job.job_id;
   syncHistoryItemFromJob(job);
@@ -927,16 +1135,9 @@ function renderJob(job) {
   renderPreviewViewer(job);
   renderFinalPages(job);
   renderGenerationResult(job);
-  if (job.status === "completed") {
-    jobMeta.textContent = `任务 ${job.job_id} 已完成，共 ${job.reference_pages.length} 页，可直接下载组装好的 PPT`;
-  } else if (job.status === "stopping") {
-    jobMeta.textContent = `任务 ${job.job_id} · 已收到停止请求，等待当前已发出的图像请求完成后暂停`;
-  } else if (job.status === "interrupted") {
-    jobMeta.textContent = `任务 ${job.job_id} 已暂停，可点击继续从当前进度恢复`;
-  } else if (job.status === "error") {
-    jobMeta.textContent = `任务 ${job.job_id} 失败：${job.error || "请查看阶段详情"}`;
-  } else {
-    jobMeta.textContent = `任务 ${job.job_id} · ${currentStageLabel(job)}`;
+  setJobMetaText(buildJobMetaText(job));
+  if (job.status === "error" && ["queued", "running", "stopping"].includes(previousStatus)) {
+    showJobError(job);
   }
   syncJobActionButtons();
   renderHistoryList();
@@ -958,7 +1159,9 @@ function syncHistoryItemFromJob(job) {
     page_count: job.job_meta?.page_count || job.pages?.length || existing.page_count || 0,
     image_preset: preset.label || preset.name || existing.image_preset || "",
     image_quality: job.job_meta?.image_quality || existing.image_quality || "",
+    job_target: job.job_meta?.job_target || existing.job_target || "editable_ppt",
     style_notes: job.job_meta?.style_notes || existing.style_notes || "",
+    generation_options: job.job_meta?.generation_options || existing.generation_options || {},
     created_at: existing.created_at || "",
     updated_at: new Date().toISOString(),
     stop_requested: Boolean(job.stop_requested),
@@ -1031,7 +1234,11 @@ async function selectHistoryJob(jobId) {
   const res = await fetch(`/api/jobs/${jobId}`);
   const data = await res.json();
   if (!res.ok) {
-    jobMeta.textContent = data.error || "读取任务失败";
+    setJobMetaText("读取任务失败，请查看错误日志");
+    showErrorLog(data.error || "读取任务失败", {
+      title: "读取任务失败",
+      subtitle: `任务 ID：${jobId}`,
+    });
     return;
   }
   applyJobParamsToForm(data, selectedItem);
@@ -1048,7 +1255,10 @@ async function selectHistoryJob(jobId) {
 function syncJobActionButtons() {
   const status = currentJob?.status || "";
   interruptButton.disabled = !["queued", "running"].includes(status);
-  resumeButton.disabled = !["interrupted", "error"].includes(status);
+  const canUpgradeReferenceOnly =
+    status === "completed" && currentJob?.job_meta?.job_target === "reference_only";
+  resumeButton.disabled = !(["interrupted", "error"].includes(status) || canUpgradeReferenceOnly);
+  resumeButton.textContent = canUpgradeReferenceOnly ? "继续转可编辑" : "继续生成";
 }
 
 function stopJobStream() {
@@ -1073,7 +1283,7 @@ function startJobStream(jobId) {
   });
   jobEventSource.addEventListener("error", () => {
     if (currentJob?.job_id === jobId && ["queued", "running", "stopping"].includes(currentJob?.status || "")) {
-      jobMeta.textContent = "任务状态流已断开，正在等待重新连接...";
+      setJobMetaText("任务状态流已断开，正在等待重新连接...");
     }
   });
 }
@@ -1085,7 +1295,11 @@ async function deleteHistoryJob(jobId) {
   const res = await fetch(`/api/jobs/${jobId}`, {method: "DELETE"});
   const data = await res.json();
   if (!res.ok) {
-    jobMeta.textContent = data.error || "删除任务失败";
+    setJobMetaText("删除任务失败，请查看错误日志");
+    showErrorLog(data.error || "删除任务失败", {
+      title: "删除任务失败",
+      subtitle: `任务 ID：${jobId}`,
+    });
     return;
   }
   if (selectedHistoryJobId === jobId) {
@@ -1098,7 +1312,7 @@ async function deleteHistoryJob(jobId) {
     previewViewer.classList.remove("is-active");
     mainPreviewImage.removeAttribute("src");
     mainPreviewCaption.textContent = "等待生成";
-    jobMeta.textContent = "该任务已删除";
+    setJobMetaText("该任务已删除");
     if (resultLinks) {
       resultLinks.innerHTML = "";
       resultLinks.hidden = true;
@@ -1116,11 +1330,15 @@ async function interruptCurrentJob() {
   const res = await fetch(`/api/jobs/${currentJob.job_id}/interrupt`, {method: "POST"});
   const data = await res.json();
   if (!res.ok) {
-    jobMeta.textContent = data.error || "停止任务失败";
+    setJobMetaText("停止任务失败，请查看错误日志");
+    showErrorLog(data.error || "停止任务失败", {
+      title: "停止任务失败",
+      subtitle: `任务 ID：${currentJob.job_id}`,
+    });
     return;
   }
-  currentJob = {...currentJob, status: "stopping"};
-  jobMeta.textContent = "已发送停止请求，等待当前已发出的图像请求完成后暂停。";
+  currentJob = {...currentJob, status: "interrupted"};
+  setJobMetaText("任务已暂停，可点击继续从当前进度恢复。");
   syncJobActionButtons();
   startJobStream(currentJob.job_id);
 }
@@ -1134,7 +1352,11 @@ async function resumeCurrentJob() {
   const data = await res.json();
   if (!res.ok) {
     setLoading(false);
-    jobMeta.textContent = data.error || "继续任务失败";
+    setJobMetaText("继续任务失败，请查看错误日志");
+    showErrorLog(data.error || "继续任务失败", {
+      title: "继续任务失败",
+      subtitle: `任务 ID：${currentJob.job_id}`,
+    });
     return;
   }
   renderJob(data);
@@ -1372,7 +1594,11 @@ form.addEventListener("submit", async (event) => {
   const selectedPages = Number(pageCount.value);
   const selectedPreset = config.image_presets[imagePreset.value];
   if (selectedPages > config.max_pages) {
-    jobMeta.textContent = `页数不能超过 ${config.max_pages}`;
+    setJobMetaText("创建任务失败，请查看错误日志");
+    showErrorLog(`页数不能超过 ${config.max_pages}`, {
+      title: "创建任务失败",
+      subtitle: "参数校验未通过",
+    });
     return;
   }
 
@@ -1382,11 +1608,19 @@ form.addEventListener("submit", async (event) => {
   stageTimeline.innerHTML = "";
   currentPreviewPageNo = 1;
   setLoading(true);
-  jobMeta.textContent = `准备生成 ${selectedPreset.label} PPT 并进入组装导出，任务创建中...`;
+  const targetLabel = jobTarget.value === "reference_only" ? "图片版 PPT" : "可编辑 PPT";
+  setJobMetaText(`准备生成 ${selectedPreset.label} ${targetLabel}，任务创建中...`);
 
   try {
     const formData = new FormData(form);
     formData.set("include_cover_page", includeCoverPage.checked ? "1" : "0");
+    formData.set("page_richness_default", normalizePageRichnessValue(pageRichnessDefault.value, defaultPageRichnessValue()));
+    formData.set(
+      "page_richness_map",
+      JSON.stringify(
+        readExplicitPageRichnessMap(pageRichnessDefault.value)
+      )
+    );
     const res = await fetch("/api/jobs", {
       method: "POST",
       body: formData,
@@ -1399,7 +1633,11 @@ form.addEventListener("submit", async (event) => {
     startJobStream(data.job_id);
   } catch (error) {
     setLoading(false);
-    jobMeta.textContent = error.message;
+    setJobMetaText("创建任务失败，请查看错误日志");
+    showErrorLog(error.message, {
+      title: "创建任务失败",
+      subtitle: "任务尚未成功创建",
+    });
   }
 });
 
@@ -1422,6 +1660,13 @@ contentEditor.addEventListener("input", () => {
 });
 interruptButton.addEventListener("click", interruptCurrentJob);
 resumeButton.addEventListener("click", resumeCurrentJob);
+deliveryResult?.addEventListener("click", (event) => {
+  const trigger = event.target.closest('[data-action="open-error-log"]');
+  if (!trigger || !currentJob) {
+    return;
+  }
+  showJobError(currentJob);
+});
 modelForm.addEventListener("submit", saveModel);
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1433,6 +1678,8 @@ document.querySelectorAll(".tab-button").forEach((button) => {
   });
 });
 imagePreset.addEventListener("change", updatePresetSummary);
+pageCount.addEventListener("change", () => renderPageRichnessControls(Number(pageCount.value || 0)));
+pageRichnessDefault.addEventListener("change", () => renderPageRichnessControls(Number(pageCount.value || 0)));
 styleImages.addEventListener("change", syncStyleReferenceSelectionHint);
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "j") {

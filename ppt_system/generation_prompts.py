@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from ppt_system.design_grammar import compress_style_for_prompt, build_prompt_anchor
+from ppt_system.page_richness import build_page_richness_render_guidance, normalize_page_richness_level
+from ppt_system.reference_shape_constraints import build_shape_clarity_prompt_lines
 
 
 def build_reference_prompt_by_mode(
@@ -107,6 +109,7 @@ def build_reference_prompt(
             element_section,
             "文字要求：中文排版清晰，层级明确，标题和正文要可读；不要生成乱码。",
             "视觉要求：边界清晰，高级商务科技风格，元素低透明但轮廓明确，图标/logo/icon 可以保留。",
+            *build_shape_clarity_prompt_lines(style_guide, detail="full"),
             "布局要求：保持文字区和视觉元素区分明，元素之间留出足够间隔，方便后续识别和拆分。",
             negative_section,
             "建议文字布局：",
@@ -151,6 +154,7 @@ def build_compact_reference_prompt(
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide)
+    page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
 
     lines = [
         f"生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字必须清晰可读。",
@@ -171,10 +175,12 @@ def build_compact_reference_prompt(
     if slots:
         lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
     lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排由你自主决定。")
+    lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
         lines.append(f"统一视觉锚点：{anchor}")
     if style_notes:
         lines.append(f"补充风格说明：{style_notes}")
+    lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
     lines.append("不要乱码，不要堆满装饰，优先让信息关系清楚。")
     return "\n".join(lines)
 
@@ -195,6 +201,7 @@ def build_slot_brief_reference_prompt(
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide)
+    page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
 
     lines = [
         f"请生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字清晰可读。",
@@ -215,10 +222,12 @@ def build_slot_brief_reference_prompt(
         lines.extend(f"{index + 1}. {slot}" for index, slot in enumerate(slots[:5]))
     lines.append(f"版式只需大致接近 {layout_family}，无需强行复刻具体卡片数量或指定图标。")
     lines.append("你可以自主决定最适合的视觉重心、流程方向、卡片分组和图标组合。")
+    lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
         lines.append(f"统一视觉锚点：{anchor}")
     if style_notes:
         lines.append(f"补充风格说明：{style_notes}")
+    lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
     lines.append("整体要像成熟企业汇报模板，结构清楚、留白充足、边界明确。")
     return "\n".join(lines)
 

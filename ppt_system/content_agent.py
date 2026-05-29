@@ -19,6 +19,13 @@ from ppt_system.design_grammar import (
 from ppt_system.generation_options import default_generation_options
 from ppt_system.generation_prompts import build_reference_prompt_by_mode
 from ppt_system.openai_chat_provider import OpenAIChatProvider
+from ppt_system.page_richness import (
+    DEFAULT_PAGE_RICHNESS,
+    build_page_richness_planning_guidance,
+    build_page_richness_prompt_lines,
+    normalize_page_richness_level,
+    resolve_page_richness_map,
+)
 from ppt_system.planner import infer_style_type
 from ppt_system.style_runtime import apply_text_theme
 from ppt_system.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
@@ -40,6 +47,12 @@ def build_content_plan(
         **default_generation_options(),
         **(generation_options or {}),
     }
+    page_richness_map = resolve_page_richness_map(
+        page_count=page_count,
+        default_level=str(generation_options.get("page_richness_default", DEFAULT_PAGE_RICHNESS)),
+        explicit_map=generation_options.get("page_richness_map", {}),
+    )
+    generation_options["page_richness_map"] = page_richness_map
     style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
     messages = [
         {
@@ -63,6 +76,7 @@ def build_content_plan(
                 style_image_count=style_image_count,
                 style_guide=style_guide,
                 generation_options=generation_options,
+                page_richness_map=page_richness_map,
             ),
         },
     ]
@@ -292,12 +306,18 @@ def build_planning_prompt(
     style_image_count: int,
     style_guide: dict[str, Any],
     generation_options: dict[str, Any] | None = None,
+    page_richness_map: dict[str, str] | None = None,
 ) -> str:
     generation_options = {
         **default_generation_options(),
         **(generation_options or {}),
     }
     include_cover_page = bool(generation_options.get("include_cover_page", True))
+    page_richness_map = page_richness_map or resolve_page_richness_map(
+        page_count=page_count,
+        default_level=str(generation_options.get("page_richness_default", DEFAULT_PAGE_RICHNESS)),
+        explicit_map=generation_options.get("page_richness_map", {}),
+    )
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     prompt_anchor = style_guide.get("prompt_anchor", "")
     style_core = style_guide.get("style_core", {})
@@ -347,6 +367,9 @@ def build_planning_prompt(
 - 整套页至少覆盖 {variation_policy.get('min_distinct_layout_families', 3)} 种以上骨架
 - 同一 layout_family 最多连续重复 {variation_policy.get('same_layout_max_repeat', 1)} 次
 
+每页内容丰富度要求：
+{chr(10).join(build_page_richness_prompt_lines(page_richness_map)) if page_richness_map else "- 所有页面使用中等丰富度"}
+
 禁止事项：
 {format_style_list(negative_rules)}
 
@@ -365,6 +388,7 @@ JSON 格式必须如下：
       "layout_slots": ["语义槽位1", "语义槽位2"],
       "element_plan": {{"primitives": ["本页使用的元素原语1", "元素原语2"], "icon_topics": ["图标主题1"], "diagram_type": "图表类型"}},
       "difference_from_previous": "与上一页的排版差异说明",
+      "page_richness": "low/medium/high 之一",
       "style_constraints": "本页特别的风格约束",
       "reference_mode": "generation",
       "prompt_profile": "compressed",
@@ -387,7 +411,8 @@ JSON 格式必须如下：
 11. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
 12. 避免主动引入与参考图明显冲突的视觉风格，尤其不要偏离整体背景明度、版式秩序和信息图语言。
 13. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
-14. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
+14. page_richness 必须填写为 low、medium、high 之一，并与该页丰富度要求保持一致。
+15. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
 """.strip()
 
 
@@ -407,6 +432,12 @@ def normalize_content_plan(
         **(generation_options or {}),
     }
     include_cover_page = bool(generation_options.get("include_cover_page", True))
+    page_richness_map = resolve_page_richness_map(
+        page_count=page_count,
+        default_level=str(generation_options.get("page_richness_default", DEFAULT_PAGE_RICHNESS)),
+        explicit_map=generation_options.get("page_richness_map", {}),
+    )
+    generation_options["page_richness_map"] = page_richness_map
     resolved_prompt_mode = "slot_brief" if has_reference_images else "compact"
     fallback_pages = build_text_layouts(
         content,
@@ -480,6 +511,15 @@ def normalize_content_plan(
         style_constraints = str(raw.get("style_constraints", "")).strip()
         reference_mode = "edit_with_refs" if has_reference_images else "generation"
         prompt_profile = str(raw.get("prompt_profile", "compressed")).strip()
+        page_richness = normalize_page_richness_level(
+            raw.get("page_richness") or page_richness_map.get(str(index + 1)),
+            page_richness_map.get(str(index + 1), DEFAULT_PAGE_RICHNESS),
+        )
+        richness_guidance = build_page_richness_planning_guidance(page_richness)
+        if style_constraints:
+            style_constraints = f"{style_constraints}；内容丰富度要求：{richness_guidance}"
+        else:
+            style_constraints = f"内容丰富度要求：{richness_guidance}"
 
         texts = fallback.get("texts", [])
         fallback_family = fallback.get("layout_family", "split_left_right")
@@ -504,6 +544,7 @@ def normalize_content_plan(
             "layout_slots": layout_slots,
             "element_plan": element_plan,
             "difference_from_previous": difference_from_previous,
+            "page_richness": page_richness,
             "style_constraints": style_constraints,
             "reference_mode": reference_mode,
             "prompt_profile": prompt_profile,

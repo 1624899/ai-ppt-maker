@@ -30,6 +30,16 @@ class _FakeResponse:
         return self._payload
 
 
+class _BrokenJsonResponse(_FakeResponse):
+    def __init__(self, *, text: str = "", content: bytes = b"") -> None:
+        super().__init__({})
+        self.text = text
+        self.content = content
+
+    def json(self) -> dict[str, Any]:
+        raise json.JSONDecodeError("Expecting value", self.text or "", 0)
+
+
 class OpenAIChatProviderTests(unittest.TestCase):
     def test_sanitize_model_config_keeps_reasoning_effort(self) -> None:
         item = sanitize_model_config(
@@ -59,6 +69,19 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(item["reasoning_effort"], "")
 
+    def test_sanitize_model_config_normalizes_base_url_path(self) -> None:
+        item = sanitize_model_config(
+            "chat",
+            {
+                "name": "gpt-5.5",
+                "base_url": "https://example.com//gateway//v1/",
+                "api_key": "sk-test",
+                "model": "gpt-5.5",
+            },
+        )
+
+        self.assertEqual(item["base_url"], "https://example.com/gateway/v1")
+
     def test_complete_json_includes_reasoning_effort_when_configured(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",
@@ -87,6 +110,29 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(captured_payload["reasoning_effort"], "high")
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+
+    def test_complete_json_normalizes_profile_base_url_before_request(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com//gateway//v1/",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+
+        captured_url = ""
+
+        def fake_post(url: str, *, headers: dict[str, str], json: dict[str, Any], timeout: int):
+            nonlocal captured_url
+            captured_url = url
+            return _FakeResponse()
+
+        with patch("ppt_system.openai_chat_provider.requests.post", side_effect=fake_post):
+            provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(captured_url, "https://example.com/gateway/v1/chat/completions")
 
     def test_complete_json_uses_profile_reasoning_effort_over_global_default(self) -> None:
         config = {
@@ -139,6 +185,137 @@ class OpenAIChatProviderTests(unittest.TestCase):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(result["page_script"], 'add_text(slide, "提问即竞争力", 0, 0, 100, 40)')
+
+    def test_complete_json_wraps_non_json_http_200_response(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        response = _BrokenJsonResponse(text="<html>upstream error</html>", content=b"<html>upstream error</html>")
+
+        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "非 JSON 响应"):
+                provider.complete_json([{"role": "user", "content": "test"}])
+
+    def test_complete_json_rejects_empty_message_content(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(
+            config,
+            profile,
+        )
+        response = _FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                        }
+                    }
+                ]
+            }
+        )
+
+        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "未返回可用文本内容"):
+                provider.complete_json([{"role": "user", "content": "test"}])
+
+    def test_complete_json_accepts_segmented_message_content(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        response = _FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": [
+                                {"type": "output_text", "text": '{"page_script":"add_text(slide, \\"标题\\", '},
+                                {"type": "output_text", "text": '0, 0, 100, 40)"}'},
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+
+        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+            result = provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+
+    def test_complete_json_accepts_top_level_output_text_without_choices(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        response = _FakeResponse(
+            {
+                "output_text": '{"page_script":"add_text(slide, \\"标题\\", 0, 0, 100, 40)"}',
+            }
+        )
+
+        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+            result = provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+
+    def test_complete_json_retries_ambiguous_empty_response_once(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "request_retry_initial_delay_seconds": 0,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        responses = [
+            _FakeResponse(
+                {
+                    "id": "resp_empty",
+                    "object": "chat.completion",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+            ),
+            _FakeResponse(),
+        ]
+
+        with patch("ppt_system.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.openai_chat_provider.requests.post", side_effect=responses) as mock_post:
+                result = provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+        self.assertEqual(mock_post.call_count, 2)
 
 
 if __name__ == "__main__":

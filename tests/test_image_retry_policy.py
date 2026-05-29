@@ -73,6 +73,21 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_post.call_count, 2)
 
+    def test_provider_normalizes_profile_base_url(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2",
+            },
+            {
+                "api_key": "test-key",
+                "base_url": "https://example.com//gateway//v1/",
+            },
+        )
+
+        self.assertEqual(provider.api_base_url, "https://example.com/gateway/v1")
+        self.assertEqual(provider.images_generations_url, "https://example.com/gateway/v1/images/generations")
+
 
 if __name__ == "__main__":
     unittest.main()

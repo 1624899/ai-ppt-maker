@@ -104,6 +104,17 @@
 
                 <div class="grid-1">
                   <label class="field">
+                    <span>输出模式</span>
+                    <select name="job_target" id="jobTarget" required>
+                      <option value="reference_only">图片版 PPT（生成参考图后截止）</option>
+                      <option value="editable_ppt" selected>可编辑 PPT（完整流程）</option>
+                    </select>
+                    <p class="field-tip">可先只生成参考图与图片版 PPT，后续再从历史任务继续转换为可编辑 PPT。</p>
+                  </label>
+                </div>
+
+                <div class="grid-1">
+                  <label class="field">
                     <span>图像质量</span>
                     <select name="image_quality" id="imageQuality" required>
                       <option value="low">low</option>
@@ -112,6 +123,25 @@
                       <option value="auto">auto</option>
                     </select>
                   </label>
+                </div>
+
+                <div class="grid-1">
+                  <label class="field">
+                    <span>默认内容丰富度</span>
+                    <select name="page_richness_default" id="pageRichnessDefault" required>
+                      <option value="low">低</option>
+                      <option value="medium" selected>中</option>
+                      <option value="high">高</option>
+                    </select>
+                    <p class="field-tip">用于控制模型规划时每页的信息密度，后面的逐页设置可覆盖默认值。</p>
+                  </label>
+                </div>
+
+                <div class="grid-1">
+                  <div class="field">
+                    <span>逐页内容丰富度</span>
+                    <div class="page-richness-list" id="pageRichnessList"></div>
+                  </div>
                 </div>
 
                 <div class="grid-1">
@@ -158,22 +188,19 @@
 
         <section class="result-panel">
           <div class="result-workspace">
-              <div class="panel-head result-head">
-                <div>
+            <div class="panel-head result-head">
+              <div class="result-head-copy">
                   <h2>生成结果</h2>
-                  <p id="jobMeta">等待提交任务</p>
-                  <div class="result-head-meta" id="resultHeadMeta"></div>
-                  <div id="resultLinks" hidden></div>
-                </div>
-                <div class="result-actions">
-                  <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
-                  <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续</button>
+                <p id="jobMeta" class="result-head-summary">等待提交任务</p>
+              </div>
+              <div class="result-actions">
+                <button class="secondary-button" id="interruptButton" type="button" title="停止当前任务">停止</button>
+                <button class="secondary-button" id="resumeButton" type="button" title="继续当前任务">继续生成</button>
                 <button class="secondary-button" id="clearButton" type="button" title="清空结果">清空</button>
               </div>
             </div>
 
             <div class="panel-scroll result-scroll">
-              <section class="result-stage-overview" id="resultStageOverview"></section>
               <div class="progress" id="progress">
                 <div class="progress-bar"></div>
               </div>
@@ -295,6 +322,21 @@
       </div>
     </dialog>
 
+    <dialog class="error-log-dialog" id="errorLogDialog">
+      <div class="error-log-shell">
+        <div class="settings-head error-log-head">
+          <div>
+            <h2 id="errorLogTitle">错误日志</h2>
+            <p id="errorLogSubtitle">这里集中展示当前任务的失败摘要与阶段日志。</p>
+          </div>
+          <button class="icon-button" id="closeErrorLogButton" type="button" title="关闭">×</button>
+        </div>
+        <div class="error-log-body">
+          <pre class="error-log-content" id="errorLogContent">暂无错误日志</pre>
+        </div>
+      </div>
+    </dialog>
+
     <dialog class="image-lightbox" id="imageLightbox">
       <div class="image-lightbox-shell">
         <div class="image-lightbox-head">
@@ -337,7 +379,9 @@
 
     <script src="/static/image_lightbox.js?v={{ asset_version }}"></script>
     <script src="/static/generation_result.js?v={{ asset_version }}"></script>
+    <script src="/static/page_richness.js?v={{ asset_version }}"></script>
     <script src="/static/workspace_status.js?v={{ asset_version }}"></script>
+    <script src="/static/error_log_dialog.js?v={{ asset_version }}"></script>
     <script src="/static/app.js?v={{ asset_version }}"></script>
   </body>
 </html>

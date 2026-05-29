@@ -1,3 +1,4 @@
 requests
 flask
 python-pptx
+opencv-python-headless

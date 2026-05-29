@@ -59,10 +59,10 @@ def rebuild_page_texts(
     title = str(page.get("title", "")).strip() or f"第 {page.get('page_no', '?')} 页"
     body = _build_body_text(page)
     layout_family = str(page.get("layout_family", "split_left_right")).strip() or "split_left_right"
-    layout_slots = page.get("layout_slots", [])
+    layout_slots = page.get("layout_slots")
 
     rebuilt: list[dict[str, Any]] = []
-    if isinstance(layout_slots, list) and layout_slots:
+    if isinstance(layout_slots, dict) and isinstance(layout_slots.get("slot_coords"), dict):
         rebuilt = build_text_boxes_from_slots(layout_slots, title, body, image_width, image_height)
     if not rebuilt:
         slots = build_layout_slots_by_family(layout_family, image_width, image_height)
@@ -180,14 +180,13 @@ def export_project_to_pptx(
     min_height: int = 0,
     padding: int = 0,
     merge_distance: int = 6,
-    filter_decorative_fragments: bool = True,
     skip_enhance: bool = False,
     skip_transparent: bool = False,
+    export_page_concurrency: int = 1,
     chat_provider: OpenAIChatProvider | None = None,
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
-    **_: Any,
 ) -> dict[str, Any]:
     if chat_provider is None:
         raise RuntimeError("当前主路径必须提供 chat_provider，已不再支持 legacy/builtin 回退。")
@@ -205,9 +204,9 @@ def export_project_to_pptx(
         min_height=min_height,
         padding=padding,
         merge_distance=merge_distance,
-        filter_decorative_fragments=filter_decorative_fragments,
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
+        page_concurrency=export_page_concurrency,
         stage_logger=stage_logger,
         page_logger=page_logger,
         stop_checker=stop_checker,
@@ -241,7 +240,16 @@ def export_web_job_to_pptx(
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
-    **kwargs: Any,
+    alpha_threshold: int = 8,
+    min_area: int = 8,
+    min_width: int = 0,
+    min_height: int = 0,
+    padding: int = 0,
+    merge_distance: int = 6,
+    skip_enhance: bool = False,
+    skip_transparent: bool = False,
+    script_refine_rounds: int = 1,
+    export_page_concurrency: int = 1,
 ) -> dict[str, Any]:
     project = build_project_from_web_job(
         job,
@@ -258,11 +266,20 @@ def export_web_job_to_pptx(
         project,
         work_dir,
         output_pptx,
+        script_refine_rounds=script_refine_rounds,
+        alpha_threshold=alpha_threshold,
+        min_area=min_area,
+        min_width=min_width,
+        min_height=min_height,
+        padding=padding,
+        merge_distance=merge_distance,
+        skip_enhance=skip_enhance,
+        skip_transparent=skip_transparent,
+        export_page_concurrency=export_page_concurrency,
         chat_provider=chat_provider,
         stage_logger=stage_logger,
         page_logger=page_logger,
         stop_checker=stop_checker,
-        **kwargs,
     )
     job_id = str(job.get("job_id") or job_dir.name)
     return {

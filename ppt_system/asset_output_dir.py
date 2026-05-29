@@ -9,3 +9,6 @@ def prepare_asset_output_dir(out_dir: Path) -> None:
     for asset_path in out_dir.glob("asset_*.png"):
         if asset_path.is_file():
             asset_path.unlink()
+    for asset_path in out_dir.glob("asset_*.svg"):
+        if asset_path.is_file():
+            asset_path.unlink()
