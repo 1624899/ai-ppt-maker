@@ -10,6 +10,7 @@ from PIL import Image
 
 from ppt_system.export_layer_mode import OVERLAY_LAYER_MODE
 from ppt_system.global_element_alignment import align_elements_image_to_reference
+from ppt_system.image_alpha_profile import inspect_image_alpha
 from ppt_system.image_ops import enhance_image, make_transparent
 from ppt_system.intermediate_artifact_cleanup import cleanup_split_intermediate_images
 from ppt_system.openai_chat_provider import OpenAIChatProvider
@@ -210,6 +211,8 @@ def prepare_direct_page_assets(
     merge_distance: int = 6,
     skip_enhance: bool = False,
     skip_transparent: bool = False,
+    preserve_existing_transparency: bool = True,
+    preserve_tiny_components: bool | None = None,
     cleanup_intermediate_images: bool = True,
 ) -> PreparedDirectPageAssets:
     """把元素图处理成分割后的 PNG 资产，供生成脚本与文字框叠加。"""
@@ -217,13 +220,21 @@ def prepare_direct_page_assets(
     assets_dir = page_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     current_source = Path(elements_image)
+    alpha_profile = inspect_image_alpha(current_source)
+    transparent_input = bool(preserve_existing_transparency) and bool(alpha_profile.has_transparency)
+    resolved_skip_enhance = bool(skip_enhance) or transparent_input
+    resolved_skip_transparent = bool(skip_transparent) or transparent_input
+    resolved_preserve_tiny_components = (
+        transparent_input if preserve_tiny_components is None else bool(preserve_tiny_components)
+    )
+    resolved_min_area = 1 if resolved_preserve_tiny_components else int(min_area)
 
-    if not bool(skip_enhance):
+    if not resolved_skip_enhance:
         enhanced_path = page_dir / f"page_{int(page_no):02d}_enhanced.png"
         enhance_image(current_source, enhanced_path)
         current_source = enhanced_path
 
-    if not bool(skip_transparent):
+    if not resolved_skip_transparent:
         transparent_path = page_dir / f"page_{int(page_no):02d}_transparent.png"
         make_transparent(current_source, transparent_path)
         current_source = transparent_path
@@ -243,7 +254,7 @@ def prepare_direct_page_assets(
         current_source,
         assets_dir,
         alpha_threshold=int(alpha_threshold),
-        min_area=int(min_area),
+        min_area=int(resolved_min_area),
         min_width=int(min_width),
         min_height=int(min_height),
         padding=int(padding),

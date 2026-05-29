@@ -9,7 +9,7 @@ from typing import Any
 from ppt_system.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 
 
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 CHECKPOINT_FILE_NAME = "page_export_checkpoint.json"
 
 

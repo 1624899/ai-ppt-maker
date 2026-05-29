@@ -197,6 +197,33 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                 },
             )
 
+    def test_prepare_direct_page_assets_preserves_existing_transparent_input_and_tiny_components(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            visual_path = root / "visual.png"
+
+            image = Image.new("RGBA", (40, 40), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((5, 5, 15, 15), fill=(0, 80, 220, 255))
+            image.putpixel((30, 30), (0, 80, 220, 255))
+            image.save(visual_path)
+
+            result = prepare_direct_page_assets(
+                work_dir=work_dir,
+                page_no=1,
+                elements_image=visual_path,
+                reference_image=None,
+                image_width=40,
+                image_height=40,
+            )
+
+            self.assertEqual(result.split_source_image, str(visual_path))
+            self.assertEqual(int(result.manifest["min_area"]), 1)
+            self.assertEqual(int(result.manifest["count"]), 2)
+            self.assertFalse((work_dir / "page_01" / "page_01_enhanced.png").exists())
+            self.assertFalse((work_dir / "page_01" / "page_01_transparent.png").exists())
+
     def test_normalize_page_script_rejects_disallowed_code(self) -> None:
         with self.assertRaises(RuntimeError):
             normalize_page_script("import os")

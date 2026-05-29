@@ -8,7 +8,6 @@ import numpy as np
 from PIL import Image
 
 from ppt_system.asset_output_dir import prepare_asset_output_dir
-from ppt_system.asset_cleaner import has_fill_mask, restore_removed_regions
 from ppt_system.component_color_signature import annotate_component_color_signatures
 from ppt_system.component_color_grouping import merge_color_coherent_fragments
 from ppt_system.component_container_analysis import (
@@ -166,7 +165,6 @@ def split_transparent_png(
 
         crop = image.crop((left, top, right, bottom))
         crop_array = np.array(crop)
-        original_crop_array = np.array(crop_array, copy=True)
 
         # 只保留当前连通域自己的像素，避免大 bbox 把内部小元素重复裁进去。
         keep_mask = np.zeros((bottom - top, right - left), dtype=bool)
@@ -176,22 +174,7 @@ def split_transparent_png(
             mask_top : mask_top + visual_component_mask.shape[0],
             mask_left : mask_left + visual_component_mask.shape[1],
         ] = visual_component_mask
-        if has_fill_mask(component):
-            fill_mask = np.zeros((bottom - top, right - left), dtype=bool)
-            component_fill_mask = np.asarray(component["fill_mask"], dtype=bool)
-            fill_top = raw_top - top
-            fill_left = raw_left - left
-            fill_mask[
-                fill_top : fill_top + component_fill_mask.shape[0],
-                fill_left : fill_left + component_fill_mask.shape[1],
-            ] = component_fill_mask
-            crop_array[~keep_mask & ~fill_mask, 3] = 0
-            crop_array[fill_mask, 3] = 0
-            crop_array[fill_mask] = original_crop_array[fill_mask]
-            crop_array[fill_mask, 3] = 0
-            crop_array = restore_removed_regions(crop_array, fill_mask=fill_mask)
-        else:
-            crop_array[~keep_mask, 3] = 0
+        crop_array[~keep_mask, 3] = 0
 
         filename = f"asset_{index:03d}.png"
         Image.fromarray(crop_array, mode="RGBA").save(out_dir / filename)

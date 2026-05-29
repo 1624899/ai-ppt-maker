@@ -13,7 +13,6 @@
           <div class="brand-mark">P</div>
           <div>
             <h1>PPT 制作系统</h1>
-            <p id="configText">读取配置中...</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -280,7 +279,8 @@
             </label>
             <label class="field">
               <span>Base URL</span>
-              <input id="modelBaseUrl" placeholder="https://anyaigc.com/v1" />
+              <input id="modelBaseUrl" placeholder="https://your-api-endpoint.com/v1" />
+              <p class="field-tip">填写兼容 OpenAI Response 格式的服务端点地址。</p>
             </label>
             <div class="grid-2">
               <label class="field">
@@ -289,12 +289,7 @@
               </label>
               <label class="field">
                 <span>模型名</span>
-                <input id="modelNameValue" list="modelSuggestions" />
-                <datalist id="modelSuggestions">
-                  <option value="gpt-5.5"></option>
-                  <option value="gpt-5.4"></option>
-                  <option value="gpt-image-2"></option>
-                </datalist>
+                <input id="modelNameValue" placeholder="直接填写模型名" />
               </label>
             </div>
             <div class="grid-2 chat-fields">
@@ -403,6 +398,7 @@
     <script src="/static/image_lightbox.js?v={{ asset_version }}"></script>
     <script src="/static/generation_result.js?v={{ asset_version }}"></script>
     <script src="/static/page_richness.js?v={{ asset_version }}"></script>
+    <script src="/static/model_form_defaults.js?v={{ asset_version }}"></script>
     <script src="/static/workspace_status.js?v={{ asset_version }}"></script>
     <script src="/static/error_log_dialog.js?v={{ asset_version }}"></script>
     <script src="/static/app.js?v={{ asset_version }}"></script>

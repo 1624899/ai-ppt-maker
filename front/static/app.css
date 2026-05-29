@@ -121,6 +121,11 @@ body {
   min-width: 0;
 }
 
+.topbar-brand h1 {
+  font-size: clamp(32px, 2.6vw, 40px);
+  line-height: 1.08;
+}
+
 .brand-mark {
   width: 48px;
   height: 48px;
@@ -261,14 +266,14 @@ body {
 .result-stage-overview-body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .task-context-metric,
 .overview-progress-card {
   display: grid;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 10px 12px;
   border: 1px solid #e4eaf6;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.88);
@@ -277,13 +282,15 @@ body {
 .task-context-metric span,
 .overview-progress-card span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .task-context-metric strong,
 .overview-progress-card strong {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .form-section-card {
@@ -841,9 +848,9 @@ body {
 }
 
 .result-action-button {
-  height: 32px;
-  padding: 0 12px;
-  font-size: 13px;
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -862,7 +869,7 @@ body {
 
 .result-head-copy {
   display: grid;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
   width: 100%;
 }
@@ -899,9 +906,9 @@ h2 {
 }
 
 .result-head .result-head-summary {
-  margin-top: 8px;
+  margin-top: 4px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   max-width: none;
 }
@@ -2387,7 +2394,7 @@ pre {
   }
 
   .topbar-brand h1 {
-    font-size: 18px;
+    font-size: 22px;
   }
 
   .topbar-brand p {
@@ -2622,7 +2629,7 @@ pre {
   }
 
   .topbar-brand h1 {
-    font-size: 16px;
+    font-size: 20px;
   }
 
   .topbar-brand p,

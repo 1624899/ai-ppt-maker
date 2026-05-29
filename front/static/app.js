@@ -61,6 +61,7 @@ const modelTemperature = document.querySelector("#modelTemperature");
 const modelMaxTokens = document.querySelector("#modelMaxTokens");
 const modelOutputFormat = document.querySelector("#modelOutputFormat");
 const modelFormMessage = document.querySelector("#modelFormMessage");
+const modelFormDefaults = window.PptModelFormDefaults || null;
 const imageLightbox = window.createImageLightbox ? window.createImageLightbox() : null;
 const generationResultPresenter = window.PptGenerationResult || null;
 const workspaceStatusPresenter = window.PptWorkspaceStatus || null;
@@ -81,6 +82,8 @@ let selectedHistoryJobId = "";
 let styleReferenceHydrationKey = "";
 let pendingDeliveryAction = null;
 let isSubmittingDelivery = false;
+
+const DEFAULT_MODEL_BASE_URL = modelFormDefaults?.DEFAULT_BASE_URL || "https://your-api-endpoint.com/v1";
 
 const pageRichnessHelpers = window.PptPageRichness || null;
 const PAGE_RICHNESS_OPTIONS = pageRichnessHelpers?.listOptions?.() || [
@@ -113,6 +116,38 @@ function normalizeStageLabel(stage) {
   return text;
 }
 
+function formatLayoutFamilyLabel(layoutFamily) {
+  const map = {
+    hub_and_spoke: "中心辐射",
+    grid_n_x_m: "网格矩阵",
+    timeline_horizontal: "横向时间线",
+    timeline_vertical: "纵向时间线",
+    split_left_text_right_visual: "左文右图",
+    split_right_text_left_visual: "右文左图",
+    compare_two_column: "双列对比",
+    process_horizontal: "横向流程",
+    process_vertical: "纵向流程",
+    hero_with_supporting_cards: "主视觉配辅助卡片",
+  };
+  return map[String(layoutFamily || "").trim()] || String(layoutFamily || "").trim();
+}
+
+function formatReferenceModeLabel(referenceMode) {
+  const map = {
+    generation: "直接生成",
+    edit_with_refs: "参考图编辑",
+  };
+  return map[String(referenceMode || "").trim()] || String(referenceMode || "").trim();
+}
+
+function formatPromptProfileLabel(promptProfile) {
+  const map = {
+    compressed: "压缩模式",
+    verbose: "详细模式",
+  };
+  return map[String(promptProfile || "").trim()] || String(promptProfile || "").trim();
+}
+
 function updatePresetSummary() {
   if (!config) {
     return;
@@ -121,7 +156,9 @@ function updatePresetSummary() {
   if (!preset) {
     return;
   }
-  configText.textContent = `最多 ${config.max_pages} 页，当前尺寸 ${preset.label}`;
+  if (configText) {
+    configText.textContent = `最多 ${config.max_pages} 页，当前尺寸 ${preset.label}`;
+  }
   renderWorkspaceStatus();
 }
 
@@ -1181,16 +1218,16 @@ function renderPlanningStage(stage) {
 function renderPageMetaTags(page) {
   const parts = [];
   if (page.layout_family) {
-    parts.push(`<span class="meta-tag layout-tag">${escapeHtml(page.layout_family)}</span>`);
+    parts.push(`<span class="meta-tag layout-tag">${escapeHtml(formatLayoutFamilyLabel(page.layout_family))}</span>`);
   }
   if (page.page_richness) {
     parts.push(`<span class="meta-tag richness-tag">${escapeHtml(formatPageRichnessText(page.page_richness))}</span>`);
   }
   if (page.reference_mode) {
-    parts.push(`<span class="meta-tag mode-tag">${escapeHtml(page.reference_mode)}</span>`);
+    parts.push(`<span class="meta-tag mode-tag">${escapeHtml(formatReferenceModeLabel(page.reference_mode))}</span>`);
   }
   if (page.prompt_profile) {
-    parts.push(`<span class="meta-tag profile-tag">${escapeHtml(page.prompt_profile)}</span>`);
+    parts.push(`<span class="meta-tag profile-tag">${escapeHtml(formatPromptProfileLabel(page.prompt_profile))}</span>`);
   }
   if (!parts.length) {
     return "";
@@ -1616,26 +1653,27 @@ function renderModelSettings() {
 }
 
 function fillModelForm(item) {
+  const fallback = defaultModelConfig();
   modelConfigId.value = item.id || "";
   if (item.id) {
     selectedModelId = item.id;
   }
   modelName.value = item.name || "";
-  modelBaseUrl.value = item.base_url || "https://anyaigc.com/v1";
+  modelBaseUrl.value = item.base_url || fallback.base_url || DEFAULT_MODEL_BASE_URL;
   modelApiKey.value = item.api_key || "";
-  modelNameValue.value = item.model || (activeModelType === "chat" ? "gpt-5.5" : "gpt-image-2");
-  modelTemperature.value = item.temperature ?? 0.3;
-  modelMaxTokens.value = item.max_tokens ?? 5000;
-  modelOutputFormat.value = item.output_format || "png";
+  modelNameValue.value = item.model || fallback.model || "";
+  modelTemperature.value = item.temperature ?? fallback.temperature ?? 0.3;
+  modelMaxTokens.value = item.max_tokens ?? fallback.max_tokens ?? 5000;
+  modelOutputFormat.value = item.output_format || fallback.output_format || "png";
   modelFormMessage.textContent = item.id ? `正在编辑：${item.name}` : "正在新建配置";
 }
 
 function resetModelForm(item) {
   modelConfigId.value = "";
   modelName.value = item.name || "";
-  modelBaseUrl.value = item.base_url || "https://anyaigc.com/v1";
+  modelBaseUrl.value = item.base_url || DEFAULT_MODEL_BASE_URL;
   modelApiKey.value = item.api_key || "";
-  modelNameValue.value = item.model || (activeModelType === "chat" ? "gpt-5.5" : "gpt-image-2");
+  modelNameValue.value = item.model || "";
   modelTemperature.value = item.temperature ?? 0.3;
   modelMaxTokens.value = item.max_tokens ?? 5000;
   modelOutputFormat.value = item.output_format || "png";
@@ -1649,21 +1687,13 @@ function selectModel(item) {
 }
 
 function defaultModelConfig() {
-  if (activeModelType === "chat") {
-    return {
-      name: "新的对话模型",
-      base_url: "https://anyaigc.com/v1",
-      api_key: "",
-      model: "gpt-5.5",
-      temperature: 0.3,
-      max_tokens: 5000,
-    };
-  }
-  return {
-    name: "新的生图模型",
-    base_url: "https://anyaigc.com/v1",
+  return modelFormDefaults?.createModelDefaults?.(activeModelType) || {
+    name: activeModelType === "chat" ? "新的对话模型" : "新的生图模型",
+    base_url: DEFAULT_MODEL_BASE_URL,
     api_key: "",
-    model: "gpt-image-2",
+    model: "",
+    temperature: 0.3,
+    max_tokens: 5000,
     output_format: "png",
   };
 }
