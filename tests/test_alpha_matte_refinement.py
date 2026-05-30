@@ -1,16 +1,16 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
 import numpy as np
 
-from ppt_system.alpha_matte_refinement import (
+from ppt_system.image.alpha_matte_refinement import (
     BackgroundModel,
     build_color_guided_alpha,
     refine_alpha_matte,
 )
-from ppt_system.visual_white_axis import build_visual_white_mask
-from ppt_system.white_axis_cutout import build_white_axis_cutout
+from ppt_system.image.visual_white_axis import build_visual_white_mask
+from ppt_system.image.white_axis_cutout import build_white_axis_cutout
 
 
 class AlphaMatteRefinementTests(unittest.TestCase):

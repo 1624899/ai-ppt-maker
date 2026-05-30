@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.content_agent import normalize_content_plan
-from ppt_system.export_pipeline import rebuild_page_texts
-from ppt_system.page_evaluator import evaluate_page
+from ppt_system.generation.content_agent import normalize_content_plan
+from ppt_system.export.export_pipeline import rebuild_page_texts
+from ppt_system.generation.page_evaluator import evaluate_page
 
 
 class StyleRuntimeAndEvaluatorTests(unittest.TestCase):

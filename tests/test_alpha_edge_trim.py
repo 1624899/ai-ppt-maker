@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
 import numpy as np
 
-from ppt_system.alpha_edge_trim import remove_outer_background_like_fringe, tighten_outer_alpha_fringe
+from ppt_system.image.alpha_edge_trim import remove_outer_background_like_fringe, tighten_outer_alpha_fringe
 
 
 class AlphaEdgeTrimTests(unittest.TestCase):

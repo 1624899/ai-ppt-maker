@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -12,8 +12,8 @@ if str(BASE_DIR) not in sys.path:
 from PIL import Image
 from pptx import Presentation
 
-from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE
-from ppt_system.text_script_runtime import build_project_script_source, execute_generated_text_script
+from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
 
 
 def main() -> None:

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import re
@@ -9,8 +9,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from ppt_system.direct_page_script import render_direct_comparison_image
-from ppt_system.ppt_calibration_renderer import render_pptx_first_slide_to_png
+from ppt_system.export.direct_page_script import render_direct_comparison_image
+from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 
 
 def parse_args() -> argparse.Namespace:

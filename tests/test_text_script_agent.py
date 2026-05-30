@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
@@ -11,16 +11,16 @@ from PIL import Image, ImageDraw
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
 
-from ppt_system.export_layer_mode import SEPARATE_LAYER_MODE
-from ppt_system.export_page_resume import CHECKPOINT_FILE_NAME
-from ppt_system.direct_page_script import (
+from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
+from ppt_system.export.direct_page_script import (
     build_direct_page_refine_prompt,
     build_direct_page_prompt,
     prepare_direct_page_assets,
 )
-from ppt_system.export_pipeline import export_project_to_pptx
-from ppt_system.text_script_runtime import build_project_script_source, execute_generated_text_script, normalize_page_script
-from ppt_system.text_style_runtime import should_wrap_text
+from ppt_system.export.export_pipeline import export_project_to_pptx
+from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script, normalize_page_script
+from ppt_system.export.text_style_runtime import should_wrap_text
 
 
 class FakeChatProvider:
@@ -438,7 +438,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             }
             provider = FakeChatProvider([{"page_script": 'add_text(slide, "脚本页", 12, 14, 130, 36, size=20, color="163A63", bold=True)'}])
 
-            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
                 result = export_project_to_pptx(
                     project,
                     work_dir,
@@ -511,10 +511,10 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                 },
             )()
 
-            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
-                with patch("ppt_system.direct_project_script.prepare_direct_page_assets", return_value=fake_asset_result):
+            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
+                with patch("ppt_system.export.direct_project_script.prepare_direct_page_assets", return_value=fake_asset_result):
                     with patch(
-                        "ppt_system.direct_project_script.analyze_text_asset_overlaps",
+                        "ppt_system.export.direct_project_script.analyze_text_asset_overlaps",
                         return_value=type(
                             "FakeOverlap",
                             (),
@@ -634,8 +634,8 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                     return
                 original_execute(script_path, timeout_seconds=timeout_seconds)
 
-            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
-                with patch("ppt_system.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
+            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+                with patch("ppt_system.export.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
                     with self.assertRaisesRegex(RuntimeError, "模拟第 2 页导出失败"):
                         export_project_to_pptx(
                             project,
@@ -650,7 +650,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertFalse((work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists())
             self.assertEqual(len(first_run_provider.calls), 2)
 
-            with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
                 result = export_project_to_pptx(
                     project,
                     work_dir,

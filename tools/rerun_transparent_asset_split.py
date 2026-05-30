@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from ppt_system.direct_page_script import prepare_direct_page_assets  # noqa: E402
+from ppt_system.export.direct_page_script import prepare_direct_page_assets  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

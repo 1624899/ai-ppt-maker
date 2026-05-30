@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from ppt_system.export_page_resume import CHECKPOINT_FILE_NAME
-from ppt_system.export_pipeline import export_project_to_pptx
-from ppt_system.text_script_runtime import execute_generated_text_script
+from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
+from ppt_system.export.export_pipeline import export_project_to_pptx
+from ppt_system.export.text_script_runtime import execute_generated_text_script
 
 
 class FakeChatProvider:
@@ -99,8 +99,8 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
                 return
             original_execute(script_path, timeout_seconds=timeout_seconds)
 
-        with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
-            with patch("ppt_system.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+            with patch("ppt_system.export.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
                 try:
                     export_project_to_pptx(
                         project,
@@ -118,7 +118,7 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
         assert not (work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists()
         assert len(first_run_provider.calls) == 2
 
-        with patch("ppt_system.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
             result = export_project_to_pptx(
                 project,
                 work_dir,

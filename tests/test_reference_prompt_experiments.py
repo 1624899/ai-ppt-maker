@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.reference_prompt_experiments import (
+from ppt_system.generation.reference_prompt_experiments import (
     build_prompt_experiment_case,
     list_prompt_experiment_strategies,
 )

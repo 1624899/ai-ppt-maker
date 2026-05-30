@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.stage_labels import get_stage_label, normalize_stage_label
+from ppt_system.export.stage_labels import get_stage_label, normalize_stage_label
 
 
 class StageLabelTests(unittest.TestCase):

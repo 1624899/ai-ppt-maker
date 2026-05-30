@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.generation_prompts import build_reference_prompt_by_mode
+from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
 
 
 class ReferencePromptShapeConstraintsTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import shutil
@@ -12,18 +12,18 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, stream_with_context
 
-from ppt_system.content_agent import build_content_plan
-from ppt_system.delivery_options import (
+from ppt_system.generation.content_agent import build_content_plan
+from ppt_system.export.delivery_options import (
     EDITABLE_PPT_DELIVERY_KEY,
     REFERENCE_PPT_DELIVERY_KEY,
     REFERENCE_PPT_FILENAME,
     build_editable_ppt_filename,
     normalize_editable_delivery_layer_mode,
 )
-from ppt_system.export_pipeline import export_editable_delivery, export_web_job_to_pptx
-from ppt_system.generation_options import default_generation_options, resolve_generation_options
-from ppt_system.generation_prompts import build_elements_prompt
-from ppt_system.job_delivery_state import (
+from ppt_system.export.export_pipeline import export_editable_delivery, export_web_job_to_pptx
+from ppt_system.generation.generation_options import default_generation_options, resolve_generation_options
+from ppt_system.generation.generation_prompts import build_elements_prompt
+from ppt_system.jobs.job_delivery_state import (
     attach_delivery_actions,
     build_editable_delivery_payload,
     build_reference_delivery_payload,
@@ -34,21 +34,21 @@ from ppt_system.job_delivery_state import (
     set_editable_delivery_bundle,
     set_reference_delivery,
 )
-from ppt_system.page_evaluator import evaluate_plan
-from ppt_system.page_richness import PAGE_RICHNESS_LEVELS
-from ppt_system.job_store import create_job as create_job_record
-from ppt_system.job_store import delete_job as delete_job_record
-from ppt_system.job_store import get_job as get_job_record
-from ppt_system.job_store import init_db as init_job_db
-from ppt_system.job_store import list_jobs as list_job_records
-from ppt_system.job_store import update_job as update_job_record
-from ppt_system.job_state_recovery import (
+from ppt_system.generation.page_evaluator import evaluate_plan
+from ppt_system.generation.page_richness import PAGE_RICHNESS_LEVELS
+from ppt_system.jobs.job_store import create_job as create_job_record
+from ppt_system.jobs.job_store import delete_job as delete_job_record
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.jobs.job_store import init_db as init_job_db
+from ppt_system.jobs.job_store import list_jobs as list_job_records
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.jobs.job_state_recovery import (
     INTERRUPTED_MESSAGE,
     STOPPING_MESSAGE,
     is_running_job_status,
     normalize_orphaned_job_state,
 )
-from ppt_system.job_targets import (
+from ppt_system.jobs.job_targets import (
     JOB_TARGET_EDITABLE_PPT,
     TARGET_LABELS,
     build_completion_summary,
@@ -57,7 +57,7 @@ from ppt_system.job_targets import (
     normalize_job_target,
     should_continue_after_stage,
 )
-from ppt_system.model_config import (
+from ppt_system.integrations.model_config import (
     delete_model_config,
     get_active_model_config,
     list_model_configs,
@@ -66,13 +66,13 @@ from ppt_system.model_config import (
     upsert_model_config,
     write_config,
 )
-from ppt_system.openai_chat_provider import OpenAIChatProvider
-from ppt_system.openai_image_provider import OpenAIImageProvider
-from ppt_system.page_image_pipeline import run_page_image_pipeline
-from ppt_system.planning_state import has_complete_planning_state
-from ppt_system.reference_preview_export import export_reference_images_to_pptx
-from ppt_system.stage_labels import normalize_stage_label
-from ppt_system.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
+from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
+from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
+from ppt_system.generation.page_image_pipeline import run_page_image_pipeline
+from ppt_system.generation.planning_state import has_complete_planning_state
+from ppt_system.export.reference_preview_export import export_reference_images_to_pptx
+from ppt_system.export.stage_labels import normalize_stage_label
+from ppt_system.export.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
 
 
 ROOT = Path(__file__).resolve().parent

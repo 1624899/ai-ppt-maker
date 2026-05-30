@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.content_agent import build_planning_prompt, fallback_style_guide, normalize_content_plan
-from ppt_system.generation_options import resolve_generation_options
-from ppt_system.page_richness import resolve_page_richness_map
+from ppt_system.generation.content_agent import build_planning_prompt, fallback_style_guide, normalize_content_plan
+from ppt_system.generation.generation_options import resolve_generation_options
+from ppt_system.generation.page_richness import resolve_page_richness_map
 
 
 class PageRichnessTests(unittest.TestCase):

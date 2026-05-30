@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from pathlib import Path
@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, ImageDraw
 
-from ppt_system.text_placeholder_detection import detect_text_placeholders, placeholder_bboxes, save_text_placeholders
+from ppt_system.image.text_placeholder_detection import detect_text_placeholders, placeholder_bboxes, save_text_placeholders
 
 
 class TextPlaceholderDetectionTests(unittest.TestCase):

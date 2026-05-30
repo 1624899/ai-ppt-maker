@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.content_agent import fallback_style_guide, normalize_content_plan
+from ppt_system.generation.content_agent import fallback_style_guide, normalize_content_plan
 
 
 class Stage1ReferenceDefaultsTests(unittest.TestCase):

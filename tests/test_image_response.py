@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import tempfile
@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ppt_system.image_response import decode_data_uri, resolve_image_bytes, save_image_from_response_payload
+from ppt_system.integrations.image_response import decode_data_uri, resolve_image_bytes, save_image_from_response_payload
 
 
 class _FakeHttpResponse:
@@ -39,7 +39,7 @@ class ImageResponseTests(unittest.TestCase):
 
     def test_resolve_image_bytes_downloads_http_url(self) -> None:
         raw = b"image-from-http"
-        with patch("ppt_system.image_response.requests.get", return_value=_FakeHttpResponse(raw)) as mock_get:
+        with patch("ppt_system.integrations.image_response.requests.get", return_value=_FakeHttpResponse(raw)) as mock_get:
             result = resolve_image_bytes({"url": "https://example.com/test.png"}, timeout=5)
 
         self.assertEqual(result, raw)

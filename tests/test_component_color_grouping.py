@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
 import numpy as np
 
-from ppt_system.component_color_grouping import merge_color_coherent_fragments
+from ppt_system.image.component_color_grouping import merge_color_coherent_fragments
 
 
 def _component(left: int, top: int, width: int, height: int, color: tuple[int, int, int]) -> tuple[dict[str, object], np.ndarray]:

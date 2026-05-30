@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from http.client import RemoteDisconnected
@@ -7,7 +7,7 @@ from unittest.mock import patch
 from requests import Response
 from requests.exceptions import ConnectTimeout, ConnectionError
 
-from ppt_system.openai_image_provider import OpenAIImageProvider
+from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
 
 
 def build_response(status_code: int) -> Response:
@@ -33,8 +33,8 @@ class ImageRetryPolicyTests(unittest.TestCase):
             {"api_key": "test-key"},
         )
 
-    @patch("ppt_system.openai_image_provider.time.sleep", return_value=None)
-    @patch("ppt_system.openai_image_provider.requests.post")
+    @patch("ppt_system.integrations.openai_image_provider.time.sleep", return_value=None)
+    @patch("ppt_system.integrations.openai_image_provider.requests.post")
     def test_remote_disconnected_does_not_blindly_retry(self, mock_post, _mock_sleep) -> None:
         mock_post.side_effect = ConnectionError(
             "Connection aborted.",
@@ -47,8 +47,8 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(mock_post.call_count, 1)
         self.assertIn("已停止自动重试", str(ctx.exception))
 
-    @patch("ppt_system.openai_image_provider.time.sleep", return_value=None)
-    @patch("ppt_system.openai_image_provider.requests.post")
+    @patch("ppt_system.integrations.openai_image_provider.time.sleep", return_value=None)
+    @patch("ppt_system.integrations.openai_image_provider.requests.post")
     def test_connection_setup_error_can_retry_once(self, mock_post, _mock_sleep) -> None:
         mock_post.side_effect = [
             ConnectTimeout("connect timeout"),
@@ -60,8 +60,8 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_post.call_count, 2)
 
-    @patch("ppt_system.openai_image_provider.time.sleep", return_value=None)
-    @patch("ppt_system.openai_image_provider.requests.post")
+    @patch("ppt_system.integrations.openai_image_provider.time.sleep", return_value=None)
+    @patch("ppt_system.integrations.openai_image_provider.requests.post")
     def test_http_retry_still_respects_retryable_status_codes(self, mock_post, _mock_sleep) -> None:
         mock_post.side_effect = [
             build_response(503),

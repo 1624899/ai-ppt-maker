@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 from PIL import Image, ImageDraw
 
-from ppt_system.splitter import split_transparent_png
+from ppt_system.image.splitter import split_transparent_png
 
 
 class SplitterTests(unittest.TestCase):

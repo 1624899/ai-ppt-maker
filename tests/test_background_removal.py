@@ -1,4 +1,4 @@
-...\\\"\
+﻿...\\\"\
 \\\\\\\
 import unittest
 from pathlib import Path
@@ -6,12 +6,12 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from ppt_system.background_removal import (
+from ppt_system.image.background_removal import (
     BACKGROUND_REMOVAL_STRATEGY,
     BACKGROUND_REMOVAL_STRATEGY_PRESERVE_ALPHA,
     remove_background,
 )
-from ppt_system.image_ops import make_transparent
+from ppt_system.image.image_ops import make_transparent
 
 
 class BackgroundRemovalTests(unittest.TestCase):

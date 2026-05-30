@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
 import numpy as np
 
-from ppt_system.asset_cleaner import restore_removed_regions
+from ppt_system.image.asset_cleaner import restore_removed_regions
 
 
 class AssetCleanerTests(unittest.TestCase):

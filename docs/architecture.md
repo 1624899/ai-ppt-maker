@@ -5,30 +5,30 @@
 系统当前按“Web 编排 + 真实闭环导出”拆分：
 
 1. `web_app.py` 接收长文、页数、风格参考图和模型配置。
-2. `ppt_system/content_agent.py` 生成 `style_guide` 和页面规划。
-3. `ppt_system/design_grammar.py` 归一化设计语法、版式家族和 prompt 压缩策略。
-4. `ppt_system/generation_prompts.py` 构建每页参考图 prompt 与元素图 prompt。
-5. `ppt_system/openai_image_provider.py` 调用图像模型，输出参考图和去文字元素图。
-6. `ppt_system/page_evaluator.py` 对页面规划和 prompt 做轻量规则评估。
-7. `ppt_system/export_pipeline.py` 将 Web 任务转换为导出项目，并调度 `direct_office_refine`。
-8. `ppt_system/direct_project_script.py` 按页执行：
+2. `ppt_system.generation.content_agent` 生成 `style_guide` 和页面规划。
+3. `ppt_system.generation.design_grammar` 归一化设计语法、版式家族和 prompt 压缩策略。
+4. `ppt_system.generation.generation_prompts` 构建每页参考图 prompt 与元素图 prompt。
+5. `ppt_system.integrations.openai_image_provider` 调用图像模型，输出参考图和去文字元素图。
+6. `ppt_system.generation.page_evaluator` 对页面规划和 prompt 做轻量规则评估。
+7. `ppt_system.export.export_pipeline` 将 Web 任务转换为导出项目，并调度 `direct_office_refine`。
+8. `ppt_system.export.direct_project_script` 按页执行：
    - 首轮：`参考图 + 元素图`
    - 元素图增强、透明化、连通域分割
    - 真实 PPT 导出 PNG
    - 二轮：`参考图 + 真实导出图`
-9. `ppt_system/text_script_runtime.py` 负责白名单脚本校验、脚本模板组装与执行。
+9. `ppt_system.export.text_script_runtime` 负责白名单脚本校验、脚本模板组装与执行。
 
 ## 主要模块边界
 
-- 内容规划：`content_agent.py`、`planner.py`、`design_grammar.py`
-- Prompt 构建：`generation_prompts.py`
-- 模型访问：`openai_chat_provider.py`、`openai_image_provider.py`
-- Web 任务状态：`job_store.py`、`stage_resume.py`
-- 导出编排：`export_pipeline.py`、`direct_project_script.py`、`direct_page_script.py`
-- 元素处理：`image_ops.py`、`background_removal.py`、`splitter.py`、`component_postprocess.py`
-- PPT 真渲染：`ppt_calibration_renderer.py`
-- 脚本运行时：`text_script_runtime.py`、`text_style_runtime.py`
-- 风格运行时：`style_runtime.py`、`page_evaluator.py`
+- 内容规划：`generation/content_agent.py`、`generation/planner.py`、`generation/design_grammar.py`
+- Prompt 构建：`generation/generation_prompts.py`
+- 模型访问：`integrations/openai_chat_provider.py`、`integrations/openai_image_provider.py`
+- Web 任务状态：`jobs/job_store.py`、`export/stage_resume.py`
+- 导出编排：`export/export_pipeline.py`、`export/direct_project_script.py`、`export/direct_page_script.py`
+- 元素处理：`image/image_ops.py`、`image/background_removal.py`、`image/splitter.py`、`image/component_postprocess.py`
+- PPT 真渲染：`export/ppt_calibration_renderer.py`
+- 脚本运行时：`export/text_script_runtime.py`、`export/text_style_runtime.py`
+- 风格运行时：`generation/style_runtime.py`、`generation/page_evaluator.py`
 
 ## 数据产物
 

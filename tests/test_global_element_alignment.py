@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from pathlib import Path
@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, ImageDraw
 
-from ppt_system.global_element_alignment import align_elements_image_to_reference, analyze_global_element_alignment
+from ppt_system.image.global_element_alignment import align_elements_image_to_reference, analyze_global_element_alignment
 
 
 class GlobalElementAlignmentTests(unittest.TestCase):

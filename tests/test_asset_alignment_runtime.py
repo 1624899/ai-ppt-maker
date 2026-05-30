@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image, ImageDraw
 
-from ppt_system.asset_alignment_runtime import analyze_text_asset_overlaps
+from ppt_system.image.asset_alignment_runtime import analyze_text_asset_overlaps
 
 
 class AssetAlignmentRuntimeTests(unittest.TestCase):

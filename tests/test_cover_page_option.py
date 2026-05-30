@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.content_agent import fallback_style_guide, normalize_content_plan
-from ppt_system.generation_options import resolve_generation_options
+from ppt_system.generation.content_agent import fallback_style_guide, normalize_content_plan
+from ppt_system.generation.generation_options import resolve_generation_options
 
 
 class CoverPageOptionTests(unittest.TestCase):

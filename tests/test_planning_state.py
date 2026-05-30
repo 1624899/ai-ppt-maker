@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.planning_state import has_complete_page_plan, has_complete_planning_state
+from ppt_system.generation.planning_state import has_complete_page_plan, has_complete_planning_state
 
 
 class PlanningStateTests(unittest.TestCase):

@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from concurrent.futures import Future
 
-from ppt_system.concurrent_stage import drain_fail_safe_futures
+from ppt_system.jobs.concurrent_stage import drain_fail_safe_futures
 
 
 def resolved_future(result=None, exc: BaseException | None = None) -> Future:

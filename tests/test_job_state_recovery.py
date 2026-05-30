@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
@@ -7,9 +7,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import web_app
-from ppt_system.job_store import create_job as create_job_record
-from ppt_system.job_store import get_job as get_job_record
-from ppt_system.job_store import init_db as init_job_db
+from ppt_system.jobs.job_store import create_job as create_job_record
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.jobs.job_store import init_db as init_job_db
 
 
 class JobStateRecoveryTests(unittest.TestCase):

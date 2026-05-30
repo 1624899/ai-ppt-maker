@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
-from ppt_system.page_image_pipeline import run_page_image_pipeline
+from ppt_system.generation.page_image_pipeline import run_page_image_pipeline
 
 
 def resolved_future(result: Any = None, exc: BaseException | None = None) -> Future:

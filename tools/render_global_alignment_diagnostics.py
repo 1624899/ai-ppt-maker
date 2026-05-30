@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import sys
@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ppt_system.global_element_alignment import (
+from ppt_system.image.global_element_alignment import (
     _build_elements_mask,
     _build_reference_mask,
     _extract_contour_mask,

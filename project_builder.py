@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 from typing import Any
 
-from ppt_system.image_prompt import build_image_prompts
-from ppt_system.planner import build_plan
-from ppt_system.text_layout import build_text_layouts
+from ppt_system.integrations.image_prompt import build_image_prompts
+from ppt_system.generation.planner import build_plan
+from ppt_system.generation.text_layout import build_text_layouts
 
 
 def parse_args() -> argparse.Namespace:

@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 
-from ppt_system.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
+from ppt_system.export.stage_resume import has_expected_outputs, reconcile_completed_stages, should_run_stage
 
 
 class StageResumeTests(unittest.TestCase):

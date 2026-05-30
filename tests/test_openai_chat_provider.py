@@ -1,12 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import unittest
 from typing import Any
 from unittest.mock import patch
 
-from ppt_system.model_config import sanitize_model_config
-from ppt_system.openai_chat_provider import OpenAIChatProvider
+from ppt_system.integrations.model_config import sanitize_model_config
+from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 
 
 class _FakeResponse:
@@ -105,7 +105,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             captured_payload.update(json)
             return _FakeResponse()
 
-        with patch("ppt_system.openai_chat_provider.requests.post", side_effect=fake_post):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(captured_payload["reasoning_effort"], "high")
@@ -129,7 +129,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             captured_url = url
             return _FakeResponse()
 
-        with patch("ppt_system.openai_chat_provider.requests.post", side_effect=fake_post):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(captured_url, "https://example.com/gateway/v1/chat/completions")
@@ -153,7 +153,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             captured_payload.update(json)
             return _FakeResponse()
 
-        with patch("ppt_system.openai_chat_provider.requests.post", side_effect=fake_post):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(captured_payload["reasoning_effort"], "medium")
@@ -181,7 +181,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
         response = _FakeResponse(payload)
         response.text = '{"page_script":"add_text(slide, \\"æé®å³ç«äºå\\", 0, 0, 100, 40)"}'
 
-        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(result["page_script"], 'add_text(slide, "提问即竞争力", 0, 0, 100, 40)')
@@ -198,7 +198,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
         provider = OpenAIChatProvider(config, profile)
         response = _BrokenJsonResponse(text="<html>upstream error</html>", content=b"<html>upstream error</html>")
 
-        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
             with self.assertRaisesRegex(RuntimeError, "非 JSON 响应"):
                 provider.complete_json([{"role": "user", "content": "test"}])
 
@@ -227,7 +227,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             }
         )
 
-        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
             with self.assertRaisesRegex(RuntimeError, "未返回可用文本内容"):
                 provider.complete_json([{"role": "user", "content": "test"}])
 
@@ -256,7 +256,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             }
         )
 
-        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
@@ -277,7 +277,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
             }
         )
 
-        with patch("ppt_system.openai_chat_provider.requests.post", return_value=response):
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
@@ -310,8 +310,8 @@ class OpenAIChatProviderTests(unittest.TestCase):
             _FakeResponse(),
         ]
 
-        with patch("ppt_system.openai_chat_provider.time.sleep", return_value=None):
-            with patch("ppt_system.openai_chat_provider.requests.post", side_effect=responses) as mock_post:
+        with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=responses) as mock_post:
                 result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
