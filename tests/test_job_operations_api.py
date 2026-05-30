@@ -156,8 +156,8 @@ class JobOperationsApiTests(unittest.TestCase):
         )
         return job_id, job_dir
 
-    def test_agent_instruction_is_recorded_without_submitting_pipeline(self) -> None:
-        job_id, _job_dir = self._seed_completed_pages()
+    def test_agent_style_instruction_requeues_pipeline_for_whole_deck(self) -> None:
+        job_id, job_dir = self._seed_completed_pages()
         initial_submit_count = len(self.executor.calls)
 
         response = self.client.post(
@@ -168,9 +168,84 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertIsNotNone(payload)
+        self.assertEqual(len(self.executor.calls), initial_submit_count + 1)
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["current_stage"], "reference_generation")
+        self.assertEqual(payload["operations"][-1]["status"], "submitted")
+        self.assertEqual(payload["operations"][-1]["execution"], "pipeline")
+        self.assertEqual(payload["operations"][-1]["edit_kind"], "style")
+        self.assertEqual(payload["operations"][-1]["affected_pages"], [1, 2])
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [])
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [])
+        self.assertEqual(len(payload["page_versions"]), 2)
+        self.assertTrue((job_dir / "versions" / "page_01" / payload["page_versions"][0]["version_id"] / "reference.png").exists())
+
+    def test_ambiguous_agent_instruction_is_recorded_without_submitting_pipeline(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        initial_submit_count = len(self.executor.calls)
+
+        response = self.client.post(
+            f"/api/jobs/{job_id}/operations",
+            json={"operation_type": "agent_instruction", "instruction": "帮我看看这份 PPT 有没有问题"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
         self.assertEqual(len(self.executor.calls), initial_submit_count)
         self.assertEqual(payload["operations"][-1]["status"], "accepted")
         self.assertEqual(payload["operations"][-1]["execution"], "pending_backend")
+
+    def test_page_text_optimize_rebuilds_export_without_invalidating_images(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        initial_submit_count = len(self.executor.calls)
+
+        response = self.client.post(
+            f"/api/jobs/{job_id}/operations",
+            json={"operation_type": "page_text_optimize", "page_no": 2, "instruction": "第二页减少文字，正文压缩到 3 个要点"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertEqual(len(self.executor.calls), initial_submit_count + 1)
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["current_stage"], "ppt_export")
+        self.assertEqual(payload["operations"][-1]["edit_kind"], "text")
+        self.assertEqual(payload["operations"][-1]["affected_pages"], [2])
+
+        page_two = next(page for page in payload["pages"] if int(page["page_no"]) == 2)
+        self.assertTrue(page_two["reference_image"])
+        self.assertTrue(page_two["element_image"])
+        self.assertLessEqual(len(page_two["bullets"]), 3)
+        self.assertTrue(page_two["texts"])
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1, 2])
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1, 2])
+
+    def test_page_layout_optimize_updates_plan_and_invalidates_target_page(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        initial_submit_count = len(self.executor.calls)
+
+        response = self.client.post(
+            f"/api/jobs/{job_id}/operations",
+            json={"operation_type": "page_layout_optimize", "page_no": 2, "instruction": "第二页改为流程图，并且更留白"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertEqual(len(self.executor.calls), initial_submit_count + 1)
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["current_stage"], "reference_generation")
+        self.assertEqual(payload["operations"][-1]["edit_kind"], "layout")
+
+        page_two = next(page for page in payload["pages"] if int(page["page_no"]) == 2)
+        self.assertEqual(page_two["layout_family"], "process_horizontal")
+        self.assertEqual(page_two["page_richness"], "low")
+        self.assertEqual(page_two["reference_image"], "")
+        self.assertEqual(page_two["element_image"], "")
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1])
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1])
 
     def test_page_regenerate_backs_up_target_page_and_requeues_pipeline(self) -> None:
         job_id, job_dir = self._seed_completed_pages()

@@ -9,6 +9,7 @@ import {
   buildAgentSummary,
   getLatestPageVersion,
   getJobMeta,
+  getOperationExecutionLabel,
   getJobPages,
   getJobTitle,
   getOperationStatusLabel,
@@ -138,8 +139,8 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
 
             {currentJob && (
               <>
-                <FeaturePending title="Agent 改稿流水线待接入">
-                  当前已接入后端操作记录：修改意图会保存到任务状态；单页重新生成会触发现有生成流水线。智能对话改稿仍待后端 Agent 执行器接入。
+                <FeaturePending title="Agent 改稿已接入基础执行器">
+                  可识别单页文字、排版和整套风格调整，并提交对应流水线；开放式评审类对话会先记录到任务历史。
                 </FeaturePending>
                 <div className="quick-actions" aria-label="快捷修改">
                   {QUICK_ACTIONS.map((action) => (
@@ -148,7 +149,7 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                       key={action}
                       onClick={() => quickSubmit(action)}
                       disabled={pendingKey !== '' || (isRunning && action !== '导出PPT')}
-                      title={action === '导出PPT' ? '会先写入导出要求，请在右侧选择导出格式' : '记录修改意图到后端'}
+                      title={action === '导出PPT' ? '会先写入导出要求，请在右侧选择导出格式' : '提交 Agent 编辑操作'}
                     >
                       {pendingKey === QUICK_ACTION_OPERATION[action] ? '提交中...' : action}
                     </button>
@@ -174,7 +175,7 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                       className="btn btn-secondary"
                       onClick={() => submitOperation('agent_instruction')}
                       disabled={pendingKey !== '' || !draftInstruction.trim()}
-                      title="先记录到后端操作历史，等待 Agent 执行器接入"
+                      title="提交给后端 Agent 编辑执行器；无法判断的开放式请求会先记录到历史"
                     >
                       {pendingKey === 'agent_instruction' ? <LoaderCircle className="spin" size={16} /> : <MessageSquareText size={16} />}
                       记录给 Agent
@@ -191,7 +192,11 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                     {recentOperations.map((operation) => (
                       <article className="operation-item" key={operation.operation_id}>
                         <strong>{operation.label || operation.type}</strong>
-                        <span>{getOperationStatusLabel(operation.status)} · {operation.message || operation.instruction || '已同步到任务状态'}</span>
+                        <span>
+                          {[getOperationStatusLabel(operation.status), getOperationExecutionLabel(operation.execution)].filter(Boolean).join(' · ')}
+                          {' · '}
+                          {operation.message || operation.instruction || '已同步到任务状态'}
+                        </span>
                       </article>
                     ))}
                   </section>
@@ -213,8 +218,8 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                   {getPageSummary(activePage) && <p>{getPageSummary(activePage)}</p>}
                 </div>
 
-                <FeaturePending title="单页编辑逐步接入中">
-                  重新生成本页已接入后端流水线；文字优化、排版优化会先记录为页面编辑请求，等待 Agent 编辑执行器接入。
+                <FeaturePending title="单页编辑已接入后端">
+                  文字优化会保留当前图片并重建可编辑 PPT；排版优化和重新生成会备份当前页后重跑相关页面产物。
                 </FeaturePending>
 
                 <div className="edit-block">

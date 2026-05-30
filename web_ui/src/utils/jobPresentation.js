@@ -162,10 +162,19 @@ export function getOperationStatusLabel(status) {
     accepted: '已记录',
     created: '已创建',
     submitted: '已提交',
+    running: '执行中',
     completed: '已完成',
     error: '失败',
   };
   return labels[String(status || '').trim()] || '处理中';
+}
+
+export function getOperationExecutionLabel(execution) {
+  const labels = {
+    pipeline: '进入流水线',
+    pending_backend: '仅记录',
+  };
+  return labels[String(execution || '').trim()] || '';
 }
 
 export function getPageCount(job) {

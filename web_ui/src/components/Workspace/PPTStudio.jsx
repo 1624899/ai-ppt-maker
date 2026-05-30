@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Download, ExternalLink, FileArchive, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
 import FeaturePending from './FeaturePending';
@@ -26,10 +26,11 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
   const [previewType, setPreviewType] = useState('element');
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
-  const previewOptions = useMemo(() => getPageImageOptions(activePage), [activePage]);
+  const previewOptions = getPageImageOptions(activePage);
   const selectedPreview = previewOptions.find((option) => option.key === previewType && option.src)
     || previewOptions.find((option) => option.src)
     || null;
+  const previewValue = selectedPreview?.key || previewType;
   const activeImage = selectedPreview?.src || getPageImage(activePage);
   const activeImageKind = selectedPreview?.label || getPageImageKind(activePage);
   const actions = Array.isArray(currentJob?.delivery_actions) ? currentJob.delivery_actions : [];
@@ -41,11 +42,6 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
     onJobUpdated,
   });
 
-  useEffect(() => {
-    if (!selectedPreview?.key || selectedPreview.key === previewType) return;
-    setPreviewType(selectedPreview.key);
-  }, [previewType, selectedPreview?.key]);
-
   return (
     <aside className="workspace-panel ppt-studio">
       <div className="workspace-panel__header ppt-studio__header">
@@ -56,7 +52,7 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
         </div>
         <ImagePreviewSwitch
           options={previewOptions}
-          value={selectedPreview?.key || previewType}
+          value={previewValue}
           onChange={setPreviewType}
         />
       </div>

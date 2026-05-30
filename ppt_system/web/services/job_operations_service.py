@@ -10,6 +10,13 @@ from typing import Any
 from flask import jsonify, request
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.job_edit_planner import (
+    apply_job_style_edit,
+    apply_page_layout_edit,
+    apply_page_text_edit,
+    build_edit_context,
+    plan_agent_edit,
+)
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
 
 
@@ -30,6 +37,8 @@ OPERATION_LABELS = {
 }
 
 RECORD_ONLY_MESSAGE = "已记录修改意图，等待 Agent 编辑流水线接入后执行。"
+AGENT_EDIT_MESSAGE = "已应用编辑意图，并提交后续生成流水线。"
+TEXT_EDIT_MESSAGE = "已更新页面文字结构，并提交可编辑 PPT 重建。"
 
 
 def api_create_job_operation(job_id: str):
@@ -57,13 +66,14 @@ def create_job_operation(job_id: str, payload: dict[str, Any]) -> dict[str, Any]
     if not state:
         raise FileNotFoundError("任务状态不存在")
 
-    if operation_type in PIPELINE_OPERATION_TYPES and str(record.get("status")) in RUNNING_STATUSES:
-        raise RuntimeError("当前任务正在运行，请等待完成或停止后再操作。")
-
     if operation_type == "page_regenerate":
+        _ensure_not_running(record)
         return _regenerate_page(runtime, record, state, payload)
     if operation_type == "restore_page_version":
+        _ensure_not_running(record)
         return _restore_page_version(runtime, record, state, payload)
+    if operation_type in PAGE_RECORD_ONLY_TYPES | JOB_RECORD_ONLY_TYPES:
+        return _apply_agent_edit_operation(runtime, record, state, payload, operation_type)
     return _record_pending_operation(runtime, record, state, payload, operation_type)
 
 
@@ -73,6 +83,102 @@ def _normalize_operation_type(value: Any) -> str:
     if operation_type not in allowed:
         raise ValueError(f"不支持的任务操作：{operation_type or '空'}")
     return operation_type
+
+
+def _ensure_not_running(record: dict[str, Any]) -> None:
+    if str(record.get("status")) in RUNNING_STATUSES:
+        raise RuntimeError("当前任务正在运行，请等待完成或停止后再操作。")
+
+
+def _apply_agent_edit_operation(
+    runtime: Any,
+    record: dict[str, Any],
+    state: dict[str, Any],
+    payload: dict[str, Any],
+    operation_type: str,
+) -> dict[str, Any]:
+    job_id = str(record["job_id"])
+    job_dir = Path(record["job_dir"])
+    page_no = _optional_page_no(payload.get("page_no"))
+    if operation_type in PAGE_RECORD_ONLY_TYPES:
+        if page_no is None:
+            raise ValueError("页面级操作缺少 page_no。")
+        _find_page(state, page_no)
+    instruction = _normalize_instruction(payload.get("instruction"))
+    if not instruction:
+        raise ValueError("请先填写修改要求。")
+
+    available_page_numbers = _collect_page_numbers(state)
+    edit_plan = plan_agent_edit(
+        operation_type,
+        instruction,
+        explicit_page_no=page_no,
+        available_page_numbers=available_page_numbers,
+    )
+    if edit_plan.record_only:
+        return _record_pending_operation(runtime, record, state, payload, operation_type)
+    if not edit_plan.page_numbers:
+        return _record_pending_operation(runtime, record, state, payload, operation_type)
+
+    _ensure_not_running(record)
+    for target_page_no in edit_plan.page_numbers:
+        _find_page(state, target_page_no)
+
+    operation = _build_operation(operation_type, page_no=page_no, instruction=instruction, payload=payload)
+    operation["status"] = "submitted"
+    operation["execution"] = "pipeline"
+    operation["edit_kind"] = edit_plan.edit_kind
+    operation["affected_pages"] = list(edit_plan.page_numbers)
+    operation["message"] = TEXT_EDIT_MESSAGE if edit_plan.edit_kind == "text" else AGENT_EDIT_MESSAGE
+    versions = [
+        _create_page_version(job_id, job_dir, state, target_page_no, operation["operation_id"], reason=f"before_{edit_plan.edit_kind}_edit")
+        for target_page_no in edit_plan.page_numbers
+    ]
+    operation["version_ids"] = [version["version_id"] for version in versions]
+    if len(versions) == 1:
+        operation["version_id"] = versions[0]["version_id"]
+
+    def updater(current_state: dict[str, Any]) -> None:
+        context = build_edit_context(current_state)
+        effects: list[dict[str, Any]] = []
+        _append_operation(current_state, operation)
+        for version in versions:
+            _append_page_version(current_state, version)
+        for target_page_no in edit_plan.page_numbers:
+            _append_page_edit_request(current_state, target_page_no, operation)
+            if edit_plan.edit_kind == "text":
+                effects.append(apply_page_text_edit(current_state, target_page_no, instruction, payload, context))
+            elif edit_plan.edit_kind == "layout":
+                effects.append(apply_page_layout_edit(current_state, target_page_no, instruction, payload, context))
+            elif edit_plan.edit_kind == "style":
+                # 整套风格调整只需要执行一次，循环外统一处理。
+                continue
+            if edit_plan.requires_image_regeneration:
+                _invalidate_page_outputs(current_state, target_page_no, "")
+        if edit_plan.edit_kind == "style":
+            effect = apply_job_style_edit(current_state, instruction, context)
+            effects.append(effect)
+            for target_page_no in edit_plan.page_numbers:
+                _invalidate_page_outputs(current_state, target_page_no, "")
+        _update_operation_fields(
+            current_state,
+            operation["operation_id"],
+            {
+                "effects": effects,
+                "updated_at": _timestamp(),
+            },
+        )
+        _invalidate_delivery_result(current_state)
+        if edit_plan.requires_image_regeneration:
+            _reset_generation_stages_for_pages(current_state, edit_plan.page_numbers, "等待 Agent 编辑后重新生成")
+        else:
+            _reset_export_stage(current_state, edit_plan.page_numbers, "等待 Agent 编辑后重建可编辑 PPT")
+
+    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
+    _invalidate_job_snapshot_result(runtime, job_dir)
+    submit_existing_job_pipeline(record)
+    return runtime.attach_delivery_actions(updated_state, job_dir)
 
 
 def _regenerate_page(
@@ -230,6 +336,17 @@ def _append_page_edit_request(state: dict[str, Any], page_no: int, operation: di
     del requests[:-20]
 
 
+def _update_operation_fields(state: dict[str, Any], operation_id: str, fields: dict[str, Any]) -> None:
+    operations = state.get("operations", [])
+    if not isinstance(operations, list):
+        return
+    for operation in operations:
+        if not isinstance(operation, dict) or str(operation.get("operation_id", "")) != str(operation_id):
+            continue
+        operation.update(json.loads(json.dumps(fields, ensure_ascii=False)))
+        return
+
+
 def _create_page_version(
     job_id: str,
     job_dir: Path,
@@ -336,6 +453,10 @@ def _invalidate_page_outputs(state: dict[str, Any], page_no: int, instruction: s
 
 
 def _reset_generation_stages(state: dict[str, Any], page_no: int, summary: str) -> None:
+    _reset_generation_stages_for_pages(state, (page_no,), summary)
+
+
+def _reset_generation_stages_for_pages(state: dict[str, Any], page_numbers: tuple[int, ...], summary: str) -> None:
     state["status"] = "queued"
     state["current_stage"] = "reference_generation"
     state["error"] = ""
@@ -350,7 +471,32 @@ def _reset_generation_stages(state: dict[str, Any], page_no: int, summary: str) 
         stage["status"] = "pending"
         stage["summary"] = summary
         logs = stage.setdefault("logs", [])
-        logs.append(f"第 {page_no} 页已提交编辑操作，等待流水线处理")
+        logs.append(f"{_format_page_scope(page_numbers)}已提交编辑操作，等待流水线处理")
+
+
+def _reset_export_stage(state: dict[str, Any], page_numbers: tuple[int, ...], summary: str) -> None:
+    state["status"] = "queued"
+    state["current_stage"] = "ppt_export"
+    state["error"] = ""
+    state["stop_requested"] = False
+    for stage in state.get("stages", []):
+        if not isinstance(stage, dict) or stage.get("key") != "ppt_export":
+            continue
+        stage["status"] = "pending"
+        stage["summary"] = summary
+        logs = stage.setdefault("logs", [])
+        logs.append(f"{_format_page_scope(page_numbers)}已更新文字内容，等待重建可编辑 PPT")
+
+
+def _format_page_scope(page_numbers: tuple[int, ...]) -> str:
+    normalized = [int(page_no) for page_no in page_numbers if int(page_no) > 0]
+    if not normalized:
+        return "任务"
+    if len(normalized) == 1:
+        return f"第 {normalized[0]} 页"
+    preview = "、".join(str(page_no) for page_no in normalized[:6])
+    suffix = "等页面" if len(normalized) > 6 else "页"
+    return f"第 {preview} {suffix}"
 
 
 def _invalidate_delivery_result(state: dict[str, Any]) -> None:
@@ -447,6 +593,21 @@ def _find_page(state: dict[str, Any], page_no: int) -> dict[str, Any]:
         if isinstance(page, dict) and int(page.get("page_no", 0) or 0) == int(page_no):
             return page
     raise ValueError(f"找不到第 {page_no} 页。")
+
+
+def _collect_page_numbers(state: dict[str, Any]) -> list[int]:
+    page_numbers: list[int] = []
+    for page in state.get("pages", []):
+        if not isinstance(page, dict):
+            continue
+        try:
+            page_no = int(page.get("page_no", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if page_no > 0 and page_no not in page_numbers:
+            page_numbers.append(page_no)
+    page_numbers.sort()
+    return page_numbers
 
 
 def _coerce_page_no(value: Any) -> int:
