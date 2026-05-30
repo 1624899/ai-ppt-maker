@@ -186,7 +186,7 @@ def build_compact_reference_prompt(
         if adherence == "loose":
             lines.append("让新页面看起来明显属于同一套模板体系，但可以围绕内容重新安排模块重心。")
         elif adherence == "strict":
-            lines.append("优先遵守参考图的模板秩序与视觉密度，不要随意改写模块骨架。")
+            lines.append("优先遵守原稿图的模板秩序与视觉密度，不要随意改写模块骨架。")
         else:
             lines.append("让新页面延续同一套模板体系，同时为本页内容保留适度变化空间。")
     else:
@@ -200,7 +200,7 @@ def build_compact_reference_prompt(
     if slots:
         lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
     if adherence == "strict" and has_reference_images:
-        lines.append(f"组织方式请严格贴合 {layout_family} 的版式骨架，并优先沿用参考图的模块秩序与卡片节奏。")
+        lines.append(f"组织方式请严格贴合 {layout_family} 的版式骨架，并优先沿用原稿图的模块秩序与卡片节奏。")
     elif adherence == "loose" and has_reference_images:
         lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排可由你围绕内容重新设计。")
     else:
@@ -257,8 +257,8 @@ def build_slot_brief_reference_prompt(
         lines.append("请围绕以下语义分区组织页面，而不是机械照抄固定构图：")
         lines.extend(f"{index + 1}. {slot}" for index, slot in enumerate(slots[:5]))
     if adherence == "strict" and has_reference_images:
-        lines.append(f"版式请严格贴近 {layout_family} 对应的参考图骨架，卡片数量、层级关系和视觉节奏尽量与参考图同源。")
-        lines.append("优先按参考图的模块组织方式安排视觉重心、流程方向、卡片分组和图标组合。")
+        lines.append(f"版式请严格贴近 {layout_family} 对应的原稿图骨架，卡片数量、层级关系和视觉节奏尽量与原稿图同源。")
+        lines.append("优先按原稿图的模块组织方式安排视觉重心、流程方向、卡片分组和图标组合。")
     elif adherence == "loose" and has_reference_images:
         lines.append(f"版式只需大致接近 {layout_family}，无需强行复刻具体卡片数量或指定图标。")
         lines.append("你可以自主决定最适合的视觉重心、流程方向、卡片分组和图标组合。")

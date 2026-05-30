@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Download, ExternalLink, FileArchive, Play, Square } from 'lucide-react';
+import { Download, ExternalLink, FileArchive, MousePointer2, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
 import FeaturePending from './FeaturePending';
 import ImagePreviewSwitch from './ImagePreviewSwitch';
@@ -22,8 +21,17 @@ const EXPORT_FALLBACKS = [
   { key: 'share', label: '复制分享链接', description: '分享服务待接入' },
 ];
 
-const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJobUpdated }) => {
-  const [previewType, setPreviewType] = useState('element');
+const PPTStudio = ({
+  currentJob,
+  loading,
+  selectedPageIndex,
+  previewType,
+  imageAnnotations,
+  onSelectPage,
+  onPreviewTypeChange,
+  onJobUpdated,
+  onOpenImageMarkup,
+}) => {
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
   const previewOptions = getPageImageOptions(activePage);
@@ -53,7 +61,7 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
         <ImagePreviewSwitch
           options={previewOptions}
           value={previewValue}
-          onChange={setPreviewType}
+          onChange={onPreviewTypeChange}
         />
       </div>
 
@@ -82,6 +90,10 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
           />
           <div className="preview-actions">
             <button type="button" disabled title="替换图片的后端接口尚未接入">替换</button>
+            <button type="button" onClick={onOpenImageMarkup} disabled={!activeImage}>
+              <MousePointer2 size={15} />
+              标注编辑{imageAnnotations?.length ? `(${imageAnnotations.length})` : ''}
+            </button>
             <a className={clsx(!activeImage && 'is-disabled')} href={activeImage || undefined} download>
               下载当前页 PNG
             </a>
@@ -154,7 +166,7 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
           {actionError && <div className="form-error">{actionError}</div>}
 
           <div className="export-list">
-            {actions.length === 0 && <div className="empty-state">完成参考图或可编辑元素后，会出现 PPTX 导出入口。</div>}
+            {actions.length === 0 && <div className="empty-state">完成原稿图或可编辑元素后，会出现 PPTX 导出入口。</div>}
             {actions.map((action) => {
               const generated = action.generated && action.generated_file?.pptx_url;
               return (

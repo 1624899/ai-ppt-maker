@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Bot, History, LoaderCircle, MessageSquareText, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Bot, History, LoaderCircle, MessageSquareText, SlidersHorizontal, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
+import AgentChatPanel from './AgentChatPanel';
 import CreationForm from './CreationForm';
 import FeaturePending from './FeaturePending';
 import StageProgress from './StageProgress';
@@ -19,7 +20,7 @@ import {
   getStatusLabel,
 } from '../../utils/jobPresentation';
 
-const QUICK_ACTIONS = ['优化当前页', '减少文字', '增强视觉', '统一风格', '导出PPT'];
+const QUICK_ACTIONS = ['优化当前页', '减少文字', '增强视觉', '统一风格'];
 
 const STYLE_OPTIONS = ['蓝白科技风', '深色科技风', '极简商务风'];
 const LAYOUT_OPTIONS = ['更紧凑', '更留白', '改为三栏', '改为流程图'];
@@ -31,9 +32,19 @@ const QUICK_ACTION_OPERATION = {
   统一风格: 'job_style_adjust',
 };
 
-const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCreated, onJobUpdated }) => {
+const AgentWorkspace = ({
+  currentJob,
+  selectedPageIndex,
+  selectedPreviewType,
+  imageAnnotations,
+  onSelectPage,
+  onJobCreated,
+  onJobUpdated,
+  onOpenImageMarkup,
+}) => {
   const [mode, setMode] = useState('chat');
   const [draftInstruction, setDraftInstruction] = useState('');
+  const [agentDraft, setAgentDraft] = useState(null);
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
   const meta = getJobMeta(currentJob);
@@ -63,10 +74,6 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
   };
 
   const quickSubmit = async (action) => {
-    if (action === '导出PPT') {
-      setDraftInstruction('请导出当前 PPT，并优先生成可编辑 PPTX。');
-      return;
-    }
     const operationType = QUICK_ACTION_OPERATION[action];
     if (!operationType) return;
     const prefix = activePage && operationType !== 'job_style_adjust' ? `第 ${activePage.page_no} 页` : '整套 PPT';
@@ -74,6 +81,20 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
     setDraftInstruction(instruction);
     await submitOperation(operationType, instruction, instruction);
     if (activePage && operationType !== 'job_style_adjust') setMode('edit');
+  };
+
+  const confirmAgentDraft = (draft) => {
+    setAgentDraft(draft);
+    if (typeof draft?.page_no === 'number') {
+      const pageIndex = pages.findIndex((page) => Number(page.page_no) === Number(draft.page_no));
+      if (pageIndex >= 0) onSelectPage(pageIndex);
+    }
+    setMode('edit');
+  };
+
+  const submitDraftOperation = async (fallbackOperationType) => {
+    const operationType = agentDraft?.operation_type || fallbackOperationType;
+    await submitOperation(operationType, draftInstruction);
   };
 
   return (
@@ -139,9 +160,6 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
 
             {currentJob && (
               <>
-                <FeaturePending title="Agent 改稿已接入基础执行器">
-                  可识别单页文字、排版和整套风格调整，并提交对应流水线；开放式评审类对话会先记录到任务历史。
-                </FeaturePending>
                 <div className="quick-actions" aria-label="快捷修改">
                   {QUICK_ACTIONS.map((action) => (
                     <button
@@ -155,33 +173,17 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                     </button>
                   ))}
                 </div>
-                <div className="conversation-card">
-                  <div className="message message--agent">
-                    <strong>Agent</strong>
-                    <p>你可以继续告诉我想怎么改：比如“第二页更商务一点”“第三页减少文字”“整体改成蓝白科技风”。</p>
-                  </div>
-                  <div className="composer">
-                    <textarea
-                      value={draftInstruction}
-                      onChange={(event) => setDraftInstruction(event.target.value)}
-                      placeholder="输入修改要求，例如：把第 3 页改成流程图风格..."
-                    />
-                    <button type="button" className="btn btn-primary" onClick={() => setMode(activePage ? 'edit' : 'chat')}>
-                      <PanelTopOpen size={17} />
-                      应用到编辑面板
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => submitOperation('agent_instruction')}
-                      disabled={pendingKey !== '' || !draftInstruction.trim()}
-                      title="提交给后端 Agent 编辑执行器；无法判断的开放式请求会先记录到历史"
-                    >
-                      {pendingKey === 'agent_instruction' ? <LoaderCircle className="spin" size={16} /> : <MessageSquareText size={16} />}
-                      记录给 Agent
-                    </button>
-                  </div>
-                </div>
+                <AgentChatPanel
+                  key={currentJob.job_id}
+                  currentJob={currentJob}
+                  activePage={activePage}
+                  previewType={selectedPreviewType}
+                  annotations={imageAnnotations}
+                  draftInstruction={draftInstruction}
+                  onDraftInstructionChange={setDraftInstruction}
+                  onDraftConfirmed={confirmAgentDraft}
+                  onOpenImageMarkup={onOpenImageMarkup}
+                />
                 {actionError && <div className="form-error">{actionError}</div>}
                 {recentOperations.length > 0 && (
                   <section className="operation-feed">
@@ -219,8 +221,15 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                 </div>
 
                 <FeaturePending title="单页编辑已接入后端">
-                  文字优化会保留当前图片并重建可编辑 PPT；排版优化和重新生成会备份当前页后重跑相关页面产物。
+                  这里会承接 Agent 整理后的改动内容。确认提交后，文字优化会保留当前图片，排版/风格修改会备份页面并重跑相关产物。
                 </FeaturePending>
+
+                {agentDraft && (
+                  <div className="agent-draft-strip">
+                    <span>来自 Agent 对话</span>
+                    <strong>{agentDraft.summary}</strong>
+                  </div>
+                )}
 
                 <div className="edit-block">
                   <span>页面风格</span>
@@ -272,18 +281,27 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => submitOperation('page_text_optimize', `第 ${activePage.page_no} 页仅优化文字`)}
+                    onClick={() => submitDraftOperation('page_text_optimize')}
                     disabled={pendingKey !== '' || !draftInstruction.trim()}
                   >
+                    {pendingKey === 'page_text_optimize' ? <LoaderCircle className="spin" size={16} /> : <MessageSquareText size={16} />}
                     仅优化文字
                   </button>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => submitOperation('page_layout_optimize', `第 ${activePage.page_no} 页仅优化排版`)}
+                    onClick={() => submitDraftOperation('page_layout_optimize')}
                     disabled={pendingKey !== '' || !draftInstruction.trim()}
                   >
                     仅优化排版
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => submitOperation('job_style_adjust', draftInstruction)}
+                    disabled={pendingKey !== '' || !draftInstruction.trim()}
+                  >
+                    修改整套风格
                   </button>
                   <button
                     type="button"

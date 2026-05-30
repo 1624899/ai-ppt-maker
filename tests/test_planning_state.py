@@ -32,12 +32,12 @@ class PlanningStateTests(unittest.TestCase):
                 {
                     "page_no": 1,
                     "title": "封面",
-                    "reference_prompt": "第一页参考图提示词",
+                    "reference_prompt": "第一页原稿图提示词",
                 },
                 {
                     "page_no": 2,
                     "title": "流程页",
-                    "reference_prompt": "第二页参考图提示词",
+                    "reference_prompt": "第二页原稿图提示词",
                 },
             ],
         }
@@ -48,7 +48,7 @@ class PlanningStateTests(unittest.TestCase):
         pages = [
             {
                 "page_no": 1,
-                "reference_prompt": "第一页参考图提示词",
+                "reference_prompt": "第一页原稿图提示词",
             }
         ]
 

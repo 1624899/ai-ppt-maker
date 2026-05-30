@@ -6,7 +6,7 @@ from typing import Any
 STAGE_LABELS = {
     "queued": "等待执行",
     "planning": "模型规划",
-    "reference_generation": "参考图生成",
+    "reference_generation": "原稿图生成",
     "elements_generation": "元素图生成",
     "ppt_export": "可编辑元素生成",
     "completed": "全部完成",

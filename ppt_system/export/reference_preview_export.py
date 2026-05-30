@@ -16,7 +16,7 @@ def export_reference_images_to_pptx(
     image_height: int,
 ) -> dict[str, Any]:
     if not reference_pages:
-        raise ValueError("缺少参考图，无法导出图片版 PPT。")
+        raise ValueError("缺少原稿图，无法导出图片版 PPT。")
 
     prs = Presentation()
     prs.slide_width = Inches(13.333333)
@@ -26,10 +26,10 @@ def export_reference_images_to_pptx(
     for item in sorted(reference_pages, key=lambda page: int(page.get("page_no", 0))):
         image_ref = str(item.get("image", "")).strip()
         if not image_ref:
-            raise ValueError(f"第 {item.get('page_no', '?')} 页参考图路径为空。")
+            raise ValueError(f"第 {item.get('page_no', '?')} 页原稿图路径为空。")
         image_path = resolve_job_image_path(job_dir, image_ref)
         if not image_path.exists():
-            raise FileNotFoundError(f"参考图不存在：{image_path}")
+            raise FileNotFoundError(f"原稿图不存在：{image_path}")
 
         slide = prs.slides.add_slide(blank_layout)
         slide.shapes.add_picture(

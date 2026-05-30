@@ -2,8 +2,8 @@
 
 这是一个基于 AI 的多页 PPT 自动生成系统。当前导出主路径已经统一为：
 
-- 首轮：`参考图 + 元素图` 生成文字层脚本
-- 二轮：`参考图 + PowerPoint 真导出图` 回看修正
+- 首轮：`原稿图 + 元素图` 生成文字层脚本
+- 二轮：`原稿图 + PowerPoint 真导出图` 回看修正
 - 最终：把分割后的元素资源页与可编辑文本框页按原位置分别导出到相邻两页，便于后续手动叠加或单独修改
 
 详细说明见 [PPT_SYSTEM_README.md](PPT_SYSTEM_README.md)，模块边界见 [docs/architecture.md](docs/architecture.md)，运行与排障见 [docs/runbook.md](docs/runbook.md)。

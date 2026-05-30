@@ -32,7 +32,7 @@ class TextBoxSpec:
     font_name: str = "Microsoft YaHei"
 
 
-# 仅依据参考图和元素图人工还原的文字层信息。
+# 仅依据原稿图和元素图人工还原的文字层信息。
 PAGE02_TEXT_BOXES = [
     TextBoxSpec("跳出聊天框", 72, 42, 620, 126, 58, "102A72", True),
     TextBoxSpec("01", 104, 306, 98, 88, 38, "FFFFFF", True, "CENTER", "MIDDLE"),
@@ -150,7 +150,7 @@ def add_text_box(slide, spec: TextBoxSpec) -> None:
 
 def build_presentation(reference_image: Path, elements_image: Path, output_pptx: Path) -> Path:
     if not reference_image.exists():
-        raise FileNotFoundError(f"参考图不存在: {reference_image}")
+        raise FileNotFoundError(f"原稿图不存在: {reference_image}")
     if not elements_image.exists():
         raise FileNotFoundError(f"元素图不存在: {elements_image}")
 
@@ -174,7 +174,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--reference-image",
         default=r"output\758b2965960a\01_reference_pages\page_02_reference.png",
-        help="完整参考图路径，仅用于核对输入来源。",
+        help="完整原稿图路径，仅用于核对输入来源。",
     )
     parser.add_argument(
         "--elements-image",

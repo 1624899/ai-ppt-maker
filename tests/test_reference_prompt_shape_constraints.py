@@ -54,7 +54,7 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
 
         self.assertIn("可以保留少量虚线连接器", prompt)
         self.assertIn("关键箭头优先使用清晰实线或明确描边", prompt)
-        self.assertIn("严格锁定参考图的版芯比例", prompt)
+        self.assertIn("严格锁定原稿图的版芯比例", prompt)
 
     def test_baseline_prompt_discourages_soft_edges_and_blurry_borders(self) -> None:
         prompt = build_reference_prompt_by_mode(
@@ -91,7 +91,7 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
             reference_style_adherence="loose",
         )
 
-        self.assertIn("优先学习参考图的版芯比例", prompt)
+        self.assertIn("优先学习原稿图的版芯比例", prompt)
         self.assertIn("你可以自主决定最适合的视觉重心", prompt)
 
 

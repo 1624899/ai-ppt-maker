@@ -249,7 +249,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                     job_dir,
                     job_id,
                     "planning",
-                    f"参考图风格锚点：{plan['style_guide'].get('style_name', '')}（来源：{plan['style_guide'].get('source', 'unknown')}）",
+                    f"原稿图风格锚点：{plan['style_guide'].get('style_name', '')}（来源：{plan['style_guide'].get('source', 'unknown')}）",
                 )
         else:
             append_stage_log(job_dir, job_id, "planning", "检测到已有规划结果，继续从已保存进度执行")
@@ -305,11 +305,11 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                 job_id,
                 "reference_generation",
                 status="running",
-                summary="正在逐页生成带文字参考图",
+                summary="正在逐页生成带文字原稿图",
                 current_stage="reference_generation",
             )
         else:
-            append_stage_log(job_dir, job_id, "reference_generation", "检测到已有参考图结果，继续从已保存进度执行")
+            append_stage_log(job_dir, job_id, "reference_generation", "检测到已有原稿图结果，继续从已保存进度执行")
         append_stage_log(job_dir, job_id, "reference_generation", f"第一阶段并发数：{stage1_concurrency}")
 
         should_execute_elements_generation = should_run_stage(
@@ -332,7 +332,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                 append_stage_log(job_dir, job_id, "elements_generation", "检测到已有元素图结果，继续从已保存进度执行")
             append_stage_log(job_dir, job_id, "elements_generation", f"第二阶段并发数：{stage2_concurrency}")
             append_stage_log(job_dir, job_id, "elements_generation", "按页动态 Prompt 生成元素图")
-            append_stage_log(job_dir, job_id, "elements_generation", "参考图单页完成后将立即触发对应元素图生成")
+            append_stage_log(job_dir, job_id, "elements_generation", "原稿图单页完成后将立即触发对应元素图生成")
 
         style_inputs = style_reference_paths if bool(config.get("use_style_refs_for_first_stage", True)) else []
 
@@ -386,12 +386,12 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                 job_id,
                 lambda current_state, item=reference_item: current_state.setdefault("reference_pages", []).append(item),
             )
-            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图已完成")
+            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页原稿图已完成")
 
         def on_reference_error(task: tuple[dict[str, Any], int, str, Path], exc: BaseException) -> None:
             _, page_no, _, _ = task
             update_page_state(job_dir, job_id, page_no, status="planned")
-            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页参考图生成失败：{exc}")
+            append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页原稿图生成失败：{exc}")
 
         def on_elements_success(task: tuple[int, Path], generation_meta: dict[str, Any]) -> None:
             page_no, out_path = task
@@ -459,7 +459,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
             job_id,
             "reference_generation",
             status="completed",
-            summary=f"已完成 {len(references)} 张带文字参考图",
+            summary=f"已完成 {len(references)} 张带文字原稿图",
             data={"pages": references},
         )
 
@@ -502,7 +502,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                 load_job_state(job_id, job_dir) or state,
                 job_result,
                 terminal_stage=terminal_stage,
-                summary=f"已完成 {len(references)} 张参考图，可生成图片PPT",
+                summary=f"已完成 {len(references)} 张原稿图，可生成图片PPT",
             )
             return
 

@@ -122,7 +122,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 "status": "completed",
                 "reference_image": references[page_no - 1]["image"],
                 "element_image": elements[page_no - 1]["image"],
-                "reference_prompt": f"参考图提示词 {page_no}",
+                "reference_prompt": f"原稿图提示词 {page_no}",
                 "elements_prompt": f"元素图提示词 {page_no}",
             }
             for page_no in (1, 2)
@@ -195,6 +195,55 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(len(self.executor.calls), initial_submit_count)
         self.assertEqual(payload["operations"][-1]["status"], "accepted")
         self.assertEqual(payload["operations"][-1]["execution"], "pending_backend")
+
+    def test_agent_draft_structures_fuzzy_reference_feedback_without_pipeline(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        initial_submit_count = len(self.executor.calls)
+
+        response = self.client.post(
+            f"/api/jobs/{job_id}/agent/draft",
+            json={
+                "message": "这里看着有点乱，右边那块太挤了，改得更清楚一点",
+                "page_no": 2,
+                "preview_type": "reference",
+                "annotations": [
+                    {
+                        "id": "box-1",
+                        "label": "右侧信息区",
+                        "box": {"x": 0.62, "y": 0.22, "width": 0.25, "height": 0.46},
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        draft = payload["draft"]
+        self.assertEqual(len(self.executor.calls), initial_submit_count)
+        self.assertEqual(draft["operation_type"], "page_layout_optimize")
+        self.assertEqual(draft["edit_kind"], "layout")
+        self.assertEqual(draft["page_no"], 2)
+        self.assertEqual(draft["affected_pages"], [2])
+        self.assertIn("右侧信息区", draft["instruction"])
+        self.assertGreaterEqual(len(payload["messages"]), 2)
+
+    def test_agent_draft_can_target_whole_deck_style(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+
+        response = self.client.post(
+            f"/api/jobs/{job_id}/agent/draft",
+            json={"message": "整体改成更商务的蓝白科技风"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        draft = payload["draft"]
+        self.assertEqual(draft["operation_type"], "job_style_adjust")
+        self.assertEqual(draft["edit_kind"], "style")
+        self.assertEqual(draft["page_no"], None)
+        self.assertEqual(draft["affected_pages"], [1, 2])
 
     def test_page_text_optimize_rebuilds_export_without_invalidating_images(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()

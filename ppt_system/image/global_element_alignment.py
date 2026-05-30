@@ -33,7 +33,7 @@ def align_elements_image_to_reference(
     min_shift_px: int = 8,
     min_iou_gain: float = 0.01,
 ) -> GlobalElementAlignmentDecision:
-    """在切分前把整张元素图按参考图坐标系做全局平移拟合。"""
+    """在切分前把整张元素图按原稿图坐标系做全局平移拟合。"""
     decision = analyze_global_element_alignment(
         reference_image=reference_image,
         elements_image=elements_image,
@@ -65,7 +65,7 @@ def analyze_global_element_alignment(
     coarse_margin_px: int = 40,
     fine_radius_px: int = 12,
 ) -> GlobalElementAlignmentDecision:
-    """估计整张元素图相对参考图的稳定全局平移。"""
+    """估计整张元素图相对原稿图的稳定全局平移。"""
     with Image.open(reference_image).convert("RGB") as reference:
         reference_mask = _build_reference_mask(
             reference,
@@ -320,7 +320,7 @@ def _extract_structure_mask(mask: np.ndarray) -> np.ndarray:
 
 
 def _suppress_text_like_regions(mask: np.ndarray) -> np.ndarray:
-    """从参考图前景中剔除更像文字的高密度连通域，避免它们主导整页拟合。"""
+    """从原稿图前景中剔除更像文字的高密度连通域，避免它们主导整页拟合。"""
     source = np.asarray(mask, dtype=bool)
     if not source.any():
         return source

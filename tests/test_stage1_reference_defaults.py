@@ -47,7 +47,7 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
         self.assertEqual(plan["pages"][0]["reference_mode"], "edit_with_refs")
         self.assertEqual(plan["pages"][1]["reference_mode"], "edit_with_refs")
         self.assertIn("语义分区", plan["pages"][0]["image_prompt"])
-        self.assertIn("严格锁定参考图的版芯比例", plan["pages"][0]["image_prompt"])
+        self.assertIn("严格锁定原稿图的版芯比例", plan["pages"][0]["image_prompt"])
         self.assertNotIn("这是规划器返回的长 prompt", plan["pages"][0]["image_prompt"])
 
     def test_no_reference_images_use_compact_generation_prompt(self) -> None:

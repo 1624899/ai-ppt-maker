@@ -2,10 +2,10 @@
 
 本系统当前已经收敛到一条统一导出主路径：
 
-1. Web 负责内容规划、参考图生成、元素图生成。
+1. Web 负责内容规划、原稿图生成、元素图生成。
 2. 导出阶段使用 `direct_office_refine`：
-   - 首轮：`参考图 + 元素图`
-   - 二轮：`参考图 + PowerPoint 真导出图`
+   - 首轮：`原稿图 + 元素图`
+   - 二轮：`原稿图 + PowerPoint 真导出图`
 3. 最终输出为带分割元素资源和可编辑文本框叠加的 `.pptx`。
 
 > 标准入口说明见 [README.md](README.md)。新人接手时优先阅读 [docs/architecture.md](docs/architecture.md) 与 [docs/runbook.md](docs/runbook.md)。
@@ -17,13 +17,13 @@
 ```mermaid
 flowchart TD
     A[用户输入长文与风格参考] --> B[内容规划]
-    B --> C[生成每页参考图]
+    B --> C[生成每页原稿图]
     C --> D[生成每页元素图]
     D --> E[按页执行 direct_office_refine]
-    E --> F[首轮：参考图 + 元素图 生成文字脚本]
+    E --> F[首轮：原稿图 + 元素图 生成文字脚本]
     F --> G[导出真实 PPT]
     G --> H[PowerPoint COM 导出首张 PNG]
-    H --> I[二轮：参考图 + 真实导出图 仅修正元素贴图偏移]
+    H --> I[二轮：原稿图 + 真实导出图 仅修正元素贴图偏移]
     I --> J[输出最终 PPTX]
 ```
 

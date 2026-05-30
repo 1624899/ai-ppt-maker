@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
 from flask import Flask
@@ -14,7 +13,6 @@ from ppt_system.web.blueprints.ui import bp as ui_bp
 def create_app(
     root: Path,
     *,
-    on_startup: Callable[[], None] | None = None,
     static_asset_version_provider: Callable[[], str] | None = None,
 ) -> Flask:
     web_ui_dist_dir = root / "web_ui" / "dist"
@@ -42,8 +40,5 @@ def create_app(
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         return response
-
-    if on_startup is not None:
-        on_startup()
 
     return app

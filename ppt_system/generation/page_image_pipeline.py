@@ -38,7 +38,7 @@ def run_page_image_pipeline(
     should_stop: Callable[[], bool],
     on_stop: Callable[[str], None],
 ) -> PageImagePipelineResult:
-    """按页串接参考图与元素图，让已完成参考图尽早进入元素图阶段。"""
+    """按页串接原稿图与元素图，让已完成原稿图尽早进入元素图阶段。"""
     reference_limit = max(1, int(reference_concurrency))
     element_limit = max(1, int(element_concurrency))
     pending_references = list(pending_reference_pages)

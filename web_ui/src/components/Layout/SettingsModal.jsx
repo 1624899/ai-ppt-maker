@@ -9,7 +9,7 @@ const DEFAULT_BASE_URL = 'https://your-api-endpoint.com/v1';
 
 const MODEL_TYPES = [
   { value: 'chat', label: '对话模型', description: '内容规划、脚本生成与评估使用' },
-  { value: 'image', label: '生图模型', description: 'PPT 页面参考图生成使用' },
+  { value: 'image', label: '生图模型', description: 'PPT 页面原稿图生成使用' },
 ];
 
 const createModelDefaults = (modelType) => {

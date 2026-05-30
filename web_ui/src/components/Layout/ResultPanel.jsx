@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const STAGES_DEF = [
   { key: 'queued', label: '等待执行' },
   { key: 'planning', label: '模型规划' },
-  { key: 'reference_generation', label: '参考图生成' },
+  { key: 'reference_generation', label: '原稿图生成' },
   { key: 'elements_generation', label: '元素图生成' },
   { key: 'ppt_export', label: '可编辑元素生成' },
   { key: 'completed', label: '全部完成' }

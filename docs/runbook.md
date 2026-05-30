@@ -52,6 +52,6 @@ python diagnose_ppt_render.py --pptx output\demo.pptx --output output\probe.png 
 
 - `PowerPoint COM` 不可用：真实闭环会停在首轮直出。先运行 `diagnose_ppt_render.py` 检查。
 - 图像生成接口偶发网络错误：检查 `request_retry_count`、`request_transport_retry_count`、`request_total_timeout_seconds`。
-- 导出缺少参考图或元素图：确认 `01_reference_pages/` 和 `02_elements_pages/` 已生成。
+- 导出缺少原稿图或元素图：确认 `01_reference_pages/` 和 `02_elements_pages/` 已生成。
 - 首轮文字层效果不错但修正轮过度收缩：优先检查 `generated_text_layout.py` 与 `office_preview_round_01.png`、`comparison_round_01.png` 的对照。
-- 最终 PPT 可打开但观感偏差大：确认文本框是否仍为 `MSO_AUTO_SIZE.NONE`，并检查首轮是否同时喂给了参考图和元素图。
+- 最终 PPT 可打开但观感偏差大：确认文本框是否仍为 `MSO_AUTO_SIZE.NONE`，并检查首轮是否同时喂给了原稿图和元素图。

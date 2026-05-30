@@ -5,7 +5,7 @@ from typing import Any
 
 
 def _read_page_prompt(page: Mapping[str, Any]) -> str:
-    """读取页面上可用于首阶段参考图生成的提示词。"""
+    """读取页面上可用于首阶段原稿图生成的提示词。"""
     for key in ("reference_prompt", "image_prompt", "prompt"):
         value = str(page.get(key, "")).strip()
         if value:

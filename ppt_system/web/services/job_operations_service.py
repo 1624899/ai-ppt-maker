@@ -59,7 +59,6 @@ def create_job_operation(job_id: str, payload: dict[str, Any]) -> dict[str, Any]
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError("任务不存在")
-    record = runtime.normalize_stale_job_record(record)
     operation_type = _normalize_operation_type(payload.get("operation_type") or payload.get("type"))
     job_dir = Path(record["job_dir"])
     state, _ = runtime.get_job_state_snapshot(job_id, job_dir)

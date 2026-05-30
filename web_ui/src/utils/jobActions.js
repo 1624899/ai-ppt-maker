@@ -23,3 +23,12 @@ export const postJobOperation = async (jobId, operation) => {
   });
   return parseJsonResponse(response);
 };
+
+export const postAgentDraft = async (jobId, payload) => {
+  const response = await fetch(`/api/jobs/${jobId}/agent/draft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+};

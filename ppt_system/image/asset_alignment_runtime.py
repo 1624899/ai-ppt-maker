@@ -31,7 +31,7 @@ class TextAssetOverlapReport:
 
 
 def extract_text_boxes(page_script: str) -> list[tuple[int, int, int, int]]:
-    """从 page_script 里提取文字框，用于遮罩参考图中的文本区域。"""
+    """从 page_script 里提取文字框，用于遮罩原稿图中的文本区域。"""
     source = str(page_script or "").strip()
     if not source:
         return []

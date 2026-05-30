@@ -43,12 +43,7 @@ from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from ppt_system.jobs.job_store import list_jobs as list_job_records
 from ppt_system.jobs.job_store import update_job as update_job_record
-from ppt_system.jobs.job_state_recovery import (
-    INTERRUPTED_MESSAGE,
-    STOPPING_MESSAGE,
-    is_running_job_status,
-    normalize_orphaned_job_state,
-)
+from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
 from ppt_system.jobs.job_targets import (
     JOB_TARGET_EDITABLE_PPT,
     TARGET_LABELS,
@@ -104,10 +99,8 @@ from ppt_system.web.services.job_state_runtime import (
     mark_job_stopping,
     mutate_job_state,
     normalize_job_state_labels,
-    normalize_stale_job_record,
     reconcile_resume_state,
     remove_job_artifacts,
-    repair_orphaned_jobs,
     save_job_state,
     should_stop_job,
     status_file,
@@ -226,12 +219,12 @@ def submit_reference_task(
     page_no = int(page["page_no"])
     prompt = str(page["image_prompt"]).strip()
     if not prompt:
-        raise ValueError(f"第 {page_no} 页缺少参考图提示词，需重新执行规划阶段")
+        raise ValueError(f"第 {page_no} 页缺少原稿图提示词，需重新执行规划阶段")
     image_path = stage1_dir / f"page_{page_no:02d}_reference.png"
     prompt_path = stage1_dir / f"page_{page_no:02d}_reference_prompt.txt"
     prompt_path.write_text(prompt, encoding="utf-8")
     update_page_state(job_dir, job_id, page_no, status="rendering_reference", reference_prompt=prompt)
-    append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页已进入参考图生成队列")
+    append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页已进入原稿图生成队列")
     future = executor.submit(
         image_provider.generate_reference_page,
         prompt,
@@ -271,7 +264,6 @@ def static_asset_version() -> str:
 
 app = create_app(
     ROOT,
-    on_startup=repair_orphaned_jobs,
     static_asset_version_provider=static_asset_version,
 )
 

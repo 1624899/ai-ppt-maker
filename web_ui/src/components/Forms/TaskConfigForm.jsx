@@ -362,7 +362,7 @@ const TaskConfigForm = ({ currentJob }) => {
       <div style={{ border: '1px solid var(--border-light)', borderRadius: '16px', background: 'var(--bg-card)' }}>
         <CardHeader 
           title="风格约束" 
-          description="参考图与风格补充会一起进入规划链路。"
+          description="参考风格图与风格补充会一起进入规划链路。"
           icon={ImageIcon}
           isOpen={openSections.includes('style')}
           onToggle={() => toggleSection('style')}
@@ -383,7 +383,7 @@ const TaskConfigForm = ({ currentJob }) => {
                   }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>参考图约束强度</label>
+                  <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>参考风格图约束强度</label>
                   <select value={referenceStyleAdherence} onChange={(e) => setReferenceStyleAdherence(e.target.value)} required style={{
                     width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-app)'
                   }}>
@@ -393,7 +393,7 @@ const TaskConfigForm = ({ currentJob }) => {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>上传参考图 (可选)</label>
+                  <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>上传参考风格图 (可选)</label>
                   <input 
                     type="file" 
                     name="style_images" 

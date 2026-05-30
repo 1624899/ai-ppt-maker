@@ -4,7 +4,7 @@ import SlideImage from './SlideImage';
 import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
-  { key: 'materials', label: '素材库', description: '参考图、无文字元素图', icon: FileImage },
+  { key: 'materials', label: '素材库', description: '原稿图、无文字元素图', icon: FileImage },
   { key: 'styles', label: '参考风格', description: '品牌色与风格图', icon: FolderKanban },
   { key: 'templates', label: '历史模板', description: '复用版式和导出结构', icon: LayoutTemplate },
 ];

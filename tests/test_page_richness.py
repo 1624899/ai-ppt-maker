@@ -94,8 +94,8 @@ class PageRichnessTests(unittest.TestCase):
         self.assertIn("第 1 页：丰富度低", prompt)
         self.assertIn("第 2 页：丰富度高", prompt)
         self.assertIn('"page_richness": "low/medium/high 之一"', prompt)
-        self.assertIn("参考图约束强度：严格", prompt)
-        self.assertIn("把参考图当成强约束模板", prompt)
+        self.assertIn("原稿图约束强度：严格", prompt)
+        self.assertIn("把原稿图当成强约束模板", prompt)
 
 
 if __name__ == "__main__":

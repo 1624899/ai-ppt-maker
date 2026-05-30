@@ -79,7 +79,7 @@ def build_job_state(
             },
             {
                 "key": "reference_generation",
-                "label": "参考图生成",
+                "label": "原稿图生成",
                 "status": "pending",
                 "summary": "等待生成带文字的 PPT 效果图",
                 "logs": [],
@@ -136,70 +136,10 @@ def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
     return state
 
 
-def _recover_orphaned_job_record(
-    job_id: str,
-    job_dir: Path,
-    record: dict[str, Any],
-    state: dict[str, Any],
-) -> bool:
-    runtime = _runtime()
-    # 进程重启后，这类任务已经不可能继续运行，应恢复成可继续或可删除状态。
-    recovered_state = json.loads(json.dumps(state, ensure_ascii=False))
-    changed = runtime.normalize_orphaned_job_state(
-        recovered_state,
-        current_stage_key=str(record.get("current_stage") or recovered_state.get("current_stage") or ""),
-        resume_message=runtime.INTERRUPTED_MESSAGE,
-    )
-    if not changed:
-        return False
-    save_job_state(job_dir, recovered_state)
-    return True
-
-
-def normalize_stale_job_record(record: dict[str, Any]) -> dict[str, Any]:
-    runtime = _runtime()
-    normalized = dict(record)
-    job_id = str(record.get("job_id") or "").strip()
-    status = str(record.get("status") or "").strip()
-    job_dir = Path(str(record.get("job_dir") or ""))
-    state = record.get("state", {})
-    has_status_file = status_file(job_dir).exists() if job_dir else False
-    if status == "stopping" and not has_status_file:
-        normalized["status"] = "interrupted"
-        normalized["stop_requested"] = False
-        runtime.update_job_record(
-            runtime.JOBS_DB_PATH,
-            job_id,
-            status="interrupted",
-            stop_requested=False,
-        )
-        return normalized
-    if not job_id or not runtime.is_running_job_status(status):
-        return normalized
-    if runtime.is_job_managed(job_id):
-        return normalized
-    if not isinstance(state, dict) or not state:
-        state = load_job_state(job_id, job_dir) or {}
-    if not state:
-        normalized["status"] = "interrupted"
-        normalized["stop_requested"] = False
-        runtime.update_job_record(
-            runtime.JOBS_DB_PATH,
-            job_id,
-            status="interrupted",
-            stop_requested=False,
-        )
-        return normalized
-    if _recover_orphaned_job_record(job_id, job_dir, normalized, state):
-        return runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or normalized
-    return normalized
-
-
 def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     runtime = _runtime()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     if record:
-        record = normalize_stale_job_record(record)
         state = record.get("state", {})
         if isinstance(state, dict) and state:
             enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
@@ -209,16 +149,6 @@ def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] |
         return None, record
     enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
     return runtime.attach_delivery_actions(enriched, job_dir), record
-
-
-def repair_orphaned_jobs() -> None:
-    runtime = _runtime()
-    """启动时收口历史遗留运行态任务，避免列表中长期残留假运行状态。"""
-    for record in runtime.list_job_records(runtime.JOBS_DB_PATH, limit=None):
-        try:
-            normalize_stale_job_record(record)
-        except Exception:
-            continue
 
 
 def mutate_job_state(job_dir: Path, job_id: str, updater: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
@@ -436,8 +366,7 @@ def normalize_job_state_labels(state: dict[str, Any]) -> dict[str, Any]:
 
 def list_job_summaries(limit: int = 100) -> list[dict[str, Any]]:
     runtime = _runtime()
-    records = [normalize_stale_job_record(record) for record in runtime.list_job_records(runtime.JOBS_DB_PATH, limit=limit)]
-    return [job_summary(record) for record in records]
+    return [job_summary(record) for record in runtime.list_job_records(runtime.JOBS_DB_PATH, limit=limit)]
 
 
 def should_stop_job(job_id: str) -> bool:
@@ -617,6 +546,6 @@ def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
             for stage in state.get("stages", []):
                 if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "pending":
                     stage["status"] = "skipped"
-                    stage["summary"] = "当前输出模式截至参考图阶段，此阶段已跳过"
+                    stage["summary"] = "当前输出模式截至原稿图阶段，此阶段已跳过"
 
     return mutate_job_state(job_dir, job_id, updater)

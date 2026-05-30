@@ -50,7 +50,7 @@ class PreparedDirectPageAssets:
 
 
 def resolve_canvas_size(reference_image: Path, elements_image: Path) -> tuple[int, int]:
-    """优先读取参考图尺寸，失败时退回元素图。"""
+    """优先读取原稿图尺寸，失败时退回元素图。"""
     errors: list[str] = []
     for image_path in (reference_image, elements_image):
         try:
@@ -68,7 +68,7 @@ def build_direct_page_prompt(
     image_height: int,
     text_placeholders: dict[str, Any] | None = None,
 ) -> str:
-    """构建首轮依赖参考图和元素图的单页脚本提示词。"""
+    """构建首轮依赖原稿图和元素图的单页脚本提示词。"""
     payload = {
         "canvas": {"width": int(image_width), "height": int(image_height)},
         "task": "single_page_text_only",
@@ -77,8 +77,8 @@ def build_direct_page_prompt(
         else list(text_placeholders.get("placeholders", [])),
     }
     return (
-        "第一张图是完整参考图，第二张图是去文字后的元素图。"
-        "系统已用 OpenCV 根据“参考图 - 去文字元素图”估计出 text_placeholders。"
+        "第一张图是完整原稿图，第二张图是去文字后的元素图。"
+        "系统已用 OpenCV 根据“原稿图 - 去文字元素图”估计出 text_placeholders。"
         "你的首要任务是识别并填写每个 placeholder 对应的真实文字内容。"
         "默认沿用 placeholder 的 left/top/width/height/font_size/color/align/line_count。"
         "只有当 bbox 明显漏字、包进图形、颜色或字号明显不准时，才允许做小幅微调。"
@@ -88,11 +88,11 @@ def build_direct_page_prompt(
         "根据我的要求创建.pptx文件。"
         "不要参考任何流程、任何其他文件，只根据 text_placeholders 和这两张图肉眼可见的信息生成单页 page_script。"
         "字号单位是 PowerPoint pt，请按最终 PPT 实际观感估算，不要为了醒目而故意放大。"
-        "如果参考图里是多条独立单行 bullet，就按单行分别创建，不要合并成一个大段文本框。"
+        "如果原稿图里是多条独立单行 bullet，就按单行分别创建，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
         "短标题和卡片标题不要截断，也不要拆成逐字换行。"
-        "只允许写参考图里肉眼可见的真实文字，不要把代码图标、流程图图形、装饰符号、窗口按钮、芯片轮廓脑补成文字。"
-        "像 </>、箭头、空白方框、流程线、窗口按钮等默认视为图形，不要额外生成文字，除非参考图里明确存在真实文本。"
+        "只允许写原稿图里肉眼可见的真实文字，不要把代码图标、流程图图形、装饰符号、窗口按钮、芯片轮廓脑补成文字。"
+        "像 </>、箭头、空白方框、流程线、窗口按钮等默认视为图形，不要额外生成文字，除非原稿图里明确存在真实文本。"
         "元素图只用于帮助你判断文字与图形的相对关系，输出时仍然只写文字框，不要写背景、边框、图标、箭头、装饰线，也不要调用 add_assets。元素会在导出时单独加入。"
         "坐标单位必须是像素，基于给定画布。"
         "优先使用 add_text / add_center_text / add_runs，不要使用 add_text_ref / add_center_text_ref。"
@@ -121,14 +121,14 @@ def build_direct_page_refine_prompt(
         "current_page_script": str(page_script),
     }
     return (
-        "第一张图是完整参考图，第二张图是当前 PPT 的真实导出渲染图。"
+        "第一张图是完整原稿图，第二张图是当前 PPT 的真实导出渲染图。"
         "请直接修正 page_script，让第二张图尽量贴近第一张图。"
         "重点检查：字号、位置、宽高、对齐、换行、是否压线、是否偏离元素中心、文本是否过大或过小。"
         "本轮只修文字，不要修改元素贴图位置与尺寸；元素位置沿用前置资产拟合对齐结果。"
         "不要输出新的图形、背景或边框。"
-        "如果参考图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
+        "如果原稿图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
-        "只允许写参考图里肉眼可见的真实文字，不要把图标、流程图轮廓、装饰符号、窗口按钮脑补成文字。"
+        "只允许写原稿图里肉眼可见的真实文字，不要把图标、流程图轮廓、装饰符号、窗口按钮脑补成文字。"
         "允许的文字调用只有 add_text / add_center_text / add_runs。"
         '输出必须是严格 JSON，格式为 {"page_script":"...","asset_adjustments":{...}}。'
         "asset_adjustments 固定返回空对象 {}。"
@@ -281,7 +281,7 @@ def prepare_direct_page_assets(
 
 
 def render_direct_comparison_image(reference_image: Path, preview_image: Path, output_path: Path) -> Path:
-    """导出参考图与真实 PPT 渲染图的并排对照，便于快速检查效果。"""
+    """导出原稿图与真实 PPT 渲染图的并排对照，便于快速检查效果。"""
     reference = Image.open(reference_image).convert("RGBA")
     preview = Image.open(preview_image).convert("RGBA")
     title_height = 64
@@ -334,7 +334,7 @@ def _generate_page_script_from_images(
     image_height: int,
     text_placeholders: dict[str, Any] | None = None,
 ) -> str:
-    """首轮基于参考图和元素图请求模型生成单页文字脚本。"""
+    """首轮基于原稿图和元素图请求模型生成单页文字脚本。"""
     prompt = build_direct_page_prompt(
         image_width=image_width,
         image_height=image_height,
@@ -383,7 +383,7 @@ def _revise_page_script_with_rendered_preview(
     messages = [
         {
             "role": "system",
-            "content": "你是 PPT 单页文字修正助手。你根据参考图与真实导出图只修正 page_script，asset_adjustments 必须返回空对象，只输出 JSON。",
+            "content": "你是 PPT 单页文字修正助手。你根据原稿图与真实导出图只修正 page_script，asset_adjustments 必须返回空对象，只输出 JSON。",
         },
         {
             "role": "user",

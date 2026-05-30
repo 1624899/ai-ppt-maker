@@ -21,7 +21,7 @@ class ReferenceTaskGuardTests(unittest.TestCase):
             page = {"page_no": 1, "image_prompt": "   "}
 
             with ThreadPoolExecutor(max_workers=1) as executor:
-                with self.assertRaisesRegex(ValueError, "缺少参考图提示词"):
+                with self.assertRaisesRegex(ValueError, "缺少原稿图提示词"):
                     submit_reference_task(
                         executor,
                         job_dir,

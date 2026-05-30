@@ -154,7 +154,7 @@ from pptx.util import Inches, Pt
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
-# 基于参考图像素坐标映射到 16:9 PPT 页面坐标。
+# 基于原稿图像素坐标映射到 16:9 PPT 页面坐标。
 IMG_W = {image_width}
 IMG_H = {image_height}
 SLIDE_W = {slide_width_inch}

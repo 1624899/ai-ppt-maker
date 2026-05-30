@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--work-dir", required=True, help="新的资产工作目录。")
     parser.add_argument("--output-pptx", required=True, help="渲染出的 PPTX 路径。")
     parser.add_argument("--preview-image", required=True, help="导出的预览 PNG 路径。")
-    parser.add_argument("--reference-image", required=True, help="参考图路径。")
+    parser.add_argument("--reference-image", required=True, help="原稿图路径。")
     parser.add_argument("--comparison-image", required=True, help="对照图输出路径。")
     parser.add_argument("--image-width", type=int, default=2048, help="页面宽度。")
     parser.add_argument("--image-height", type=int, default=1152, help="页面高度。")

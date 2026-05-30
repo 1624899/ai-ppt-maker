@@ -209,7 +209,6 @@ def api_delete_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
-    record = runtime.normalize_stale_job_record(record)
     if record["status"] in {"queued", "running", "stopping"}:
         return jsonify({"error": "运行中任务不能删除，请先暂停任务后再删除。"}), 400
     runtime.remove_job_artifacts(Path(record["job_dir"]))
@@ -331,7 +330,6 @@ def api_deliver_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
-    record = runtime.normalize_stale_job_record(record)
     job_dir = Path(record["job_dir"])
     state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
     if not state:
@@ -352,7 +350,7 @@ def api_deliver_job(job_id: str):
         if delivery_key == runtime.REFERENCE_PPT_DELIVERY_KEY:
             reference_pages = runtime.extract_reference_pages_from_state(state)
             if not reference_pages:
-                return jsonify({"error": "参考图尚未生成完成，暂时不能导出图片PPT。"}), 400
+                return jsonify({"error": "原稿图尚未生成完成，暂时不能导出图片PPT。"}), 400
             image_preset = state.get("job_meta", {}).get("image_preset", {})
             image_width = int(image_preset.get("width") or runtime.read_config().get("image_width", 2048))
             image_height = int(image_preset.get("height") or runtime.read_config().get("image_height", 1152))

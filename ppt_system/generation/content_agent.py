@@ -66,7 +66,7 @@ def build_content_plan(
                 "你是专业 PPT 内容策划与图像提示词 agent。"
                 "你必须只返回 JSON，不要返回 Markdown。"
                 "你会把用户长文拆成指定页数的 PPT 页面结构，并为每页生成可直接用于 gpt-image-2 的中文生图提示词。"
-                "如果存在参考风格图，必须优先服从参考图的版式语言、背景明度、主色、卡片结构与图标风格，"
+                "如果存在参考风格图，必须优先服从原稿图的版式语言、背景明度、主色、卡片结构与图标风格，"
                 "内容变化不能破坏整套视觉一致性。"
             ),
         },
@@ -123,7 +123,7 @@ def build_reference_style_guide(
             "content": (
                 "你是 PPT 视觉风格分析 agent。"
                 "你只返回 JSON。"
-                "你需要从参考图片中提炼稳定的版式与视觉语言，"
+                "你需要从原稿图片中提炼稳定的版式与视觉语言，"
                 "供后续多页 PPT 统一复用。"
             ),
         },
@@ -141,7 +141,7 @@ def build_reference_style_guide(
 
 def build_style_analysis_prompt(style_notes: str) -> str:
     return f"""
-请分析这些参考图的 PPT 风格，只返回严格 JSON。
+请分析这些原稿图的 PPT 风格，只返回严格 JSON。
 
 用户补充风格说明：
 {style_notes or "无额外补充"}
@@ -157,7 +157,7 @@ JSON 格式必须如下：
     "icon_style": "图标风格特征",
     "line_style": "箭头、线条、连接器风格特征"
   }},
-  "layout_families": ["参考图对应的抽象排版模式1", "抽象排版模式2", "抽象排版模式3"],
+  "layout_families": ["原稿图对应的抽象排版模式1", "抽象排版模式2", "抽象排版模式3"],
   "element_primitives": ["元素原语1", "元素原语2", "元素原语3"],
   "variation_policy": {{
     "same_layout_max_repeat": 1,
@@ -172,8 +172,8 @@ JSON 格式必须如下：
 要求：
 1. style_core 必须逐项提炼背景明度、配色、标题风格、卡片样式、图标风格、线条风格。
 2. layout_families 必须是抽象排版模式名称（如 grid_n_x_m、timeline_horizontal），不能写成编号式模板名（如 layout_1、template_a）。
-3. element_primitives 从参考图中提炼可复用的图形元素原语。
-4. negative_rules 只总结与参考图明显冲突的风格偏移，使用通用表达，不要写成过于具体的审美黑名单。
+3. element_primitives 从原稿图中提炼可复用的图形元素原语。
+4. negative_rules 只总结与原稿图明显冲突的风格偏移，使用通用表达，不要写成过于具体的审美黑名单。
 5. prompt_anchor 要适合直接拼接到每一页的生图提示词前面，避免过长、避免写成逐条硬性禁令。
 6. layout_families 至少列出 3 种不同的抽象排版模式。
 """.strip()
@@ -184,14 +184,14 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
     if has_reference_images:
         return {
             "source": "fallback",
-            "style_name": "参考图优先统一风格",
+            "style_name": "原稿图优先统一风格",
             "style_core": {
-                "background_tone": "优先继承参考图的背景明度与主底色",
-                "palette": ["继承参考图主色", "继承参考图辅助色"],
-                "title_style": "继承参考图标题字体与颜色",
-                "card_style": "继承参考图卡片描边与圆角",
-                "icon_style": "继承参考图图标风格",
-                "line_style": "继承参考图箭头与线条风格",
+                "background_tone": "优先继承原稿图的背景明度与主底色",
+                "palette": ["继承原稿图主色", "继承原稿图辅助色"],
+                "title_style": "继承原稿图标题字体与颜色",
+                "card_style": "继承原稿图卡片描边与圆角",
+                "icon_style": "继承原稿图图标风格",
+                "line_style": "继承原稿图箭头与线条风格",
             },
             "layout_families": list(DEFAULT_LAYOUT_FAMILIES),
             "element_primitives": list(DEFAULT_ELEMENT_PRIMITIVES),
@@ -199,9 +199,9 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
             "negative_rules": [
                 "不要随意切换成另一种背景明度",
                 "不要从信息图突然变成写实海报",
-                "不要复用参考图的具体构图",
+                "不要复用原稿图的具体构图",
             ],
-            "prompt_anchor": "优先延续参考图的版式与视觉语言，保持背景明度、主色、卡片样式、图标与信息图结构的一致性。允许根据当前页内容调整局部编排，但整体气质不要跳出同一套风格。",
+            "prompt_anchor": "优先延续原稿图的版式与视觉语言，保持背景明度、主色、卡片样式、图标与信息图结构的一致性。允许根据当前页内容调整局部编排，但整体气质不要跳出同一套风格。",
             "prompt_compression": "compressed",
         }
 
@@ -352,11 +352,11 @@ def build_planning_prompt(
 {style_notes or "用户没有填写风格补充，请根据内容自行判断。"}
 
 参考风格图片数量：{style_image_count}
-参考图约束强度：{reference_style_adherence_label}
+原稿图约束强度：{reference_style_adherence_label}
 画幅：16:9
 像素参考：{image_width}x{image_height}
 首页图策略：{"第 1 页允许作为 PPT 首页图/封面页，用于建立视觉基调" if include_cover_page else "不生成单独首页图；第 1 页必须直接进入正文内容"}
-第一阶段提示策略：系统会在参考图生成阶段使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里不要求你为每页写成长篇最终 prompt。
+第一阶段提示策略：系统会在原稿图生成阶段使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里不要求你为每页写成长篇最终 prompt。
 
 统一风格锚点：
 {prompt_anchor}
@@ -411,10 +411,10 @@ JSON 格式必须如下：
 3. 相邻页不能重复同一 layout_family。
 4. 整套页至少覆盖 3 种以上不同的 layout_family。
 5. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
-6. 不允许复用参考图的具体构图，每页必须有 difference_from_previous。
+6. 不允许复用原稿图的具体构图，每页必须有 difference_from_previous。
 7. layout_slots 是语义槽位，描述本页信息分区的含义，不是固定像素坐标。
 8. image_prompt 可以为空；如果填写，也只写本页独有的视觉重点，避免重复整套固定风格。
-9. 文字要出现在图中，因为这是第一阶段带文字参考图。
+9. 文字要出现在图中，因为这是第一阶段带文字原稿图。
 10. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
 11. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
 12. {build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}

@@ -213,7 +213,7 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
         </div>
 
         <label className="field field--full">
-          <span>参考图约束强度</span>
+          <span>参考风格图约束强度</span>
           <select
             value={form.referenceStyleAdherence}
             onChange={(event) => updateForm('referenceStyleAdherence', event.target.value)}
@@ -228,8 +228,8 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
           <span>参考风格图</span>
           <label className="upload-drop">
             <FileUp size={18} />
-            <strong>{styleFiles.length > 0 ? `已选择 ${styleFiles.length} 张图片` : '上传参考图，可选'}</strong>
-            <small>{currentJob?.job_id && styleFiles.length === 0 ? '未上传新图时，会复用当前任务参考图。' : '支持多张图片一起约束风格。'}</small>
+            <strong>{styleFiles.length > 0 ? `已选择 ${styleFiles.length} 张图片` : '上传参考风格图，可选'}</strong>
+            <small>{currentJob?.job_id && styleFiles.length === 0 ? '未上传新图时，会复用当前任务参考风格图。' : '支持多张图片一起约束风格。'}</small>
             <input
               type="file"
               multiple

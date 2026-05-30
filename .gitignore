@@ -3,3 +3,4 @@ output/
 *__pycache__
 *node_modules
 .codegraph
+.playwright-cli

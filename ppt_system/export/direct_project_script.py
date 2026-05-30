@@ -179,7 +179,7 @@ def prepare_direct_project_assets(
         if not visual_image.exists():
             raise FileNotFoundError(f"第 {page_no} 页元素图不存在：{visual_image}")
         if not reference_image.exists():
-            raise FileNotFoundError(f"第 {page_no} 页参考图不存在：{reference_image}")
+            raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_image}")
 
         image_width, image_height = resolve_canvas_size(reference_image, visual_image)
         page_dir = work_dir / f"page_{page_no:02d}"
@@ -258,7 +258,7 @@ def _generate_direct_project_page_script(
     reference_image = Path(str(page.get("reference_image", "")))
     visual_image = Path(str(page.get("visual_image", "")))
     if not reference_image.exists():
-        raise FileNotFoundError(f"第 {page_no} 页参考图不存在：{reference_image}")
+        raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_image}")
     if not visual_image.exists():
         raise FileNotFoundError(f"第 {page_no} 页元素图不存在：{visual_image}")
 
@@ -434,7 +434,7 @@ def generate_direct_project_text_script(
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
 ) -> dict[str, Any]:
-    """按页执行参考图+元素图首轮和真实导出回看修正，生成整套项目脚本。"""
+    """按页执行原稿图+元素图首轮和真实导出回看修正，生成整套项目脚本。"""
     assets_summary = prepare_direct_project_assets(
         project,
         work_dir,

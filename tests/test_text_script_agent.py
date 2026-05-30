@@ -85,7 +85,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                 ]
             },
         )
-        self.assertIn("第一张图是完整参考图，第二张图是去文字后的元素图", prompt)
+        self.assertIn("第一张图是完整原稿图，第二张图是去文字后的元素图", prompt)
         self.assertIn("text_placeholders", prompt)
         self.assertIn("默认沿用 placeholder", prompt)
         self.assertIn("元素会在导出时单独加入", prompt)

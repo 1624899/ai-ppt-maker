@@ -134,7 +134,7 @@ def add_textbox(slide, spec: TextSpec) -> None:
 
 def build_ppt(reference_image: Path, elements_image: Path, output_pptx: Path) -> Path:
     if not reference_image.exists():
-        raise FileNotFoundError(f"参考图不存在: {reference_image}")
+        raise FileNotFoundError(f"原稿图不存在: {reference_image}")
     if not elements_image.exists():
         raise FileNotFoundError(f"元素图不存在: {elements_image}")
 

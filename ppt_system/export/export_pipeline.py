@@ -137,14 +137,14 @@ def build_project_from_web_job(
             raise ValueError(f"第 {page_no} 页缺少去文字元素图，无法继续导出")
         reference_item = reference_map.get(page_no)
         if not reference_item:
-            raise ValueError(f"第 {page_no} 页缺少参考图，无法继续导出")
+            raise ValueError(f"第 {page_no} 页缺少原稿图，无法继续导出")
 
         visual_path = resolve_job_artifact_path(job_dir, str(element_item["image"]))
         reference_path = resolve_job_artifact_path(job_dir, str(reference_item["image"]))
         if not visual_path.exists():
             raise FileNotFoundError(f"第 {page_no} 页元素图不存在：{visual_path}")
         if not reference_path.exists():
-            raise FileNotFoundError(f"第 {page_no} 页参考图不存在：{reference_path}")
+            raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_path}")
 
         rebuilt_texts = rebuild_page_texts(raw_page, image_width, image_height, style_guide)
         project_pages.append(
@@ -247,7 +247,7 @@ def _prepare_editable_delivery_core(
     if chat_provider is None:
         raise RuntimeError("当前主路径必须提供 chat_provider，已不再支持 legacy/builtin 回退。")
 
-    _log(stage_logger, "开始执行主路径：参考图+元素图首轮直出，随后真实 PPT 导出回看")
+    _log(stage_logger, "开始执行主路径：原稿图+元素图首轮直出，随后真实 PPT 导出回看")
     direct_result = generate_direct_project_text_script(
         chat_provider,
         project,

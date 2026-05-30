@@ -34,7 +34,7 @@ def detect_text_placeholders(
     slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
     options: TextPlaceholderDetectionOptions | None = None,
 ) -> dict[str, Any]:
-    """从“完整参考图 - 去文字元素图”的差异中估计文字占位框。"""
+    """从“完整原稿图 - 去文字元素图”的差异中估计文字占位框。"""
     resolved_options = options or TextPlaceholderDetectionOptions()
     reference_rgba = _load_rgba(reference_image)
     elements_rgba = _load_rgba(elements_image, size=(reference_rgba.shape[1], reference_rgba.shape[0]))

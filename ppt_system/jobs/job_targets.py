@@ -67,5 +67,5 @@ def can_upgrade_to_editable(job_state: dict[str, Any] | None) -> bool:
 def build_completion_summary(job_target: Any) -> str:
     normalized = normalize_job_target(job_target)
     if normalized == JOB_TARGET_REFERENCE_ONLY:
-        return "参考图已生成完成，可按需导出图片PPT，或继续生成可编辑元素。"
+        return "原稿图已生成完成，可按需导出图片PPT，或继续生成可编辑元素。"
     return "可编辑元素与文字脚本已生成完成，可继续导出可编辑PPT。"

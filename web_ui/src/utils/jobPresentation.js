@@ -1,6 +1,6 @@
 export const STAGE_DEFINITIONS = [
   { key: 'planning', label: '模型规划' },
-  { key: 'reference_generation', label: '参考图生成' },
+  { key: 'reference_generation', label: '原稿图生成' },
   { key: 'elements_generation', label: '元素图生成' },
   { key: 'ppt_export', label: '可编辑元素生成' },
 ];
@@ -104,7 +104,7 @@ export function getPageImage(page) {
 
 export function getPageImageKind(page) {
   if (page?.element_image) return '元素图';
-  if (page?.reference_image) return '参考图';
+  if (page?.reference_image) return '原稿图';
   if (page?.image) return '预览图';
   return '';
 }
@@ -113,7 +113,7 @@ export function getPageImageOptions(page) {
   if (!page) return [];
 
   const options = [
-    { key: 'reference', label: '参考图', src: page.reference_image || '' },
+    { key: 'reference', label: '原稿图', src: page.reference_image || '' },
     { key: 'element', label: '元素图', src: page.element_image || '' },
   ];
 

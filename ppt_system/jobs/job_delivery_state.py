@@ -131,7 +131,7 @@ def build_reference_delivery_payload(
     return {
         "key": REFERENCE_PPT_DELIVERY_KEY,
         "label": "图片PPT",
-        "description": "按当前参考图原样导出的图片版 PPT。",
+        "description": "按当前原稿图原样导出的图片版 PPT。",
         "pptx_path": str(output_pptx),
         "pptx_url": build_run_file_url(job_id, job_dir, output_pptx),
         "page_count": int(page_count),
@@ -182,7 +182,7 @@ def build_delivery_actions(job_state: dict[str, Any], job_dir: Path) -> list[dic
             {
                 "key": REFERENCE_PPT_DELIVERY_KEY,
                 "label": "图片PPT生成",
-                "description": "使用当前参考图导出图片版 PPT，适合保留原始视觉效果。",
+                "description": "使用当前原稿图导出图片版 PPT，适合保留原始视觉效果。",
                 "visible": True,
                 "generated": bool(reference_delivery),
                 "generated_file": reference_delivery,
