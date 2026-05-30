@@ -34,6 +34,11 @@ def api_delete_job(job_id: str):
     return jobs_api_service.api_delete_job(job_id)
 
 
+@bp.patch("/api/jobs/<job_id>")
+def api_update_job(job_id: str):
+    return jobs_api_service.api_update_job(job_id)
+
+
 @bp.get("/api/jobs/stream")
 def api_job_history_stream():
     return jobs_api_service.api_job_history_stream()
@@ -62,3 +67,8 @@ def api_create_job_operation(job_id: str):
 @bp.post("/api/jobs/<job_id>/agent/draft")
 def api_create_agent_draft(job_id: str):
     return job_agent_draft_service.api_create_agent_draft(job_id)
+
+
+@bp.delete("/api/jobs/<job_id>/agent/conversation")
+def api_clear_agent_conversation(job_id: str):
+    return job_agent_draft_service.api_clear_agent_conversation(job_id)

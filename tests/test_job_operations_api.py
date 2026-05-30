@@ -196,7 +196,7 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(payload["operations"][-1]["status"], "accepted")
         self.assertEqual(payload["operations"][-1]["execution"], "pending_backend")
 
-    def test_agent_draft_structures_fuzzy_reference_feedback_without_pipeline(self) -> None:
+    def test_agent_draft_requires_chat_model_config(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()
         initial_submit_count = len(self.executor.calls)
 
@@ -216,34 +216,196 @@ class JobOperationsApiTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertIn("对话模型", payload["error"])
+        self.assertEqual(len(self.executor.calls), initial_submit_count)
+
+    def test_agent_draft_model_error_is_not_replaced_by_rule_answer(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [
+                    {
+                        "id": "chat_agent",
+                        "name": "Agent 对话模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "agent-model",
+                    }
+                ],
+                "image": [],
+            },
+            "active_chat_config_id": "chat_agent",
+        }
+
+        class FailingAgentProvider:
+            def __init__(self, provider_config, profile) -> None:
+                pass
+
+            def build_image_message_item(self, image_path: Path) -> dict[str, object]:
+                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+
+            def complete_json(self, messages):
+                raise RuntimeError("上游模型不可用")
+
+        with patch.object(web_app, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
+            FailingAgentProvider,
+        ):
+            response = self.client.post(
+                f"/api/jobs/{job_id}/agent/draft",
+                json={"message": "整体改成更商务的蓝白科技风"},
+            )
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertIn("上游模型不可用", payload["error"])
+
+    def test_agent_conversation_can_be_cleared(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [
+                    {
+                        "id": "chat_agent",
+                        "name": "Agent 对话模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "agent-model",
+                    }
+                ],
+                "image": [],
+            },
+            "active_chat_config_id": "chat_agent",
+        }
+
+        class FakeAgentProvider:
+            def __init__(self, provider_config, profile) -> None:
+                pass
+
+            def build_image_message_item(self, image_path: Path) -> dict[str, object]:
+                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+
+            def complete_json(self, messages):
+                return {
+                    "edit_kind": "style",
+                    "affected_pages": [1, 2],
+                    "summary": "我理解为整套 PPT 要统一成更商务的蓝白科技风。",
+                    "changes": ["统一配色", "降低装饰密度"],
+                    "instruction": "整套 PPT 风格调整为更商务的蓝白科技风。",
+                    "confidence": "high",
+                }
+
+        with patch.object(web_app, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
+            FakeAgentProvider,
+        ):
+            draft_response = self.client.post(
+                f"/api/jobs/{job_id}/agent/draft",
+                json={"message": "整体改成更商务的蓝白科技风"},
+            )
+        self.assertEqual(draft_response.status_code, 200)
+
+        response = self.client.delete(f"/api/jobs/{job_id}/agent/conversation")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["messages"], [])
+        self.assertIsNone(payload["agent_pending_draft"])
+
+        status_response = self.client.get(f"/api/jobs/{job_id}")
+        self.assertEqual(status_response.status_code, 200)
+        status_payload = status_response.get_json()
+        self.assertIsNotNone(status_payload)
+        self.assertEqual(status_payload.get("agent_conversation"), [])
+        self.assertIsNone(status_payload.get("agent_pending_draft"))
+
+    def test_agent_draft_uses_chat_model_when_configured(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [
+                    {
+                        "id": "chat_agent",
+                        "name": "Agent 对话模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "agent-model",
+                        "temperature": 0.1,
+                        "max_tokens": 800,
+                    }
+                ],
+                "image": [],
+            },
+            "active_chat_config_id": "chat_agent",
+        }
+        captured: dict[str, object] = {}
+
+        class FakeAgentProvider:
+            def __init__(self, provider_config, profile) -> None:
+                captured["profile"] = profile
+                captured["config"] = provider_config
+
+            def build_image_message_item(self, image_path: Path) -> dict[str, object]:
+                captured["image_path"] = image_path
+                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+
+            def complete_json(self, messages):
+                captured["messages"] = messages
+                return {
+                    "edit_kind": "layout",
+                    "affected_pages": [2],
+                    "summary": "我理解为第 2 页右侧信息区层级太弱，需要重新整理。",
+                    "changes": ["压缩右侧模块文字密度", "拉开卡片层级并增强留白"],
+                    "instruction": "第 2 页画面与排版修改：右侧信息区更清晰、更像咨询汇报。",
+                    "confidence": "high",
+                }
+
+        with patch.object(web_app, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
+            FakeAgentProvider,
+        ):
+            response = self.client.post(
+                f"/api/jobs/{job_id}/agent/draft",
+                json={
+                    "message": "右边那块太乱了，要更像咨询汇报",
+                    "page_no": 2,
+                    "preview_type": "reference",
+                    "messages": [{"role": "assistant", "message": "可以，我先理解问题。"}],
+                    "annotations": [
+                        {
+                            "id": "box-1",
+                            "label": "右侧信息区",
+                            "box": {"x": 0.58, "y": 0.18, "width": 0.3, "height": 0.5},
+                        }
+                    ],
+                },
+            )
+
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertIsNotNone(payload)
         draft = payload["draft"]
-        self.assertEqual(len(self.executor.calls), initial_submit_count)
+        self.assertEqual(payload["agent_meta"]["planner"], "model")
         self.assertEqual(draft["operation_type"], "page_layout_optimize")
         self.assertEqual(draft["edit_kind"], "layout")
-        self.assertEqual(draft["page_no"], 2)
         self.assertEqual(draft["affected_pages"], [2])
         self.assertIn("右侧信息区", draft["instruction"])
-        self.assertGreaterEqual(len(payload["messages"]), 2)
-
-    def test_agent_draft_can_target_whole_deck_style(self) -> None:
-        job_id, _job_dir = self._seed_completed_pages()
-
-        response = self.client.post(
-            f"/api/jobs/{job_id}/agent/draft",
-            json={"message": "整体改成更商务的蓝白科技风"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertIsNotNone(payload)
-        draft = payload["draft"]
-        self.assertEqual(draft["operation_type"], "job_style_adjust")
-        self.assertEqual(draft["edit_kind"], "style")
-        self.assertEqual(draft["page_no"], None)
-        self.assertEqual(draft["affected_pages"], [1, 2])
+        model_messages = captured["messages"]
+        self.assertIsInstance(model_messages, list)
+        user_content = model_messages[1]["content"]
+        self.assertTrue(any(item.get("type") == "image_url" for item in user_content))
+        prompt_text = next(item["text"] for item in user_content if item.get("type") == "text")
+        self.assertIn("右边那块太乱了", prompt_text)
+        self.assertIn("右侧信息区", prompt_text)
+        self.assertIn("可以，我先理解问题。", prompt_text)
 
     def test_page_text_optimize_rebuilds_export_without_invalidating_images(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()

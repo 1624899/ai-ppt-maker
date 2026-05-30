@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { postJobAction, postJobOperation } from '../utils/jobActions';
 
+const isJobStatePayload = (data) => Boolean(data && typeof data === 'object' && data.job_id);
+
 export const useJobActions = ({ currentJob, onJobUpdated } = {}) => {
   const [pendingKey, setPendingKey] = useState('');
   const [error, setError] = useState('');
@@ -13,7 +15,11 @@ export const useJobActions = ({ currentJob, onJobUpdated } = {}) => {
     setError('');
     try {
       const data = await postJobAction(jobId, action, payload);
-      onJobUpdated?.(data);
+      if (isJobStatePayload(data)) {
+        onJobUpdated?.(data);
+      } else {
+        options.onSuccess?.(data);
+      }
       return data;
     } catch (err) {
       const message = err.message || '操作失败';
@@ -32,7 +38,11 @@ export const useJobActions = ({ currentJob, onJobUpdated } = {}) => {
     setError('');
     try {
       const data = await postJobOperation(jobId, operation);
-      onJobUpdated?.(data);
+      if (isJobStatePayload(data)) {
+        onJobUpdated?.(data);
+      } else {
+        options.onSuccess?.(data);
+      }
       return data;
     } catch (err) {
       const message = err.message || '操作失败';

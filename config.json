@@ -77,7 +77,7 @@
   "stage1_concurrency": 2,
   "stage2_concurrency": 1,
   "output_dir": "output",
-  "active_chat_config_id": "chat_ab40f06a",
+  "active_chat_config_id": "chat_gpt_55",
   "active_image_config_id": "image_11ac17b8",
   "enable_design_grammar": true,
   "min_distinct_layout_families": 3,

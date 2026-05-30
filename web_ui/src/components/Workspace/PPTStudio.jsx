@@ -121,6 +121,7 @@ const PPTStudio = ({
                     type="button"
                     key={page.page_no}
                     className={clsx('page-item', index === selectedPageIndex && 'is-active')}
+                    aria-pressed={index === selectedPageIndex}
                     onClick={() => onSelectPage(index)}
                   >
                     <SlideImage

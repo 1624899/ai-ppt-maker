@@ -20,17 +20,8 @@ import {
   getStatusLabel,
 } from '../../utils/jobPresentation';
 
-const QUICK_ACTIONS = ['优化当前页', '减少文字', '增强视觉', '统一风格'];
-
 const STYLE_OPTIONS = ['蓝白科技风', '深色科技风', '极简商务风'];
 const LAYOUT_OPTIONS = ['更紧凑', '更留白', '改为三栏', '改为流程图'];
-
-const QUICK_ACTION_OPERATION = {
-  优化当前页: 'page_text_optimize',
-  减少文字: 'page_text_optimize',
-  增强视觉: 'page_layout_optimize',
-  统一风格: 'job_style_adjust',
-};
 
 const AgentWorkspace = ({
   currentJob,
@@ -71,16 +62,6 @@ const AgentWorkspace = ({
     if (result && operationType !== 'restore_page_version') {
       setDraftInstruction('');
     }
-  };
-
-  const quickSubmit = async (action) => {
-    const operationType = QUICK_ACTION_OPERATION[action];
-    if (!operationType) return;
-    const prefix = activePage && operationType !== 'job_style_adjust' ? `第 ${activePage.page_no} 页` : '整套 PPT';
-    const instruction = draftInstruction.trim() || `${prefix}${action}`;
-    setDraftInstruction(instruction);
-    await submitOperation(operationType, instruction, instruction);
-    if (activePage && operationType !== 'job_style_adjust') setMode('edit');
   };
 
   const confirmAgentDraft = (draft) => {
@@ -130,17 +111,22 @@ const AgentWorkspace = ({
             <p>{agentSummary.body}</p>
             {pages.length > 0 && (
               <ol className="page-outline">
-                {pages.slice(0, 6).map((page, index) => (
-                  <li key={page.page_no}>
-                    <button type="button" onClick={() => {
-                      onSelectPage(index);
-                      setMode('edit');
-                    }}>
-                      <span>{page.page_no}</span>
-                      {getPageTitle(page)}
-                    </button>
-                  </li>
-                ))}
+                {pages.slice(0, 6).map((page, index) => {
+                  const selected = index === selectedPageIndex;
+                  return (
+                    <li key={page.page_no}>
+                      <button
+                        type="button"
+                        className={clsx(selected && 'is-active')}
+                        aria-pressed={selected}
+                        onClick={() => onSelectPage(index)}
+                      >
+                        <span>{page.page_no}</span>
+                        {getPageTitle(page)}
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
             )}
           </div>
@@ -160,19 +146,6 @@ const AgentWorkspace = ({
 
             {currentJob && (
               <>
-                <div className="quick-actions" aria-label="快捷修改">
-                  {QUICK_ACTIONS.map((action) => (
-                    <button
-                      type="button"
-                      key={action}
-                      onClick={() => quickSubmit(action)}
-                      disabled={pendingKey !== '' || (isRunning && action !== '导出PPT')}
-                      title={action === '导出PPT' ? '会先写入导出要求，请在右侧选择导出格式' : '提交 Agent 编辑操作'}
-                    >
-                      {pendingKey === QUICK_ACTION_OPERATION[action] ? '提交中...' : action}
-                    </button>
-                  ))}
-                </div>
                 <AgentChatPanel
                   key={currentJob.job_id}
                   currentJob={currentJob}
@@ -182,6 +155,10 @@ const AgentWorkspace = ({
                   draftInstruction={draftInstruction}
                   onDraftInstructionChange={setDraftInstruction}
                   onDraftConfirmed={confirmAgentDraft}
+                  onConversationCleared={(updatedJob) => {
+                    setAgentDraft(null);
+                    if (updatedJob?.job_id) onJobUpdated(updatedJob);
+                  }}
                   onOpenImageMarkup={onOpenImageMarkup}
                 />
                 {actionError && <div className="form-error">{actionError}</div>}

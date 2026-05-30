@@ -32,3 +32,10 @@ export const postAgentDraft = async (jobId, payload) => {
   });
   return parseJsonResponse(response);
 };
+
+export const clearAgentConversation = async (jobId) => {
+  const response = await fetch(`/api/jobs/${jobId}/agent/conversation`, {
+    method: 'DELETE',
+  });
+  return parseJsonResponse(response);
+};

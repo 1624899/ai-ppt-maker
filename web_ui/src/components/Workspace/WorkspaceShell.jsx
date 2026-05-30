@@ -13,7 +13,7 @@ const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
 );
 
 const WorkspaceShell = () => {
-  const { jobs, loading: jobsLoading } = useJobs();
+  const { jobs, loading: jobsLoading, setJobs, refreshJobs } = useJobs();
   const [currentJobId, setCurrentJobId] = useState(null);
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [selectedPreviewType, setSelectedPreviewType] = useState('reference');
@@ -64,6 +64,37 @@ const WorkspaceShell = () => {
     setImageMarkupOpen(false);
   };
 
+  const handleJobRenamed = (job) => {
+    setJobs((current) => current.map((item) => (item.job_id === job.job_id ? { ...item, ...job } : item)));
+    if (currentJobId === job.job_id) {
+      setCurrentJob((current) => (current ? { ...current, title: job.title } : current));
+    }
+    refreshJobs().catch(console.error);
+  };
+
+  const handleJobChanged = (job) => {
+    setJobs((current) => current.map((item) => (item.job_id === job.job_id ? { ...item, ...job } : item)));
+    if (currentJobId === job.job_id) {
+      setCurrentJob((current) => (current ? { ...current, ...job } : current));
+    }
+    refreshJobs().catch(console.error);
+  };
+
+  const handleJobDeleted = (jobId) => {
+    const remainingJobs = jobs.filter((job) => job.job_id !== jobId);
+    setJobs(remainingJobs);
+    if (currentJobId === jobId) {
+      const nextJob = remainingJobs[0] || null;
+      setCurrentJob(null);
+      setCurrentJobId(nextJob?.job_id || null);
+      setSelectedPageIndex(0);
+      setSelectedPreviewType('reference');
+      setImageMarkupOpen(false);
+      autoSelectedRef.current = Boolean(nextJob);
+    }
+    refreshJobs().catch(console.error);
+  };
+
   const updateImageAnnotations = (annotations) => {
     if (!annotationScopeKey) return;
     setAnnotationsByScope((current) => ({
@@ -74,7 +105,12 @@ const WorkspaceShell = () => {
 
   return (
     <>
-      <Header currentJob={currentJob} onCreateTask={createTask} />
+      <Header
+        currentJob={currentJob}
+        onCreateTask={createTask}
+        onJobUpdated={setCurrentJob}
+        onJobsRefresh={refreshJobs}
+      />
       <div className="workspace-shell">
         <TaskCenter
           jobs={jobs}
@@ -82,6 +118,9 @@ const WorkspaceShell = () => {
           currentJobId={currentJobId}
           onSelectJob={selectJob}
           onCreateTask={createTask}
+          onJobRenamed={handleJobRenamed}
+          onJobPinned={handleJobChanged}
+          onJobDeleted={handleJobDeleted}
         />
         <AgentWorkspace
           currentJob={currentJob}

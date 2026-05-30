@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,11 +27,13 @@ def init_db(db_path: Path) -> None:
                 state_json TEXT NOT NULL,
                 result_json TEXT NOT NULL,
                 stop_requested INTEGER NOT NULL DEFAULT 0,
+                pinned_at TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        _ensure_column(conn, "jobs", "pinned_at", "TEXT NOT NULL DEFAULT ''")
 
 
 def create_job(db_path: Path, payload: dict[str, Any]) -> None:
@@ -63,7 +66,7 @@ def create_job(db_path: Path, payload: dict[str, Any]) -> None:
         )
 
 
-def update_job(db_path: Path, job_id: str, **fields: Any) -> None:
+def update_job(db_path: Path, job_id: str, touch_updated_at: bool = True, **fields: Any) -> None:
     if not fields:
         return
     columns = []
@@ -78,7 +81,9 @@ def update_job(db_path: Path, job_id: str, **fields: Any) -> None:
         else:
             columns.append(f"{key} = ?")
             values.append(value)
-    columns.append("updated_at = CURRENT_TIMESTAMP")
+    if touch_updated_at:
+        columns.append("updated_at = ?")
+        values.append(current_timestamp())
     values.append(job_id)
     with sqlite3.connect(db_path) as conn:
         conn.execute(f"UPDATE jobs SET {', '.join(columns)} WHERE job_id = ?", values)
@@ -98,11 +103,11 @@ def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
         conn.row_factory = sqlite3.Row
         if limit is None:
             rows = conn.execute(
-                "SELECT * FROM jobs ORDER BY datetime(updated_at) DESC, rowid DESC"
+                "SELECT * FROM jobs ORDER BY updated_at DESC, rowid DESC"
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM jobs ORDER BY datetime(updated_at) DESC, rowid DESC LIMIT ?",
+                "SELECT * FROM jobs ORDER BY updated_at DESC, rowid DESC LIMIT ?",
                 (int(limit),),
             ).fetchall()
     return [_row_to_job(dict(row)) for row in rows]
@@ -118,6 +123,7 @@ def _row_to_job(row: dict[str, Any]) -> dict[str, Any]:
     row["state"] = _load_json(row.pop("state_json", "{}"))
     row["result"] = _load_json(row.pop("result_json", "{}"))
     row["stop_requested"] = bool(row.get("stop_requested"))
+    row["pinned_at"] = str(row.get("pinned_at") or "")
     return row
 
 
@@ -127,3 +133,13 @@ def _load_json(value: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def current_timestamp() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")

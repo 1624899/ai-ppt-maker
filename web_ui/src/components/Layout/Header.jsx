@@ -1,10 +1,38 @@
 import { useState } from 'react';
-import { Plus, Settings } from 'lucide-react';
+import { Pause, Play, Plus, Settings } from 'lucide-react';
+import clsx from 'clsx';
 import SettingsModal from './SettingsModal';
 import { getJobTitle, getStatusLabel } from '../../utils/jobPresentation';
+import { getTopbarTaskAction } from '../../utils/topbarTaskAction';
+import { useJobActions } from '../../hooks/useJobActions';
 
-const Header = ({ currentJob, onCreateTask }) => {
+const ACTION_ICONS = {
+  pause: Pause,
+  play: Play,
+  plus: Plus,
+};
+
+const Header = ({ currentJob, onCreateTask, onJobUpdated, onJobsRefresh }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { pendingKey, runAction } = useJobActions({
+    currentJob,
+    onJobUpdated,
+  });
+  const taskAction = getTopbarTaskAction(currentJob, pendingKey);
+  const TaskActionIcon = ACTION_ICONS[taskAction.icon] || Plus;
+
+  const handleTaskAction = async () => {
+    if (taskAction.disabled) return;
+    if (taskAction.type === 'create') {
+      onCreateTask?.();
+      return;
+    }
+
+    const data = await runAction(taskAction.action, undefined, { key: taskAction.action });
+    if (data) {
+      onJobsRefresh?.();
+    }
+  };
 
   return (
     <>
@@ -30,9 +58,14 @@ const Header = ({ currentJob, onCreateTask }) => {
             <Settings size={18} />
             <span>设置</span>
           </button>
-          <button className="btn btn-primary" onClick={onCreateTask}>
-            <Plus size={18} />
-            <span>创建任务</span>
+          <button
+            type="button"
+            className={clsx('btn', taskAction.className)}
+            onClick={handleTaskAction}
+            disabled={taskAction.disabled}
+          >
+            <TaskActionIcon size={18} />
+            <span>{taskAction.label}</span>
           </button>
         </div>
       </header>

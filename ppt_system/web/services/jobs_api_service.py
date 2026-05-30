@@ -218,6 +218,42 @@ def api_delete_job(job_id: str):
     return jsonify({"ok": True})
 
 
+def api_update_job(job_id: str):
+    runtime = get_runtime_module()
+    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    if not record:
+        return jsonify({"error": "任务不存在"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    fields: dict[str, Any] = {}
+    action = str(payload.get("action", "")).strip().lower()
+
+    if "title" in payload:
+        title = str(payload.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "任务名称不能为空。"}), 400
+        fields["title"] = title
+
+    touch_updated_at = True
+    if action == "pin":
+        fields["pinned_at"] = runtime.current_job_timestamp()
+        touch_updated_at = False
+    elif action == "unpin":
+        fields["pinned_at"] = ""
+        touch_updated_at = False
+    elif action and action != "rename":
+        return jsonify({"error": f"不支持的任务操作：{action}"}), 400
+
+    if not fields:
+        return jsonify({"error": "没有可更新的任务字段。"}), 400
+
+    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, touch_updated_at=touch_updated_at, **fields)
+    refreshed = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    if not refreshed:
+        return jsonify({"error": "任务不存在"}), 404
+    return jsonify(runtime.job_summary(refreshed))
+
+
 def api_job_history_stream():
     runtime = get_runtime_module()
 

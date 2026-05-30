@@ -315,6 +315,7 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
         "style_notes": record["style_notes"],
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
+        "pinned_at": str(record.get("pinned_at") or ""),
         "stop_requested": record.get("stop_requested", False),
         "preview_image": _find_preview_image(state),
     }
@@ -325,6 +326,8 @@ def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] |
     merged = json.loads(json.dumps(state, ensure_ascii=False))
     if not record:
         return normalize_job_state_labels(merged)
+    merged["title"] = str(record.get("title") or merged.get("title") or "")
+    merged["pinned_at"] = str(record.get("pinned_at") or "")
     job_meta = merged.setdefault("job_meta", {})
     job_meta["content"] = str(job_meta.get("content") or record.get("content") or "")
     job_meta["page_count"] = int(job_meta.get("page_count") or record.get("page_count") or 0)

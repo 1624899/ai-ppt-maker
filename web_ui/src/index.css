@@ -145,9 +145,11 @@ a {
 #root {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  height: 100vh;
-  padding: 14px;
+  gap: clamp(10px, 0.8vw, 14px);
+  height: 100dvh;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: clamp(10px, 0.8vw, 14px);
 }
 
 .app-topbar,
@@ -160,12 +162,12 @@ a {
 
 .app-topbar {
   display: grid;
-  grid-template-columns: minmax(260px, auto) minmax(220px, 1fr) auto;
-  gap: 18px;
+  grid-template-columns: minmax(220px, auto) minmax(180px, 1fr) max-content;
+  gap: 14px;
   align-items: center;
-  min-height: 72px;
-  padding: 12px 18px;
-  border-radius: 22px;
+  min-height: 68px;
+  padding: 10px 16px;
+  border-radius: 20px;
 }
 
 .brand-block,
@@ -242,12 +244,14 @@ a {
 .topbar-actions {
   gap: 10px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .workspace-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 20%) minmax(500px, 52%) minmax(350px, 28%);
-  gap: 16px;
+  grid-template-columns: minmax(250px, 0.78fr) minmax(480px, 1.85fr) minmax(320px, 1fr);
+  gap: clamp(10px, 0.8vw, 16px);
+  align-items: stretch;
   min-height: 0;
   overflow: hidden;
 }
@@ -325,6 +329,18 @@ a {
   box-shadow: 0 12px 24px rgba(31, 94, 255, 0.24);
 }
 
+.btn-task-resume {
+  color: #fff;
+  background: linear-gradient(135deg, var(--success), #14633f);
+  box-shadow: 0 12px 24px rgba(35, 139, 87, 0.22);
+}
+
+.btn-task-pause {
+  color: #fff;
+  background: linear-gradient(135deg, var(--amber), #a35f11);
+  box-shadow: 0 12px 24px rgba(201, 137, 29, 0.22);
+}
+
 .btn-secondary {
   background: rgba(255, 255, 255, 0.76);
   border: 1px solid var(--border-light);
@@ -342,6 +358,10 @@ a {
   min-height: 0;
   padding: 16px;
   overflow-y: auto;
+}
+
+.task-center__body {
+  overflow-x: hidden;
 }
 
 .task-center__body,
@@ -394,16 +414,15 @@ a {
 
 .task-list {
   max-height: 42vh;
+  padding-right: 4px;
   overflow-y: auto;
 }
 
 .task-card {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 10px;
+  position: relative;
+  display: flex;
+  align-items: stretch;
   width: 100%;
-  padding: 10px;
-  text-align: left;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -412,15 +431,31 @@ a {
 }
 
 .task-card:hover {
+  z-index: 1;
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow-sm);
+}
+
+.task-card.is-menu-open {
+  z-index: 40;
 }
 
 .task-card.is-active {
   background: #fff;
   border-color: rgba(31, 94, 255, 0.34);
   box-shadow: 0 14px 28px rgba(31, 94, 255, 0.14);
+}
+
+.task-card__main {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+  background: transparent;
 }
 
 .task-card__preview {
@@ -441,6 +476,104 @@ a {
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-card__rename-input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(31, 94, 255, 0.28);
+  border-radius: 8px;
+  outline: none;
+}
+
+.task-card__rename-input:focus {
+  border-color: rgba(31, 94, 255, 0.58);
+  box-shadow: 0 0 0 3px rgba(31, 94, 255, 0.1);
+}
+
+.task-card__menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.task-card__menu-button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.task-card__menu-button:hover,
+.task-card__menu-button[aria-expanded="true"] {
+  color: var(--text-main);
+  background: rgba(231, 236, 247, 0.9);
+}
+
+.task-action-menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  width: 156px;
+  gap: 6px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.task-action-menu button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 11px;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  border-radius: 10px;
+}
+
+.task-action-menu svg {
+  justify-self: center;
+  stroke-width: 2.1;
+}
+
+.task-action-menu button:hover:not(:disabled) {
+  background: #f2f2f2;
+}
+
+.task-action-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.task-action-menu button.is-danger {
+  color: #ff2d2d;
+}
+
+.task-action-message {
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: #b91c1c;
+  font-size: 12px;
+  background: rgba(254, 242, 242, 0.9);
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  border-radius: 10px;
 }
 
 .resource-link {
@@ -601,8 +734,10 @@ a {
 }
 
 .page-outline button {
+  position: relative;
   display: flex;
   gap: 8px;
+  align-items: center;
   width: 100%;
   min-width: 0;
   padding: 9px;
@@ -612,7 +747,25 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.78);
+  border: 1px solid transparent;
   border-radius: 12px;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.page-outline button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(31, 94, 255, 0.18);
+  box-shadow: var(--shadow-xs);
+}
+
+.page-outline button.is-active {
+  color: var(--primary-strong);
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.16), rgba(15, 159, 143, 0.08)),
+    #fff;
+  border-color: rgba(31, 94, 255, 0.56);
+  box-shadow: 0 12px 26px rgba(31, 94, 255, 0.16);
 }
 
 .page-outline span {
@@ -625,6 +778,11 @@ a {
   font-size: 12px;
   background: var(--primary);
   border-radius: 999px;
+}
+
+.page-outline button.is-active span {
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  box-shadow: 0 6px 14px rgba(31, 94, 255, 0.24);
 }
 
 .quick-actions,
@@ -698,6 +856,13 @@ a {
   justify-content: space-between;
 }
 
+.agent-chat-window__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .agent-chat-window__head h3 {
   margin-top: 3px;
   font-size: 19px;
@@ -723,6 +888,16 @@ a {
   max-height: 280px;
   overflow-y: auto;
   padding: 2px 4px 2px 0;
+}
+
+.chat-thread__empty {
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px dashed rgba(183, 199, 224, 0.9);
+  border-radius: 14px;
 }
 
 .chat-bubble {
@@ -817,11 +992,44 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: end;
+  align-items: center;
 }
 
 .chat-composer textarea {
   min-height: 72px;
+}
+
+.chat-composer__send {
+  position: relative;
+  justify-self: end;
+  min-height: 42px;
+  padding: 9px 15px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+  white-space: nowrap;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.28), transparent 26%),
+    linear-gradient(135deg, #2d6aff 0%, #184ccd 100%);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    0 10px 22px rgba(31, 94, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.chat-composer__send:hover:not(:disabled) {
+  box-shadow:
+    0 14px 26px rgba(31, 94, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.chat-composer__send:disabled {
+  color: rgba(255, 255, 255, 0.92);
+  background:
+    linear-gradient(135deg, rgba(70, 118, 225, 0.78), rgba(72, 95, 151, 0.72));
+  border-color: rgba(255, 255, 255, 0.26);
+  opacity: 0.86;
 }
 
 .agent-chat-window__hint {
@@ -1331,6 +1539,7 @@ a {
 }
 
 .page-item {
+  position: relative;
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
   gap: 10px;
@@ -1346,13 +1555,35 @@ a {
 .page-item:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(31, 94, 255, 0.18);
   box-shadow: var(--shadow-xs);
 }
 
 .page-item.is-active {
-  border-color: rgba(31, 94, 255, 0.36);
-  background: #fff;
-  box-shadow: 0 12px 26px rgba(31, 94, 255, 0.13);
+  border-color: rgba(31, 94, 255, 0.64);
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.14), rgba(15, 159, 143, 0.08)),
+    #fff;
+  box-shadow: 0 14px 30px rgba(31, 94, 255, 0.17);
+}
+
+.page-item.is-active::before {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 0;
+  width: 4px;
+  content: "";
+  background: linear-gradient(180deg, var(--primary), var(--teal));
+  border-radius: 0 999px 999px 0;
+}
+
+.page-item.is-active .page-item__thumb {
+  box-shadow: 0 0 0 2px rgba(31, 94, 255, 0.5), 0 8px 18px rgba(31, 94, 255, 0.14);
+}
+
+.page-item.is-active .page-item__text strong {
+  color: var(--primary-strong);
 }
 
 .page-item__thumb {
@@ -1391,6 +1622,11 @@ a {
   background: rgba(245, 248, 252, 0.72);
   border: 1px solid rgba(198, 211, 231, 0.42);
   border-radius: var(--radius-md);
+}
+
+.export-item > .btn,
+.export-item > button {
+  white-space: nowrap;
 }
 
 .export-item > svg {
@@ -1938,15 +2174,52 @@ a {
   #root {
     height: auto;
     min-height: 100vh;
+    overflow: visible;
   }
 
   .workspace-shell {
     grid-template-columns: minmax(220px, 0.82fr) minmax(420px, 1.5fr);
+    align-items: start;
     overflow: visible;
   }
 
   .ppt-studio {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .topbar-task {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .topbar-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 980px) {
+  .workspace-shell,
+  .ppt-studio__body {
+    grid-template-columns: 1fr;
+  }
+
+  .ppt-studio,
+  .task-center,
+  .agent-workspace {
+    grid-column: auto;
+  }
+
+  .preview-card {
+    grid-row: auto;
   }
 }
 
@@ -1975,6 +2248,14 @@ a {
 
   .workspace-shell {
     grid-template-columns: 1fr;
+  }
+
+  .ppt-studio__body {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-card {
+    grid-row: auto;
   }
 
   .agent-workspace__header {
