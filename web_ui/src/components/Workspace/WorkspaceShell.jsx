@@ -40,6 +40,23 @@ const WorkspaceShell = () => {
     }
   }, [currentJobId, jobs]);
 
+  useEffect(() => {
+    if (!currentJobId) return;
+    const summary = jobs.find((job) => job.job_id === currentJobId);
+    if (!summary) return;
+    setCurrentJob((current) => {
+      if (!current || current.job_id !== currentJobId) return current;
+      return {
+        ...current,
+        status: summary.status,
+        current_stage: summary.current_stage,
+        stop_requested: summary.stop_requested,
+        title: summary.title || current.title,
+        pinned_at: summary.pinned_at || current.pinned_at || '',
+      };
+    });
+  }, [currentJobId, jobs, setCurrentJob]);
+
   const handleJobCreated = (job) => {
     setCurrentJob(job);
     setCurrentJobId(job.job_id);

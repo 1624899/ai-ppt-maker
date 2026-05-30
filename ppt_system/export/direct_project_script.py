@@ -316,6 +316,7 @@ def _generate_direct_project_page_script(
         image_height=image_height,
         text_placeholders=text_placeholders,
     )
+    _ensure_not_stopped(stop_checker)
     _log_page(page_logger, page_no, f"首轮文字脚本生成完成，耗时 {time.perf_counter() - request_started_at:.1f}s")
 
     page_result = {
@@ -342,7 +343,8 @@ def _generate_direct_project_page_script(
             script_path=preview_script_path,
         )
         preview_script_started_at = time.perf_counter()
-        execute_generated_text_script(preview_script_path)
+        execute_generated_text_script(preview_script_path, stop_checker=stop_checker)
+        _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"预览 PPT 脚本执行完成，耗时 {time.perf_counter() - preview_script_started_at:.1f}s")
 
         preview_image_path = page_dir / f"office_preview_round_{round_index + 1:02d}.png"
@@ -353,6 +355,7 @@ def _generate_direct_project_page_script(
             image_width=image_width,
             image_height=image_height,
         )
+        _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
         if rendered_preview is None:
             _log_page(page_logger, page_no, "Office 真渲染不可用，跳过真实导出回看")
@@ -379,6 +382,7 @@ def _generate_direct_project_page_script(
             asset_adjustments=current_asset_adjustments,
             round_index=round_index,
         )
+        _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
         candidate_script = refine_result.page_script
         candidate_adjustments = refine_result.asset_adjustments
@@ -523,6 +527,7 @@ def generate_direct_project_text_script(
     page_results.sort(key=lambda item: int(item.get("page_no", 0)))
 
     script_path = work_dir / "generated_text_layout.py"
+    _ensure_not_stopped(stop_checker)
     script_source = build_project_script_source(
         project,
         work_dir,

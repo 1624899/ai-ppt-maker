@@ -90,14 +90,19 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
         original_execute = execute_generated_text_script
         failing_state = {"triggered": False}
 
-        def fail_after_first_page(script_path: Path, *, timeout_seconds: int = 600) -> None:
+        def fail_after_first_page(
+            script_path: Path,
+            *,
+            timeout_seconds: int = 600,
+            stop_checker=None,
+        ) -> None:
             if script_path.name == "generated_text_layout_preview_round_01.py":
-                original_execute(script_path, timeout_seconds=timeout_seconds)
+                original_execute(script_path, timeout_seconds=timeout_seconds, stop_checker=stop_checker)
                 if "page_02" in str(script_path):
                     failing_state["triggered"] = True
                     raise RuntimeError("模拟第 2 页导出失败")
                 return
-            original_execute(script_path, timeout_seconds=timeout_seconds)
+            original_execute(script_path, timeout_seconds=timeout_seconds, stop_checker=stop_checker)
 
         with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
             with patch("ppt_system.export.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):

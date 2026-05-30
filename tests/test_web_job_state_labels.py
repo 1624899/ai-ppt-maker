@@ -22,6 +22,59 @@ class WebJobStateLabelTests(unittest.TestCase):
         self.assertEqual(result["stages"][0]["label"], "模型规划")
         self.assertEqual(result["stages"][1]["label"], "可编辑元素生成")
 
+    def test_enrich_job_state_prefers_record_runtime_status(self) -> None:
+        state = {
+            "job_id": "demo",
+            "status": "queued",
+            "current_stage": "reference_generation",
+            "stop_requested": True,
+            "job_meta": {},
+            "stages": [
+                {"key": "planning", "status": "completed", "summary": ""},
+                {"key": "ppt_export", "status": "pending", "summary": ""},
+            ],
+        }
+        record = {
+            "job_id": "demo",
+            "status": "error",
+            "current_stage": "ppt_export",
+            "stop_requested": False,
+            "title": "演示任务",
+            "content": "演示内容",
+            "page_count": 1,
+            "image_quality": "medium",
+            "style_notes": "",
+            "request": {},
+            "job_dir": ".",
+        }
+
+        result = enrich_job_state_with_record(state, record)
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["current_stage"], "ppt_export")
+        self.assertFalse(result["stop_requested"])
+
+    def test_enrich_job_state_reconciles_terminal_stage_status(self) -> None:
+        state = {
+            "job_id": "demo",
+            "status": "queued",
+            "current_stage": "ppt_export",
+            "error": "",
+            "stop_requested": True,
+            "job_meta": {},
+            "stages": [
+                {"key": "planning", "status": "completed", "summary": ""},
+                {"key": "ppt_export", "status": "error", "summary": "导出失败"},
+            ],
+        }
+
+        result = enrich_job_state_with_record(state, None)
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["current_stage"], "ppt_export")
+        self.assertFalse(result["stop_requested"])
+        self.assertEqual(result["error"], "导出失败")
+
     def test_job_summary_uses_generated_artifacts_as_preview_image(self) -> None:
         record = {
             "job_id": "demo",

@@ -64,6 +64,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
             return
         job_target = get_job_target_from_state(state)
         terminal_stage = get_terminal_stage(job_target)
+        ensure_job_not_stopped(job_dir, job_id, "queued")
         mutate_job_state(
             job_dir,
             job_id,

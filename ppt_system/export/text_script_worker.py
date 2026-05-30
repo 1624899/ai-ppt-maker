@@ -10,12 +10,37 @@ from pathlib import Path
 import runpy
 
 
+def _find_package_import_root(current_file: Path, package_name: str) -> Path:
+    """从当前文件向上查找包含目标包的导入根目录。"""
+    resolved_file = current_file.resolve()
+    search_start = resolved_file if resolved_file.is_dir() else resolved_file.parent
+    for candidate in (search_start, *search_start.parents):
+        package_init = candidate / package_name / "__init__.py"
+        if package_init.is_file():
+            return candidate
+    return search_start
+
+
+def _prepend_sys_path_once(path: Path) -> None:
+    """将路径加入 sys.path 头部，并避免重复加入同一个目录。"""
+    resolved_path = path.resolve()
+    resolved_path_text = str(resolved_path)
+    for item in sys.path:
+        if not item:
+            continue
+        try:
+            if Path(item).resolve() == resolved_path:
+                return
+        except OSError:
+            if item == resolved_path_text:
+                return
+    sys.path.insert(0, resolved_path_text)
+
+
 def _configure_runtime_environment() -> None:
     """统一子进程编码与导入路径，避免 Windows 下执行脚本时丢失仓库根目录。"""
-    repo_root = Path(__file__).resolve().parent.parent
-    repo_root_str = str(repo_root)
-    if repo_root_str not in sys.path:
-        sys.path.insert(0, repo_root_str)
+    repo_root = _find_package_import_root(Path(__file__), "ppt_system")
+    _prepend_sys_path_once(repo_root)
 
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)

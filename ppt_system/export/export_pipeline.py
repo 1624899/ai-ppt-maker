@@ -219,7 +219,9 @@ def export_project_to_pptx(
         stop_checker=stop_checker,
     )
     generated_script_path = Path(str(export_summary["text_script_path"]))
-    execute_generated_text_script(generated_script_path)
+    _ensure_not_stopped(stop_checker)
+    execute_generated_text_script(generated_script_path, stop_checker=stop_checker)
+    _ensure_not_stopped(stop_checker)
     _log(stage_logger, f"文字脚本执行完成：{output_pptx.name}")
     return export_summary
 
@@ -388,6 +390,7 @@ def export_web_job_to_pptx(
         image_width=image_width,
         image_height=image_height,
     )
+    _ensure_not_stopped(stop_checker)
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
     _log(stage_logger, f"已生成项目快照：{project_path.name}")

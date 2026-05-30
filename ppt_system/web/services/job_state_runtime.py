@@ -7,6 +7,10 @@ from typing import Any, Callable
 
 from ppt_system.web.runtime import get_runtime_module
 
+RUNTIME_STATE_FIELDS = ("status", "current_stage", "stop_requested")
+NON_TERMINAL_JOB_STATUSES = {"", "pending", "queued", "running", "stopping"}
+STAGE_TERMINAL_STATUSES = {"error", "interrupted"}
+
 
 def _runtime():
     return get_runtime_module()
@@ -325,7 +329,8 @@ def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] |
     runtime = _runtime()
     merged = json.loads(json.dumps(state, ensure_ascii=False))
     if not record:
-        return normalize_job_state_labels(merged)
+        return normalize_job_state_labels(reconcile_job_runtime_status(merged))
+    merge_record_runtime_fields(merged, record)
     merged["title"] = str(record.get("title") or merged.get("title") or "")
     merged["pinned_at"] = str(record.get("pinned_at") or "")
     job_meta = merged.setdefault("job_meta", {})
@@ -352,7 +357,42 @@ def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] |
             }
     if not isinstance(job_meta.get("style_reference_images"), list) or not job_meta.get("style_reference_images"):
         job_meta["style_reference_images"] = runtime.list_style_reference_images(str(record["job_id"]), Path(record["job_dir"]))
-    return normalize_job_state_labels(merged)
+    return normalize_job_state_labels(reconcile_job_runtime_status(merged))
+
+
+def merge_record_runtime_fields(state: dict[str, Any], record: dict[str, Any]) -> None:
+    for field in RUNTIME_STATE_FIELDS:
+        if field in record:
+            state[field] = record[field]
+
+
+def reconcile_job_runtime_status(state: dict[str, Any]) -> dict[str, Any]:
+    status = str(state.get("status", "")).strip()
+    if status not in NON_TERMINAL_JOB_STATUSES:
+        return state
+    terminal_stage = find_first_stage_with_status(state, STAGE_TERMINAL_STATUSES)
+    if not terminal_stage:
+        return state
+
+    terminal_status = str(terminal_stage.get("status", "")).strip()
+    state["status"] = terminal_status
+    state["current_stage"] = str(terminal_stage.get("key") or state.get("current_stage") or "")
+    state["stop_requested"] = False
+    if terminal_status == "error" and not str(state.get("error", "")).strip():
+        state["error"] = str(terminal_stage.get("summary") or "")
+    return state
+
+
+def find_first_stage_with_status(state: dict[str, Any], statuses: set[str]) -> dict[str, Any] | None:
+    stages = state.get("stages", [])
+    if not isinstance(stages, list):
+        return None
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        if str(stage.get("status", "")).strip() in statuses:
+            return stage
+    return None
 
 
 def normalize_job_state_labels(state: dict[str, Any]) -> dict[str, Any]:

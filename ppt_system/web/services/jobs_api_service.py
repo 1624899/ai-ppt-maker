@@ -315,8 +315,10 @@ def api_interrupt_job(job_id: str):
                     logs.append(runtime.STOPPING_MESSAGE)
                 break
 
-    runtime.mutate_job_state(job_dir, job_id, updater)
-    return jsonify({"ok": True})
+    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+    response_state = runtime.enrich_job_state_with_record(updated_state, refreshed_record)
+    return jsonify(runtime.attach_delivery_actions(response_state, job_dir))
 
 
 def api_resume_job(job_id: str):

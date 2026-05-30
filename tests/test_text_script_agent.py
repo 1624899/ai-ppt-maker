@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -251,6 +252,80 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertIn("第一条", texts)
             text_shapes = [shape for shape in slide.shapes if hasattr(shape, "text") and shape.text]
             self.assertEqual(text_shapes[0].text_frame.auto_size, MSO_AUTO_SIZE.NONE)
+
+    def test_execute_generated_script_resolves_project_imports_from_external_cwd(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            script_dir = root / "page_01"
+            script_dir.mkdir(parents=True, exist_ok=True)
+            isolated_cwd = root / "external_cwd"
+            isolated_cwd.mkdir()
+            output_path = script_dir / "worker_result.txt"
+            script_path = script_dir / "generated_text_layout_preview_round_01.py"
+            script_path.write_text(
+                """
+from __future__ import annotations
+
+from pathlib import Path
+
+from ppt_system.export.text_style_runtime import should_wrap_text
+
+
+def build_deck():
+    output_path = Path(__file__).with_name("worker_result.txt")
+    output_path.write_text(str(should_wrap_text("正文内容", 80, 120, 18)), encoding="utf-8")
+    return output_path
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(isolated_cwd)
+                execute_generated_text_script(script_path)
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertTrue(output_path.exists())
+            self.assertIn(output_path.read_text(encoding="utf-8"), {"True", "False"})
+
+    def test_execute_generated_script_stops_running_worker(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            marker_path = root / "started.txt"
+            output_path = root / "worker_result.txt"
+            script_path = root / "slow_generated_text_layout.py"
+            script_path.write_text(
+                f"""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+
+def build_deck():
+    Path(r"{marker_path}").write_text("started", encoding="utf-8")
+    time.sleep(30)
+    Path(r"{output_path}").write_text("done", encoding="utf-8")
+    return Path(r"{output_path}")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            checks = {"count": 0}
+
+            def stop_after_worker_starts() -> bool:
+                checks["count"] += 1
+                return marker_path.exists()
+
+            with self.assertRaises(InterruptedError):
+                execute_generated_text_script(
+                    script_path,
+                    timeout_seconds=10,
+                    stop_checker=stop_after_worker_starts,
+                )
+
+            self.assertFalse(output_path.exists())
+            self.assertGreater(checks["count"], 0)
 
     def test_generated_script_can_split_assets_and_texts_into_two_slides(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -625,14 +700,19 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             original_execute = execute_generated_text_script
             failing_state = {"triggered": False}
 
-            def fail_after_first_page(script_path: Path, *, timeout_seconds: int = 600) -> None:
+            def fail_after_first_page(
+                script_path: Path,
+                *,
+                timeout_seconds: int = 600,
+                stop_checker=None,
+            ) -> None:
                 if script_path.name == "generated_text_layout_preview_round_01.py":
-                    original_execute(script_path, timeout_seconds=timeout_seconds)
+                    original_execute(script_path, timeout_seconds=timeout_seconds, stop_checker=stop_checker)
                     if "page_02" in str(script_path):
                         failing_state["triggered"] = True
                         raise RuntimeError("模拟第 2 页导出失败")
                     return
-                original_execute(script_path, timeout_seconds=timeout_seconds)
+                original_execute(script_path, timeout_seconds=timeout_seconds, stop_checker=stop_checker)
 
             with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
                 with patch("ppt_system.export.direct_project_script.execute_generated_text_script", side_effect=fail_after_first_page):
