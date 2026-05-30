@@ -33,6 +33,22 @@ export const postAgentDraft = async (jobId, payload) => {
   return parseJsonResponse(response);
 };
 
+export const postImageEditCandidate = async (jobId, payload) => {
+  const response = await fetch(`/api/jobs/${jobId}/image-edit-candidates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+};
+
+export const applyImageEditCandidate = async (jobId, candidateId) => {
+  const response = await fetch(`/api/jobs/${jobId}/image-edit-candidates/${candidateId}/apply`, {
+    method: 'POST',
+  });
+  return parseJsonResponse(response);
+};
+
 export const clearAgentConversation = async (jobId) => {
   const response = await fetch(`/api/jobs/${jobId}/agent/conversation`, {
     method: 'DELETE',

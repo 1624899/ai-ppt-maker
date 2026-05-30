@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import web_app
+import main
 
 
 class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
@@ -41,10 +41,10 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
             "active_chat_config_id": "",
             "active_image_config_id": "",
         }
-        self.read_config_patch = patch.object(web_app, "read_config", return_value=self.config)
+        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
         self.read_config_patch.start()
         self.addCleanup(self.read_config_patch.stop)
-        self.client = web_app.app.test_client()
+        self.client = main.app.test_client()
 
     def test_config_api_exposes_reference_style_adherence_defaults(self) -> None:
         response = self.client.get("/api/config")

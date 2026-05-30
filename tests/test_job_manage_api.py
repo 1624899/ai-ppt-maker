@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import web_app
+import main
 from ppt_system.jobs.job_store import create_job as create_job_record
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
@@ -22,14 +22,14 @@ class JobManageApiTests(unittest.TestCase):
         self.output_dir = self.base_dir / "runs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.config = {"output_dir": str(self.output_dir)}
-        self.read_config_patch = patch.object(web_app, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(web_app, "JOBS_DB_PATH", self.jobs_db_path)
+        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
-        web_app.JOB_STATUS_CACHE.clear()
-        self.client = web_app.app.test_client()
+        main.JOB_STATUS_CACHE.clear()
+        self.client = main.app.test_client()
 
     def _create_record(self, job_id: str, *, title: str, status: str = "completed") -> Path:
         job_dir = self.output_dir / job_id

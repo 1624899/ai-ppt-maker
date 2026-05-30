@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from ppt_system.web.services.job_state_runtime import job_summary
-from web_app import enrich_job_state_with_record
+from main import enrich_job_state_with_record
 
 
 class WebJobStateLabelTests(unittest.TestCase):

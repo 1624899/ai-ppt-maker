@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint
 
 from ppt_system.web.services import job_agent_draft_service
+from ppt_system.web.services import job_image_edit_service
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services import jobs_api_service
 
@@ -62,6 +63,16 @@ def api_deliver_job(job_id: str):
 @bp.post("/api/jobs/<job_id>/operations")
 def api_create_job_operation(job_id: str):
     return job_operations_service.api_create_job_operation(job_id)
+
+
+@bp.post("/api/jobs/<job_id>/image-edit-candidates")
+def api_create_image_edit_candidate(job_id: str):
+    return job_image_edit_service.api_create_image_edit_candidate(job_id)
+
+
+@bp.post("/api/jobs/<job_id>/image-edit-candidates/<candidate_id>/apply")
+def api_apply_image_edit_candidate(job_id: str, candidate_id: str):
+    return job_image_edit_service.api_apply_image_edit_candidate(job_id, candidate_id)
 
 
 @bp.post("/api/jobs/<job_id>/agent/draft")

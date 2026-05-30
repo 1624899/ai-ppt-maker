@@ -11,6 +11,8 @@ from ppt_system.export.export_layer_mode import (
 
 REFERENCE_PPT_DELIVERY_KEY = "reference_ppt"
 EDITABLE_PPT_DELIVERY_KEY = "editable_ppt"
+EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY = "editable_ppt_overlay"
+EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY = "editable_ppt_separate"
 
 OVERLAY_DELIVERY_MODE = "overlay_slides"
 SEPARATE_DELIVERY_MODE = "separate_layer_slides"

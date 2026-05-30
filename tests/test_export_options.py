@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from web_app import build_export_options
+from main import build_export_options
 
 
 class ExportOptionsTests(unittest.TestCase):

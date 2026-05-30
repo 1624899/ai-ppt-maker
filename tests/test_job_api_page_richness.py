@@ -9,8 +9,8 @@ from unittest.mock import patch
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE
-from web_app import app, load_job_state, mutate_job_state, status_file, update_job_record
-import web_app
+from main import app, load_job_state, mutate_job_state, status_file, update_job_record
+import main
 
 
 class _FakeExecutor:
@@ -63,16 +63,16 @@ class JobApiPageRichnessTests(unittest.TestCase):
         }
 
         self.executor = _FakeExecutor()
-        self.read_config_patch = patch.object(web_app, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(web_app, "JOBS_DB_PATH", self.jobs_db_path)
-        self.executor_patch = patch.object(web_app, "JOB_EXECUTOR", self.executor)
+        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
+        self.executor_patch = patch.object(main, "JOB_EXECUTOR", self.executor)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.executor_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
         self.addCleanup(self.executor_patch.stop)
-        web_app.JOB_STATUS_CACHE.clear()
+        main.JOB_STATUS_CACHE.clear()
 
         self.client = app.test_client()
 
@@ -285,7 +285,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             ),
         )
 
-        with patch.object(web_app, "export_reference_images_to_pptx", return_value={"page_count": 2}):
+        with patch.object(main, "export_reference_images_to_pptx", return_value={"page_count": 2}):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "reference_ppt"},
@@ -368,23 +368,39 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "description": "desc",
             }
 
-        with patch.object(web_app, "export_editable_delivery", side_effect=fake_export):
+        with patch.object(main, "export_editable_delivery", side_effect=fake_export):
             separate_response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
-                json={"delivery_key": "editable_ppt", "layer_mode": SEPARATE_LAYER_MODE},
+                json={"delivery_key": "editable_ppt_separate"},
             )
             overlay_response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
-                json={"delivery_key": "editable_ppt", "layer_mode": OVERLAY_LAYER_MODE},
+                json={"delivery_key": "editable_ppt_overlay"},
             )
 
         self.assertEqual(separate_response.status_code, 200)
         self.assertEqual(overlay_response.status_code, 200)
         overlay_payload = overlay_response.get_json()
         self.assertIsNotNone(overlay_payload)
-        editable_action = next(item for item in overlay_payload["delivery_actions"] if item["key"] == "editable_ppt")
-        self.assertTrue(editable_action["generated"])
-        self.assertEqual(editable_action["generated_file"]["layer_mode"], OVERLAY_LAYER_MODE)
+        actions_by_key = {item["key"]: item for item in overlay_payload["delivery_actions"]}
+        self.assertEqual(
+            [
+                item["key"]
+                for item in overlay_payload["delivery_actions"]
+                if item.get("delivery_key") == "editable_ppt"
+            ],
+            ["editable_ppt_overlay", "editable_ppt_separate"],
+        )
+        self.assertEqual(actions_by_key["editable_ppt_overlay"]["label"], "可编辑ppt单页生成")
+        self.assertEqual(actions_by_key["editable_ppt_overlay"]["delivery_key"], "editable_ppt")
+        self.assertEqual(actions_by_key["editable_ppt_overlay"]["layer_mode"], OVERLAY_LAYER_MODE)
+        self.assertTrue(actions_by_key["editable_ppt_overlay"]["generated"])
+        self.assertEqual(actions_by_key["editable_ppt_overlay"]["generated_file"]["layer_mode"], OVERLAY_LAYER_MODE)
+        self.assertEqual(actions_by_key["editable_ppt_separate"]["label"], "文字/元素拆分双页生成")
+        self.assertEqual(actions_by_key["editable_ppt_separate"]["delivery_key"], "editable_ppt")
+        self.assertEqual(actions_by_key["editable_ppt_separate"]["layer_mode"], SEPARATE_LAYER_MODE)
+        self.assertTrue(actions_by_key["editable_ppt_separate"]["generated"])
+        self.assertEqual(actions_by_key["editable_ppt_separate"]["generated_file"]["layer_mode"], SEPARATE_LAYER_MODE)
 
         record = get_job_record(self.jobs_db_path, job_id)
         self.assertIsNotNone(record)

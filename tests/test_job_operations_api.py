@@ -5,10 +5,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import web_app
+import main
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
-from web_app import app, mutate_job_state, update_job_record
+from main import app, mutate_job_state, update_job_record
 
 
 class _FakeExecutor:
@@ -61,16 +61,16 @@ class JobOperationsApiTests(unittest.TestCase):
         }
 
         self.executor = _FakeExecutor()
-        self.read_config_patch = patch.object(web_app, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(web_app, "JOBS_DB_PATH", self.jobs_db_path)
-        self.executor_patch = patch.object(web_app, "JOB_EXECUTOR", self.executor)
+        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
+        self.executor_patch = patch.object(main, "JOB_EXECUTOR", self.executor)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.executor_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
         self.addCleanup(self.executor_patch.stop)
-        web_app.JOB_STATUS_CACHE.clear()
+        main.JOB_STATUS_CACHE.clear()
 
         self.client = app.test_client()
 
@@ -251,7 +251,7 @@ class JobOperationsApiTests(unittest.TestCase):
             def complete_json(self, messages):
                 raise RuntimeError("上游模型不可用")
 
-        with patch.object(web_app, "read_config", return_value=config), patch(
+        with patch.object(main, "read_config", return_value=config), patch(
             "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
             FailingAgentProvider,
         ):
@@ -301,7 +301,7 @@ class JobOperationsApiTests(unittest.TestCase):
                     "confidence": "high",
                 }
 
-        with patch.object(web_app, "read_config", return_value=config), patch(
+        with patch.object(main, "read_config", return_value=config), patch(
             "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
             FakeAgentProvider,
         ):
@@ -368,7 +368,7 @@ class JobOperationsApiTests(unittest.TestCase):
                     "confidence": "high",
                 }
 
-        with patch.object(web_app, "read_config", return_value=config), patch(
+        with patch.object(main, "read_config", return_value=config), patch(
             "ppt_system.web.services.job_agent_draft_model_planner.OpenAIChatProvider",
             FakeAgentProvider,
         ):
@@ -486,6 +486,134 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertTrue(version["artifacts"]["reference"]["exists"])
         self.assertTrue(version["artifacts"]["element"]["exists"])
         self.assertTrue((job_dir / "versions" / "page_02" / version["version_id"] / "reference.png").exists())
+
+    def test_image_edit_candidate_generation_does_not_replace_current_image(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [],
+                "image": [
+                    {
+                        "id": "image_editor",
+                        "name": "图片编辑模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "image-model",
+                    }
+                ],
+            },
+            "active_image_config_id": "image_editor",
+        }
+        captured: dict[str, object] = {}
+
+        class FakeImageProvider:
+            def __init__(self, provider_config, profile) -> None:
+                captured["config"] = provider_config
+                captured["profile"] = profile
+
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+                captured["prompt"] = prompt
+                captured["image_paths"] = image_paths
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"candidate-image")
+                return {"provider": "fake", "input_images": [str(path) for path in image_paths]}
+
+        with patch.object(main, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_image_edit_service.OpenAIImageProvider",
+            FakeImageProvider,
+        ):
+            response = self.client.post(
+                f"/api/jobs/{job_id}/image-edit-candidates",
+                json={
+                    "page_no": 2,
+                    "preview_type": "reference",
+                    "instruction": "右侧模块更清晰，标题更短",
+                    "annotations": [
+                        {
+                            "id": "box-1",
+                            "label": "右侧模块",
+                            "box": {"x": 0.55, "y": 0.2, "width": 0.28, "height": 0.5},
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        page_two = next(page for page in payload["pages"] if int(page["page_no"]) == 2)
+        self.assertEqual(page_two["reference_image"], f"/runs/{job_id}/01_reference_pages/page_02_reference.png")
+        self.assertEqual(page_two["element_image"], f"/runs/{job_id}/02_elements_pages/page_02_elements.png")
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1, 2])
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1, 2])
+        self.assertEqual(len(payload["image_edit_candidates"]), 1)
+        candidate = payload["image_edit_candidates"][0]
+        self.assertEqual(candidate["status"], "generated")
+        self.assertEqual(candidate["preview_type"], "reference")
+        self.assertIn("04_image_edits/page_02", candidate["image"])
+        self.assertIn("右侧模块", captured["prompt"])
+        self.assertEqual(Path(captured["image_paths"][0]).name, "page_02_reference.png")
+
+    def test_apply_image_edit_candidate_replaces_reference_after_confirmation(self) -> None:
+        job_id, job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [],
+                "image": [
+                    {
+                        "id": "image_editor",
+                        "name": "图片编辑模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "image-model",
+                    }
+                ],
+            },
+            "active_image_config_id": "image_editor",
+        }
+
+        class FakeImageProvider:
+            def __init__(self, provider_config, profile) -> None:
+                pass
+
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"candidate-image")
+                return {"provider": "fake"}
+
+        with patch.object(main, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_image_edit_service.OpenAIImageProvider",
+            FakeImageProvider,
+        ):
+            candidate_response = self.client.post(
+                f"/api/jobs/{job_id}/image-edit-candidates",
+                json={"page_no": 2, "preview_type": "reference", "instruction": "右侧模块更清晰"},
+            )
+        self.assertEqual(candidate_response.status_code, 200)
+        candidate_payload = candidate_response.get_json()
+        self.assertIsNotNone(candidate_payload)
+        candidate_id = candidate_payload["image_edit_candidates"][0]["candidate_id"]
+        candidate_image = candidate_payload["image_edit_candidates"][0]["image"]
+
+        apply_response = self.client.post(f"/api/jobs/{job_id}/image-edit-candidates/{candidate_id}/apply")
+
+        self.assertEqual(apply_response.status_code, 200)
+        payload = apply_response.get_json()
+        self.assertIsNotNone(payload)
+        page_two = next(page for page in payload["pages"] if int(page["page_no"]) == 2)
+        self.assertEqual(page_two["reference_image"], candidate_image)
+        self.assertEqual(page_two["element_image"], "")
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1, 2])
+        edited_reference = next(item for item in payload["reference_pages"] if int(item["page_no"]) == 2)
+        self.assertEqual(edited_reference["image"], candidate_image)
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1])
+        applied_candidate = payload["image_edit_candidates"][0]
+        self.assertEqual(applied_candidate["status"], "applied")
+        self.assertEqual(payload["operations"][-1]["type"], "image_edit_apply")
+        self.assertEqual(payload["result"], {"deliveries": {}, "editable_delivery_bundle": {}})
+        self.assertTrue((job_dir / "versions" / "page_02" / applied_candidate["version_id"] / "reference.png").exists())
 
     def test_restore_page_version_restores_artifacts_and_requeues_export(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()

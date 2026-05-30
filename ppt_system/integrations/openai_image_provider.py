@@ -93,6 +93,21 @@ class OpenAIImageProvider:
             purpose="elements_page",
         )
 
+    def generate_edited_image(
+        self,
+        prompt: str,
+        output_path: Path,
+        image_paths: list[Path],
+    ) -> dict[str, Any]:
+        if not image_paths:
+            raise ValueError("编辑图片至少需要一张参考图。")
+        return self._edit_with_references(
+            prompt=prompt,
+            output_path=output_path,
+            image_paths=image_paths,
+            purpose="image_edit_candidate",
+        )
+
     def _edit_with_references(
         self,
         prompt: str,

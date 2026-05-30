@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -15,11 +16,14 @@ from flask import Flask, Response, jsonify, render_template, request, send_from_
 from ppt_system.generation.content_agent import build_content_plan
 from ppt_system.export.delivery_options import (
     EDITABLE_PPT_DELIVERY_KEY,
+    EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY,
+    EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY,
     REFERENCE_PPT_DELIVERY_KEY,
     REFERENCE_PPT_FILENAME,
     build_editable_ppt_filename,
     normalize_editable_delivery_layer_mode,
 )
+from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE
 from ppt_system.export.export_pipeline import export_editable_delivery, export_web_job_to_pptx
 from ppt_system.generation.generation_options import default_generation_options, resolve_generation_options
 from ppt_system.generation.generation_prompts import build_elements_prompt
@@ -113,6 +117,8 @@ from ppt_system.web.services.job_state_runtime import (
 )
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
 
+
+sys.modules.setdefault("main", sys.modules[__name__])
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"

@@ -26,19 +26,19 @@
 
 现有关键基础：
 
-- `ppt_system/splitter.py`
+- `ppt_system/image/splitter.py`
   - 已能把透明元素图按连通域切分为多个 `asset_xxx.png`
   - 已输出 `assets.json`，包含元素位置、尺寸、面积等元数据
-- `ppt_system/direct_project_script.py`
+- `ppt_system/export/direct_project_script.py`
   - 已按页准备分割资产
   - 已将资产清单用于后续导出
-- `ppt_system/text_script_runtime.py`
+- `ppt_system/export/text_script_runtime.py`
   - 当前通过 `add_assets(...)` 将分割后的 PNG 资产逐个放入 PPT
-- `web_app.py`
-  - 已具备任务详情、任务历史、导出结果等接口
+- `ppt_system/web/`
+  - 已具备任务详情、任务历史、导出结果、任务操作、Agent 草案和图片编辑候选接口
   - 当前尚未暴露“某页元素资产清单”和“编辑结果保存”接口
-- `front/`
-  - 当前只有任务创建与结果查看页，没有独立编辑页
+- `web_ui/`
+  - 当前 React/Vite 前端已有任务创建、结果查看、对话/编辑工作区和图片标注编辑，没有独立元素样式编辑页
 
 当前能力边界：
 
@@ -110,38 +110,38 @@
 
 ### 前端
 
-- `front/templates/editor.html`
-  - 编辑页模板
-- `front/static/editor.js`
-  - 编辑页主逻辑
-- `front/static/editor.css`
-  - 编辑页样式
-- `front/static/editor_api.js`
+- `web_ui/src/components/ElementEditor/ElementEditorPage.jsx`
+  - 编辑页主体
+- `web_ui/src/components/ElementEditor/ElementCanvas.jsx`
+  - 画布预览与元素选中
+- `web_ui/src/components/ElementEditor/ElementPropertyPanel.jsx`
+  - 元素属性面板
+- `web_ui/src/hooks/useElementEditor.js`
+  - 编辑页数据加载、保存、预览和导出编排
+- `web_ui/src/utils/elementEditorApi.js`
   - 编辑页 API 访问封装
-- `front/static/editor_state.js`
-  - 编辑页本地状态管理
-- `front/static/editor_renderer.js`
-  - 编辑页渲染逻辑，负责页列表、元素列表、属性面板、预览更新
+- `web_ui/src/utils/elementEditorState.js`
+  - 编辑模型默认值、选中态和脏状态处理
 
 ### 后端
 
-- `ppt_system/editor_manifest.py`
+- `ppt_system/web/services/editor_manifest_service.py`
   - 负责把现有 `assets.json` 转换为前端可消费的编辑清单
-- `ppt_system/editor_store.py`
+- `ppt_system/web/services/editor_store.py`
   - 负责编辑结果的读写
-- `ppt_system/editor_models.py`
+- `ppt_system/web/services/editor_models.py`
   - 负责编辑数据结构归一化、校验与默认值补全
-- `ppt_system/editor_preview.py`
+- `ppt_system/web/services/editor_preview.py`
   - 负责根据元素编辑参数渲染单页预览图
-- `ppt_system/editor_export.py`
+- `ppt_system/web/services/editor_export.py`
   - 负责基于编辑结果生成导出所需的处理后资产
 
 ### 可能复用的现有模块
 
-- `ppt_system/splitter.py`
-- `ppt_system/export_pipeline.py`
-- `ppt_system/direct_project_script.py`
-- `ppt_system/text_script_runtime.py`
+- `ppt_system/image/splitter.py`
+- `ppt_system/export/export_pipeline.py`
+- `ppt_system/export/direct_project_script.py`
+- `ppt_system/export/text_script_runtime.py`
 
 
 ## 任务目录落地建议
@@ -570,11 +570,11 @@ output/<job_id>/
 
 ## 与现有代码的接入点
 
-### `web_app.py`
+### `ppt_system/web/`
 
 需要新增：
 
-- 编辑页模板路由
+- 编辑页前端路由兜底或入口跳转
 - 编辑专用 API 路由
 
 建议保持原则：
@@ -583,13 +583,13 @@ output/<job_id>/
 - 不改现有首页接口响应结构
 - 编辑接口全部单独命名
 
-### `ppt_system/text_script_runtime.py`
+### `ppt_system/export/text_script_runtime.py`
 
 当前 `add_assets(...)` 按 manifest 逐个读取 PNG 并放入 PPT。
 
 这个能力本身可以继续复用，建议只让它读取“编辑后生成的资产 manifest”。
 
-### `ppt_system/direct_project_script.py`
+### `ppt_system/export/direct_project_script.py`
 
 当前负责按页准备资产。
 
@@ -611,9 +611,9 @@ output/<job_id>/
 
 任务清单：
 
-- 新增 `editor.html`
-- 新增编辑页静态资源
-- 新增 `GET /editor/<job_id>`
+- 新增 `web_ui/src/components/ElementEditor/ElementEditorPage.jsx`
+- 新增编辑页组件、hook 与 API 封装
+- 新增前端路由入口或复用 Flask SPA 兜底承载 `/editor/<job_id>`
 - 新增 `GET /api/jobs/<job_id>/editable-pages`
 - 新增 `GET /api/jobs/<job_id>/pages/<page_no>/assets`
 
@@ -767,4 +767,3 @@ output/<job_id>/
 4. 支持更多渐变类型
 5. 引入 `vector` 元素类型
 6. 独立矢量化模块，探索 SVG 输出与 shape 化导出
-

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pause, Play, Plus, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import SettingsModal from './SettingsModal';
+import pptStudioIcon from '../../assets/ppt-studio-icon.png';
 import { getJobTitle, getStatusLabel } from '../../utils/jobPresentation';
 import { getTopbarTaskAction } from '../../utils/topbarTaskAction';
 import { useJobActions } from '../../hooks/useJobActions';
@@ -39,7 +40,7 @@ const Header = ({ currentJob, onCreateTask, onJobUpdated, onJobsRefresh }) => {
       <header className="app-topbar">
         <div className="brand-block">
           <div className="brand-mark">
-            P
+            <img src={pptStudioIcon} alt="" />
           </div>
           <div>
             <h1>PPT 制作系统</h1>

@@ -1,16 +1,29 @@
-# React + Vite
+# Web UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+这是 PPT 自动制作系统的 React/Vite 前端。生产构建后的文件输出到 `web_ui/dist`，由根目录的 Flask 应用直接托管。
 
-Currently, two official plugins are available:
+## 开发命令
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm install
+npm run dev
+npm run build
+npm run lint
+```
 
-## React Compiler
+开发时通常同时运行：
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+python ..\main.py
+npm run dev
+```
 
-## Expanding the ESLint configuration
+Vite 只负责前端热更新；任务创建、模型配置、任务流、产物访问、Agent 草案和图片编辑候选都走 Flask API。
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 主要目录
+
+- `src/components/Workspace/`：创作工作区、PPT Studio、Agent 对话、图片标注和任务操作。
+- `src/components/Layout/`：应用外壳、侧栏、设置弹窗和结果面板。
+- `src/hooks/`：任务列表、任务详情、模型配置、任务操作和 Agent 草案请求。
+- `src/utils/`：任务 API、展示模型、图片编辑候选和顶栏动作。
+- `dist/`：生产构建产物，不手写维护。

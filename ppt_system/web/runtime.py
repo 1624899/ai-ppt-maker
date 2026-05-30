@@ -6,8 +6,8 @@ from types import ModuleType
 
 
 def get_runtime_module() -> ModuleType:
-    """统一从兼容入口读取运行时对象，便于逐步拆分 web_app。"""
-    module = sys.modules.get("web_app")
+    """统一从 main 入口读取运行时对象，便于服务层共享后端状态。"""
+    module = sys.modules.get("main")
     if module is not None:
         return module
-    return importlib.import_module("web_app")
+    return importlib.import_module("main")

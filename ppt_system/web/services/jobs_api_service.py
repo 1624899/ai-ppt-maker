@@ -377,6 +377,9 @@ def api_deliver_job(job_id: str):
     delivery_key = str(payload.get("delivery_key", "")).strip()
     if not delivery_key:
         return jsonify({"error": "缺少 delivery_key。"}), 400
+    requested_layer_mode = _resolve_delivery_action_layer_mode(runtime, delivery_key, payload)
+    if requested_layer_mode:
+        delivery_key = runtime.EDITABLE_PPT_DELIVERY_KEY
 
     job_snapshot = runtime.load_job_snapshot(job_dir)
     job_payload = runtime.build_job_payload_from_state(state, job_snapshot)
@@ -407,7 +410,9 @@ def api_deliver_job(job_id: str):
             )
             result_payload = runtime.set_reference_delivery(result_payload, reference_delivery)
         elif delivery_key == runtime.EDITABLE_PPT_DELIVERY_KEY:
-            requested_layer_mode = runtime.normalize_editable_delivery_layer_mode(payload.get("layer_mode"))
+            requested_layer_mode = runtime.normalize_editable_delivery_layer_mode(
+                requested_layer_mode or payload.get("layer_mode")
+            )
             editable_bundle = runtime.get_editable_delivery_bundle(result_payload)
             bundle_path = Path(str(editable_bundle.get("bundle_path", "")).strip())
             if not bundle_path.exists():
@@ -438,6 +443,16 @@ def api_deliver_job(job_id: str):
     runtime.mutate_job_state(job_dir, job_id, updater)
     refreshed_state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
     return jsonify(refreshed_state or {"ok": True})
+
+
+def _resolve_delivery_action_layer_mode(runtime: Any, delivery_key: str, payload: dict[str, Any]) -> str:
+    if delivery_key == runtime.EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY:
+        return runtime.OVERLAY_LAYER_MODE
+    if delivery_key == runtime.EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY:
+        return runtime.SEPARATE_LAYER_MODE
+    if delivery_key == runtime.EDITABLE_PPT_DELIVERY_KEY:
+        return str(payload.get("layer_mode", "")).strip()
+    return ""
 
 
 def serve_run_file(job_id: str, filename: str):

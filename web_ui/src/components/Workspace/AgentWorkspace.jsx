@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Bot, History, LoaderCircle, MessageSquareText, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Bot, CheckCircle2, History, LoaderCircle, MessageSquareText, MousePointer2, SlidersHorizontal, Sparkles, WandSparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { StaggerContainer, StaggerItem, ScaleButton } from '../Motion/MotionUI';
 import AgentChatPanel from './AgentChatPanel';
 import CreationForm from './CreationForm';
-import FeaturePending from './FeaturePending';
+import SlideImage from './SlideImage';
 import StageProgress from './StageProgress';
-import { useJobActions } from '../../hooks/useJobActions';
+import { applyImageEditCandidate, postImageEditCandidate } from '../../utils/jobActions';
+import { getLatestImageEditCandidate, isImageEditCandidateApplied } from '../../utils/imageEditCandidates';
 import {
   buildAgentSummary,
-  getLatestPageVersion,
   getJobMeta,
   getOperationExecutionLabel,
   getJobPages,
@@ -19,9 +21,6 @@ import {
   getRecentJobOperations,
   getStatusLabel,
 } from '../../utils/jobPresentation';
-
-const STYLE_OPTIONS = ['蓝白科技风', '深色科技风', '极简商务风'];
-const LAYOUT_OPTIONS = ['更紧凑', '更留白', '改为三栏', '改为流程图'];
 
 const AgentWorkspace = ({
   currentJob,
@@ -40,29 +39,14 @@ const AgentWorkspace = ({
   const activePage = pages[selectedPageIndex] || pages[0];
   const meta = getJobMeta(currentJob);
   const agentSummary = buildAgentSummary(currentJob);
-  const latestVersion = activePage ? getLatestPageVersion(currentJob, activePage.page_no) : null;
   const recentOperations = getRecentJobOperations(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
-  const { pendingKey, error: actionError, runOperation } = useJobActions({ currentJob, onJobUpdated });
-
-  const submitOperation = async (operationType, fallbackInstruction = '', instructionOverride = null) => {
-    const instruction = String(instructionOverride ?? (draftInstruction || fallbackInstruction)).trim();
-    const pageNo = activePage?.page_no;
-    const pageScoped = operationType.startsWith('page_') || operationType === 'restore_page_version';
-    const payload = {
-      operation_type: operationType,
-      instruction,
-      source: mode,
-    };
-    if (pageScoped && pageNo) payload.page_no = pageNo;
-    if (operationType === 'restore_page_version' && latestVersion?.version_id) {
-      payload.version_id = latestVersion.version_id;
-    }
-    const result = await runOperation(payload, { key: operationType });
-    if (result && operationType !== 'restore_page_version') {
-      setDraftInstruction('');
-    }
-  };
+  const [imageEditPending, setImageEditPending] = useState('');
+  const [imageEditError, setImageEditError] = useState('');
+  const latestCandidate = activePage
+    ? getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType)
+    : null;
+  const activePreviewLabel = selectedPreviewType === 'element' ? '元素图' : selectedPreviewType === 'preview' ? '预览图' : '原稿图';
 
   const confirmAgentDraft = (draft) => {
     setAgentDraft(draft);
@@ -73,9 +57,42 @@ const AgentWorkspace = ({
     setMode('edit');
   };
 
-  const submitDraftOperation = async (fallbackOperationType) => {
-    const operationType = agentDraft?.operation_type || fallbackOperationType;
-    await submitOperation(operationType, draftInstruction);
+  const generateImageEditCandidate = async () => {
+    if (!currentJob?.job_id || !activePage || imageEditPending) return;
+    const instruction = String(draftInstruction || '').trim();
+    if (!instruction) {
+      setImageEditError('请先填写文字描述调整。');
+      return;
+    }
+    setImageEditPending('generate');
+    setImageEditError('');
+    try {
+      const updatedJob = await postImageEditCandidate(currentJob.job_id, {
+        page_no: activePage.page_no,
+        preview_type: selectedPreviewType,
+        instruction,
+        annotations: imageAnnotations,
+      });
+      onJobUpdated?.(updatedJob);
+    } catch (err) {
+      setImageEditError(err.message || '生成编辑预览失败');
+    } finally {
+      setImageEditPending('');
+    }
+  };
+
+  const applyLatestCandidate = async () => {
+    if (!currentJob?.job_id || !latestCandidate?.candidate_id || imageEditPending) return;
+    setImageEditPending('apply');
+    setImageEditError('');
+    try {
+      const updatedJob = await applyImageEditCandidate(currentJob.job_id, latestCandidate.candidate_id);
+      onJobUpdated?.(updatedJob);
+    } catch (err) {
+      setImageEditError(err.message || '替换原图失败');
+    } finally {
+      setImageEditPending('');
+    }
   };
 
   return (
@@ -87,14 +104,14 @@ const AgentWorkspace = ({
           <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.job_target_label || '可编辑 PPT'}` : '先描述目标，Agent 会生成初稿并持续接受修改。'}</p>
         </div>
         <div className="mode-switch" role="tablist" aria-label="工作模式">
-          <button type="button" className={clsx(mode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
+          <ScaleButton className={clsx(mode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
             <MessageSquareText size={16} />
             对话
-          </button>
-          <button type="button" className={clsx(mode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
+          </ScaleButton>
+          <ScaleButton className={clsx(mode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
             <SlidersHorizontal size={16} />
             编辑
-          </button>
+          </ScaleButton>
         </div>
       </div>
 
@@ -110,30 +127,37 @@ const AgentWorkspace = ({
             <h3>{agentSummary.title}</h3>
             <p>{agentSummary.body}</p>
             {pages.length > 0 && (
-              <ol className="page-outline">
+              <StaggerContainer className="page-outline" itemCount={Math.min(pages.length, 6)}>
                 {pages.slice(0, 6).map((page, index) => {
                   const selected = index === selectedPageIndex;
                   return (
-                    <li key={page.page_no}>
-                      <button
-                        type="button"
+                    <StaggerItem key={page.page_no}>
+                      <ScaleButton
                         className={clsx(selected && 'is-active')}
                         aria-pressed={selected}
                         onClick={() => onSelectPage(index)}
                       >
                         <span>{page.page_no}</span>
                         {getPageTitle(page)}
-                      </button>
-                    </li>
+                      </ScaleButton>
+                    </StaggerItem>
                   );
                 })}
-              </ol>
+              </StaggerContainer>
             )}
           </div>
         </section>
 
-        {mode === 'chat' ? (
-          <section className="chat-stage">
+        <AnimatePresence mode="wait">
+          {mode === 'chat' ? (
+            <motion.section 
+              key="chat"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="chat-stage"
+            >
             {!currentJob && (
               <div className="agent-card">
                 <div className="agent-card__title-row">
@@ -161,7 +185,6 @@ const AgentWorkspace = ({
                   }}
                   onOpenImageMarkup={onOpenImageMarkup}
                 />
-                {actionError && <div className="form-error">{actionError}</div>}
                 {recentOperations.length > 0 && (
                   <section className="operation-feed">
                     <div className="section-title">
@@ -186,9 +209,16 @@ const AgentWorkspace = ({
                 </details>
               </>
             )}
-          </section>
-        ) : (
-          <section className="edit-stage">
+            </motion.section>
+          ) : (
+            <motion.section 
+              key="edit"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="edit-stage"
+            >
             {activePage ? (
               <>
                 <div className="edit-stage__title">
@@ -196,10 +226,6 @@ const AgentWorkspace = ({
                   <h3>{getPageTitle(activePage)}</h3>
                   {getPageSummary(activePage) && <p>{getPageSummary(activePage)}</p>}
                 </div>
-
-                <FeaturePending title="单页编辑已接入后端">
-                  这里会承接 Agent 整理后的改动内容。确认提交后，文字优化会保留当前图片，排版/风格修改会备份页面并重跑相关产物。
-                </FeaturePending>
 
                 {agentDraft && (
                   <div className="agent-draft-strip">
@@ -209,94 +235,83 @@ const AgentWorkspace = ({
                 )}
 
                 <div className="edit-block">
-                  <span>页面风格</span>
-                  <div className="chip-grid">
-                    {STYLE_OPTIONS.map((option) => (
-                      <button type="button" key={option} onClick={() => setDraftInstruction(`第 ${activePage.page_no} 页调整为${option}`)}>
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="edit-block">
-                  <span>文字调整</span>
-                  <label>
-                    标题
-                    <input readOnly value={getPageTitle(activePage)} />
-                  </label>
+                  <span>文字描述调整</span>
                   <label>
                     修改要求
                     <textarea
                       value={draftInstruction}
                       onChange={(event) => setDraftInstruction(event.target.value)}
-                      placeholder="例如：标题更短，正文减少到 3 个要点..."
+                      placeholder={`描述第 ${activePage.page_no} 页要怎么改，例如：右侧模块更清晰，主标题更短，整体更像咨询汇报...`}
                     />
                   </label>
                 </div>
 
                 <div className="edit-block">
-                  <span>布局调整</span>
-                  <div className="chip-grid">
-                    {LAYOUT_OPTIONS.map((option) => (
-                      <button type="button" key={option} onClick={() => setDraftInstruction(`第 ${activePage.page_no} 页${option}`)}>
-                        {option}
-                      </button>
-                    ))}
+                  <span>标注编辑预览</span>
+                  {imageAnnotations?.length ? (
+                    <div className="annotation-preview-list">
+                      {imageAnnotations.map((annotation, index) => (
+                        <span key={annotation.id || `${annotation.label}-${index}`}>
+                          {annotation.label || `区域 ${index + 1}`}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="annotation-preview-empty">当前没有框选标注，将只按文字描述编辑。</div>
+                  )}
+                  <ScaleButton className="btn btn-secondary edit-stage__markup-button ai-glow-button" onClick={onOpenImageMarkup}>
+                    <MousePointer2 size={16} />
+                    标注编辑
+                  </ScaleButton>
+                </div>
+
+                <div className="edit-block image-edit-preview">
+                  <div className="image-edit-preview__head">
+                    <span>编辑生成预览</span>
+                    {latestCandidate && (
+                      <strong>{isImageEditCandidateApplied(latestCandidate) ? '已替换' : '待确认替换'}</strong>
+                    )}
                   </div>
+                  <SlideImage
+                    src={latestCandidate?.image || ''}
+                    alt={latestCandidate ? `第 ${activePage.page_no} 页编辑预览` : '编辑生成预览'}
+                    loading={imageEditPending === 'generate'}
+                    emptyTitle={imageEditPending === 'generate' ? '正在生成预览' : '等待编辑生成'}
+                    emptyDescription={`会基于当前${activePreviewLabel}、修改要求和可选标注生成一张新图。`}
+                    sourceLabel={latestCandidate?.preview_label || activePreviewLabel}
+                    showMeta
+                  />
+                  {latestCandidate?.instruction && (
+                    <p className="image-edit-preview__instruction">{latestCandidate.instruction}</p>
+                  )}
                 </div>
 
                 <div className="edit-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => submitOperation('page_regenerate', `第 ${activePage.page_no} 页重新生成`)}
-                    disabled={pendingKey !== '' || isRunning}
+                  <ScaleButton
+                    className="btn btn-primary ai-glow-button"
+                    onClick={generateImageEditCandidate}
+                    disabled={imageEditPending !== '' || isRunning || !draftInstruction.trim()}
                   >
-                    {pendingKey === 'page_regenerate' ? '提交中...' : '重新生成本页'}
-                  </button>
-                  <button
-                    type="button"
+                    {imageEditPending === 'generate' ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}
+                    重新生成预览
+                  </ScaleButton>
+                  <ScaleButton
                     className="btn btn-secondary"
-                    onClick={() => submitDraftOperation('page_text_optimize')}
-                    disabled={pendingKey !== '' || !draftInstruction.trim()}
+                    onClick={applyLatestCandidate}
+                    disabled={imageEditPending !== '' || !latestCandidate || isImageEditCandidateApplied(latestCandidate)}
                   >
-                    {pendingKey === 'page_text_optimize' ? <LoaderCircle className="spin" size={16} /> : <MessageSquareText size={16} />}
-                    仅优化文字
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => submitDraftOperation('page_layout_optimize')}
-                    disabled={pendingKey !== '' || !draftInstruction.trim()}
-                  >
-                    仅优化排版
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => submitOperation('job_style_adjust', draftInstruction)}
-                    disabled={pendingKey !== '' || !draftInstruction.trim()}
-                  >
-                    修改整套风格
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => submitOperation('restore_page_version', `恢复第 ${activePage.page_no} 页上一版`)}
-                    disabled={pendingKey !== '' || isRunning || !latestVersion}
-                    title={latestVersion ? `恢复版本 ${latestVersion.version_id}` : '重新生成后才会产生可恢复版本'}
-                  >
-                    恢复上一版
-                  </button>
+                    {imageEditPending === 'apply' ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
+                    替换原图
+                  </ScaleButton>
                 </div>
-                {actionError && <div className="form-error">{actionError}</div>}
+                {imageEditError && <div className="form-error">{imageEditError}</div>}
               </>
             ) : (
               <div className="empty-state">右侧选择一页后，这里会显示该页编辑属性。</div>
             )}
-          </section>
-        )}
+            </motion.section>
+          )}
+        </AnimatePresence>
       </div>
     </main>
   );

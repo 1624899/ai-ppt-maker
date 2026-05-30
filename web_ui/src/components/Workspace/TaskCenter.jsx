@@ -12,8 +12,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { StaggerContainer, StaggerItem, ScaleButton } from '../Motion/MotionUI';
 import SlideImage from './SlideImage';
 import TaskActionMenu from './TaskActionMenu';
+import TaskSkeletonList from './TaskSkeletonList';
 import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
@@ -167,7 +169,7 @@ const TaskCenter = ({
     const menuOpen = menuJobId === job.job_id;
     const pinned = Boolean(String(job.pinned_at || '').trim());
     return (
-      <div
+      <StaggerItem
         key={job.job_id}
         className={clsx(
           'task-card',
@@ -264,7 +266,7 @@ const TaskCenter = ({
             </TaskActionMenu>
           </div>
         )}
-      </div>
+      </StaggerItem>
     );
   };
 
@@ -277,10 +279,10 @@ const TaskCenter = ({
       </div>
 
       <div className="task-center__body">
-        <button type="button" className="new-task-button" onClick={onCreateTask}>
+        <ScaleButton className="new-task-button" onClick={onCreateTask}>
           <PlusCircle size={18} />
           <span>新建 PPT 任务</span>
-        </button>
+        </ScaleButton>
 
         {!loading && pinnedJobs.length > 0 && (
           <section className="task-section task-section--pinned">
@@ -288,9 +290,9 @@ const TaskCenter = ({
               <Pin size={15} />
               <span>置顶</span>
             </div>
-            <div className="task-list">
+            <StaggerContainer className="task-list" itemCount={pinnedJobs.length}>
               {pinnedJobs.map(renderTaskCard)}
-            </div>
+            </StaggerContainer>
           </section>
         )}
 
@@ -299,9 +301,9 @@ const TaskCenter = ({
             <Archive size={15} />
             <span>历史任务</span>
           </div>
-          <div className="task-list">
+          <StaggerContainer className="task-list" itemCount={historyJobs.length}>
             {loading ? (
-              <div className="empty-state">正在加载历史任务...</div>
+              <TaskSkeletonList />
             ) : jobs.length === 0 ? (
               <div className="empty-state">还没有任务，先从中间创建一份初稿。</div>
             ) : historyJobs.length === 0 ? (
@@ -309,7 +311,7 @@ const TaskCenter = ({
             ) : (
               historyJobs.map(renderTaskCard)
             )}
-          </div>
+          </StaggerContainer>
           {message && <div className="task-action-message">{message}</div>}
         </section>
 
@@ -318,17 +320,19 @@ const TaskCenter = ({
             <FolderKanban size={15} />
             <span>素材与知识库</span>
           </div>
-          <div className="resource-list">
+          <StaggerContainer className="resource-list" itemCount={RESOURCE_LINKS.length}>
             {RESOURCE_LINKS.map(({ key, label, description, icon: Icon }) => (
-              <button type="button" className="resource-link" key={key}>
-                <Icon size={17} />
-                <span>
-                  <strong>{label}</strong>
-                  <small>{description}</small>
-                </span>
-              </button>
+              <StaggerItem key={key}>
+                <ScaleButton className="resource-link">
+                  <Icon size={17} />
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{description}</small>
+                  </span>
+                </ScaleButton>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
         </section>
       </div>
     </aside>

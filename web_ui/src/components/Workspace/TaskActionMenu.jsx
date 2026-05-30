@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 8;
@@ -87,17 +88,25 @@ const TaskActionMenu = ({ open, anchorEl, onClose, children }) => {
     return () => document.removeEventListener('pointerdown', closeFromOutside);
   }, [anchorEl, onClose, open]);
 
-  if (!open || !anchorEl) return null;
+  if (!anchorEl) return null;
 
   return createPortal(
-    <div
-      ref={menuRef}
-      className="task-action-menu"
-      role="menu"
-      style={{ visibility: 'hidden' }}
-    >
-      {children}
-    </div>,
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          ref={menuRef}
+          className="task-action-menu"
+          role="menu"
+          initial={{ opacity: 0, scale: 0.95, y: -5 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: -5 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.55 }}
+          style={{ visibility: 'hidden', transformOrigin: 'top right' }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>,
     document.body,
   );
 };

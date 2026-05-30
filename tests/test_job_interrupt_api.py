@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import web_app
+import main
 from ppt_system.jobs.job_store import create_job as create_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 
@@ -64,10 +64,10 @@ class JobInterruptApiTests(unittest.TestCase):
                 },
             )
 
-            with patch.object(web_app, "JOBS_DB_PATH", jobs_db_path), patch.object(
-                web_app, "get_job_record", return_value=record
+            with patch.object(main, "JOBS_DB_PATH", jobs_db_path), patch.object(
+                main, "get_job_record", return_value=record
             ):
-                client = web_app.app.test_client()
+                client = main.app.test_client()
                 response = client.post(f"/api/jobs/{job_id}/interrupt")
 
             self.assertEqual(response.status_code, 200)

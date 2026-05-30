@@ -1,6 +1,5 @@
 import { Download, ExternalLink, FileArchive, MousePointer2, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
-import FeaturePending from './FeaturePending';
 import ImagePreviewSwitch from './ImagePreviewSwitch';
 import SlideImage from './SlideImage';
 import { useJobActions } from '../../hooks/useJobActions';
@@ -15,11 +14,10 @@ import {
   getStatusLabel,
 } from '../../utils/jobPresentation';
 
-const EXPORT_FALLBACKS = [
-  { key: 'pdf', label: '下载 PDF', description: '后端导出接口待接入' },
-  { key: 'png', label: '下载 PNG 图片包', description: '后端导出接口待接入' },
-  { key: 'share', label: '复制分享链接', description: '分享服务待接入' },
-];
+const buildDeliveryPayload = (action) => ({
+  delivery_key: action.delivery_key || action.key,
+  ...(action.layer_mode ? { layer_mode: action.layer_mode } : {}),
+});
 
 const PPTStudio = ({
   currentJob,
@@ -89,7 +87,6 @@ const PPTStudio = ({
             showMeta
           />
           <div className="preview-actions">
-            <button type="button" disabled title="替换图片的后端接口尚未接入">替换</button>
             <button type="button" onClick={onOpenImageMarkup} disabled={!activeImage}>
               <MousePointer2 size={15} />
               标注编辑{imageAnnotations?.length ? `(${imageAnnotations.length})` : ''}
@@ -98,9 +95,6 @@ const PPTStudio = ({
               下载当前页 PNG
             </a>
           </div>
-          <FeaturePending compact title="替换图片待接入">
-            当前版本先支持查看与下载已生成图片，替换会在后端编辑接口完成后开放。
-          </FeaturePending>
         </section>
 
         <section className="studio-card page-structure">
@@ -198,7 +192,7 @@ const PPTStudio = ({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => runAction('deliver', { delivery_key: action.key }, { key: `deliver-${action.key}` })}
+                      onClick={() => runAction('deliver', buildDeliveryPayload(action), { key: `deliver-${action.key}` })}
                       disabled={pendingKey !== ''}
                     >
                       {pendingKey === `deliver-${action.key}` ? '生成中...' : '生成'}
@@ -207,12 +201,6 @@ const PPTStudio = ({
                 </div>
               );
             })}
-            {EXPORT_FALLBACKS.map((item) => (
-              <button type="button" className="export-fallback" key={item.key} disabled title={item.description}>
-                <span>{item.label}</span>
-                <small>{item.description}</small>
-              </button>
-            ))}
           </div>
         </section>
       </div>

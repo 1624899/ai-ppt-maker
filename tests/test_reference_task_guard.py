@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from web_app import submit_reference_task
+from main import submit_reference_task
 
 
 class _DummyImageProvider:

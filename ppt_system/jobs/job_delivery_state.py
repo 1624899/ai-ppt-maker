@@ -7,6 +7,8 @@ from typing import Any
 
 from ppt_system.export.delivery_options import (
     EDITABLE_PPT_DELIVERY_KEY,
+    EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY,
+    EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY,
     REFERENCE_PPT_DELIVERY_KEY,
     build_editable_delivery_description,
     build_editable_delivery_label,
@@ -191,30 +193,12 @@ def build_delivery_actions(job_state: dict[str, Any], job_dir: Path) -> list[dic
             }
         )
     if editable_ready:
-        latest_editable_delivery = editable_delivery_store.get("latest", {})
-        actions.append(
-            {
-                "key": EDITABLE_PPT_DELIVERY_KEY,
-                "label": "可编辑PPT生成",
-                "description": "使用已生成的可编辑元素和文字脚本导出 PPT，可选择双页或合页。",
-                "visible": True,
-                "generated": bool(latest_editable_delivery),
-                "generated_file": latest_editable_delivery,
-                "logical_page_count": int(editable_bundle.get("logical_page_count", len(pages))),
-                "page_count": int(latest_editable_delivery.get("page_count", 0) or 0),
-                "options": [
-                    {
-                        "layer_mode": SEPARATE_LAYER_MODE,
-                        "label": build_editable_delivery_label(SEPARATE_LAYER_MODE),
-                        "description": build_editable_delivery_description(SEPARATE_LAYER_MODE),
-                    },
-                    {
-                        "layer_mode": OVERLAY_LAYER_MODE,
-                        "label": build_editable_delivery_label(OVERLAY_LAYER_MODE),
-                        "description": build_editable_delivery_description(OVERLAY_LAYER_MODE),
-                    },
-                ],
-            }
+        actions.extend(
+            _build_editable_delivery_actions(
+                editable_bundle=editable_bundle,
+                editable_delivery_store=editable_delivery_store,
+                fallback_logical_page_count=len(pages),
+            )
         )
     return actions
 
@@ -263,6 +247,59 @@ def _merge_editable_delivery_store(existing_payload: Any, next_payload: Any) -> 
 def _extract_pages(job_state: dict[str, Any]) -> list[dict[str, Any]]:
     pages = job_state.get("pages", [])
     return list(pages) if isinstance(pages, list) else []
+
+
+def _build_editable_delivery_actions(
+    *,
+    editable_bundle: dict[str, Any],
+    editable_delivery_store: dict[str, Any],
+    fallback_logical_page_count: int,
+) -> list[dict[str, Any]]:
+    logical_page_count = int(editable_bundle.get("logical_page_count", fallback_logical_page_count))
+    deliveries_by_layer_mode = editable_delivery_store.get("by_layer_mode", {})
+    if not isinstance(deliveries_by_layer_mode, dict):
+        deliveries_by_layer_mode = {}
+    return [
+        _build_editable_delivery_action(
+            action_key=EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY,
+            label="可编辑ppt单页生成",
+            layer_mode=OVERLAY_LAYER_MODE,
+            deliveries_by_layer_mode=deliveries_by_layer_mode,
+            logical_page_count=logical_page_count,
+        ),
+        _build_editable_delivery_action(
+            action_key=EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY,
+            label="文字/元素拆分双页生成",
+            layer_mode=SEPARATE_LAYER_MODE,
+            deliveries_by_layer_mode=deliveries_by_layer_mode,
+            logical_page_count=logical_page_count,
+        ),
+    ]
+
+
+def _build_editable_delivery_action(
+    *,
+    action_key: str,
+    label: str,
+    layer_mode: str,
+    deliveries_by_layer_mode: dict[str, Any],
+    logical_page_count: int,
+) -> dict[str, Any]:
+    generated_file = deliveries_by_layer_mode.get(layer_mode)
+    if not isinstance(generated_file, dict):
+        generated_file = {}
+    return {
+        "key": action_key,
+        "delivery_key": EDITABLE_PPT_DELIVERY_KEY,
+        "layer_mode": layer_mode,
+        "label": label,
+        "description": build_editable_delivery_description(layer_mode),
+        "visible": True,
+        "generated": bool(generated_file),
+        "generated_file": generated_file,
+        "logical_page_count": logical_page_count,
+        "page_count": int(generated_file.get("page_count", 0) or 0),
+    }
 
 
 def _extract_reference_pages(job_state: dict[str, Any]) -> list[dict[str, Any]]:
