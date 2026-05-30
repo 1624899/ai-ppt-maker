@@ -8,23 +8,17 @@ from typing import Any
 
 from flask import Response, jsonify, request, send_from_directory, stream_with_context
 
-from ppt_system.jobs.active_job_registry import release_job_management
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.job_submission_runtime import (
+    bind_submitted_job,
+    build_active_config,
+    submit_existing_job_pipeline,
+)
 
 
 def _resolve_job_dir(config: dict[str, Any], job_id: str) -> Path:
     runtime = get_runtime_module()
     return runtime.ROOT / str(config["output_dir"]) / job_id
-
-
-def _bind_submitted_job(job_id: str, submitted: object) -> None:
-    runtime = get_runtime_module()
-    if submitted is None:
-        # 同步执行器或测试替身没有返回 Future 时，不保留“运行中托管”状态。
-        release_job_management(job_id)
-        return
-    if hasattr(submitted, "add_done_callback"):
-        runtime.bind_job_future(job_id, submitted)
 
 
 def api_create_job():
@@ -63,12 +57,7 @@ def api_create_job():
     image_height = int(image_preset["height"])
     if image_quality not in {"low", "medium", "high", "auto"}:
         return jsonify({"error": "图像质量只能选择 low、medium、high 或 auto。"}), 400
-    active_config = dict(config)
-    active_config["image_width"] = image_width
-    active_config["image_height"] = image_height
-    active_config["active_image_size"] = str(image_preset["size"])
-    active_config["active_image_resolution"] = str(image_preset["resolution"])
-    active_config["image_quality"] = image_quality
+    active_config = build_active_config(config, image_preset, image_quality)
 
     job_id = uuid.uuid4().hex[:12]
     job_dir = _resolve_job_dir(config, job_id)
@@ -151,7 +140,7 @@ def api_create_job():
         stage2_dir,
         refs_dir,
     )
-    _bind_submitted_job(job_id, future)
+    bind_submitted_job(job_id, future)
     return jsonify(state), 202
 
 
@@ -305,27 +294,9 @@ def api_resume_job(job_id: str):
     if not can_resume:
         return jsonify({"error": "当前任务状态不支持继续。"}), 400
     request_payload = record.get("request", {})
-    config = runtime.read_config()
     next_job_target = runtime.JOB_TARGET_EDITABLE_PPT
     request_payload["job_target"] = next_job_target
-    generation_options = runtime.resolve_generation_options(request_payload.get("generation_options", request_payload), config=config)
-    try:
-        image_preset = runtime.resolve_image_preset(
-            config,
-            str(request_payload.get("image_preset", config["default_image_preset"])),
-        )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    active_config = dict(config)
-    active_config["image_width"] = int(image_preset["width"])
-    active_config["image_height"] = int(image_preset["height"])
-    active_config["active_image_size"] = str(image_preset["size"])
-    active_config["active_image_resolution"] = str(image_preset["resolution"])
-    active_config["image_quality"] = str(request_payload.get("image_quality", config.get("image_quality", "medium")))
     job_dir = Path(record["job_dir"])
-    refs_dir = job_dir / "style_refs"
-    stage1_dir = job_dir / "01_reference_pages"
-    stage2_dir = job_dir / "02_elements_pages"
     runtime.update_job_record(
         runtime.JOBS_DB_PATH,
         job_id,
@@ -347,23 +318,10 @@ def api_resume_job(job_id: str):
 
     runtime.mutate_job_state(job_dir, job_id, updater)
     runtime.reconcile_resume_state(job_dir, job_id)
-    runtime.mark_job_managed(job_id)
-    future = runtime.JOB_EXECUTOR.submit(
-        runtime.run_job_pipeline,
-        job_id,
-        job_dir,
-        config,
-        active_config,
-        str(request_payload.get("content", record["content"])),
-        int(request_payload.get("page_count", record["page_count"])),
-        image_preset,
-        str(request_payload.get("style_notes", record["style_notes"])),
-        generation_options,
-        stage1_dir,
-        stage2_dir,
-        refs_dir,
-    )
-    _bind_submitted_job(job_id, future)
+    try:
+        submit_existing_job_pipeline(record, request_payload=request_payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     state = runtime.load_job_state(job_id, job_dir)
     return jsonify(state or {"ok": True})
 

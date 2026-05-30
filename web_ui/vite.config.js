@@ -13,6 +13,10 @@ export default defineConfig({
       '/output': {
         target: 'http://127.0.0.1:7860',
         changeOrigin: true
+      },
+      '/runs': {
+        target: 'http://127.0.0.1:7860',
+        changeOrigin: true
       }
     }
   }

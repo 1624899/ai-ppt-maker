@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Bot, Lock, MessageSquareText, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Bot, History, LoaderCircle, MessageSquareText, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import CreationForm from './CreationForm';
 import FeaturePending from './FeaturePending';
 import StageProgress from './StageProgress';
+import { useJobActions } from '../../hooks/useJobActions';
 import {
   buildAgentSummary,
+  getLatestPageVersion,
   getJobMeta,
   getJobPages,
   getJobTitle,
+  getOperationStatusLabel,
   getPageSummary,
   getPageTitle,
+  getRecentJobOperations,
   getStatusLabel,
 } from '../../utils/jobPresentation';
 
@@ -19,24 +23,56 @@ const QUICK_ACTIONS = ['优化当前页', '减少文字', '增强视觉', '统�
 const STYLE_OPTIONS = ['蓝白科技风', '深色科技风', '极简商务风'];
 const LAYOUT_OPTIONS = ['更紧凑', '更留白', '改为三栏', '改为流程图'];
 
-const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCreated }) => {
+const QUICK_ACTION_OPERATION = {
+  优化当前页: 'page_text_optimize',
+  减少文字: 'page_text_optimize',
+  增强视觉: 'page_layout_optimize',
+  统一风格: 'job_style_adjust',
+};
+
+const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCreated, onJobUpdated }) => {
   const [mode, setMode] = useState('chat');
   const [draftInstruction, setDraftInstruction] = useState('');
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
   const meta = getJobMeta(currentJob);
   const agentSummary = buildAgentSummary(currentJob);
+  const latestVersion = activePage ? getLatestPageVersion(currentJob, activePage.page_no) : null;
+  const recentOperations = getRecentJobOperations(currentJob);
+  const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
+  const { pendingKey, error: actionError, runOperation } = useJobActions({ currentJob, onJobUpdated });
 
-  const pushQuickAction = (action) => {
+  const submitOperation = async (operationType, fallbackInstruction = '', instructionOverride = null) => {
+    const instruction = String(instructionOverride ?? (draftInstruction || fallbackInstruction)).trim();
+    const pageNo = activePage?.page_no;
+    const pageScoped = operationType.startsWith('page_') || operationType === 'restore_page_version';
+    const payload = {
+      operation_type: operationType,
+      instruction,
+      source: mode,
+    };
+    if (pageScoped && pageNo) payload.page_no = pageNo;
+    if (operationType === 'restore_page_version' && latestVersion?.version_id) {
+      payload.version_id = latestVersion.version_id;
+    }
+    const result = await runOperation(payload, { key: operationType });
+    if (result && operationType !== 'restore_page_version') {
+      setDraftInstruction('');
+    }
+  };
+
+  const quickSubmit = async (action) => {
     if (action === '导出PPT') {
       setDraftInstruction('请导出当前 PPT，并优先生成可编辑 PPTX。');
       return;
     }
-    setDraftInstruction((value) => {
-      const prefix = activePage ? `第 ${activePage.page_no} 页` : '整套 PPT';
-      return value ? `${value}；${prefix}${action}` : `${prefix}${action}`;
-    });
-    if (activePage) setMode('edit');
+    const operationType = QUICK_ACTION_OPERATION[action];
+    if (!operationType) return;
+    const prefix = activePage && operationType !== 'job_style_adjust' ? `第 ${activePage.page_no} 页` : '整套 PPT';
+    const instruction = draftInstruction.trim() || `${prefix}${action}`;
+    setDraftInstruction(instruction);
+    await submitOperation(operationType, instruction, instruction);
+    if (activePage && operationType !== 'job_style_adjust') setMode('edit');
   };
 
   return (
@@ -102,18 +138,19 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
 
             {currentJob && (
               <>
-                <FeaturePending title="对话修改待后端接入">
-                  当前可以先整理修改意图并切到编辑面板查看页面上下文；真正的 Agent 改稿、单页重做和版本恢复接口尚未实现。
+                <FeaturePending title="Agent 改稿流水线待接入">
+                  当前已接入后端操作记录：修改意图会保存到任务状态；单页重新生成会触发现有生成流水线。智能对话改稿仍待后端 Agent 执行器接入。
                 </FeaturePending>
-                <div className="quick-actions quick-actions--pending" aria-label="待接入快捷修改">
+                <div className="quick-actions" aria-label="快捷修改">
                   {QUICK_ACTIONS.map((action) => (
                     <button
                       type="button"
                       key={action}
-                      onClick={() => pushQuickAction(action)}
-                      title="会先写入修改要求，暂不直接调用后端"
+                      onClick={() => quickSubmit(action)}
+                      disabled={pendingKey !== '' || (isRunning && action !== '导出PPT')}
+                      title={action === '导出PPT' ? '会先写入导出要求，请在右侧选择导出格式' : '记录修改意图到后端'}
                     >
-                      {action}
+                      {pendingKey === QUICK_ACTION_OPERATION[action] ? '提交中...' : action}
                     </button>
                   ))}
                 </div>
@@ -132,12 +169,33 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                       <PanelTopOpen size={17} />
                       应用到编辑面板
                     </button>
-                    <button type="button" className="btn btn-secondary" disabled title="Agent 对话修改接口尚未实现">
-                      <Lock size={16} />
-                      发送给 Agent
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => submitOperation('agent_instruction')}
+                      disabled={pendingKey !== '' || !draftInstruction.trim()}
+                      title="先记录到后端操作历史，等待 Agent 执行器接入"
+                    >
+                      {pendingKey === 'agent_instruction' ? <LoaderCircle className="spin" size={16} /> : <MessageSquareText size={16} />}
+                      记录给 Agent
                     </button>
                   </div>
                 </div>
+                {actionError && <div className="form-error">{actionError}</div>}
+                {recentOperations.length > 0 && (
+                  <section className="operation-feed">
+                    <div className="section-title">
+                      <History size={15} />
+                      <span>最近操作</span>
+                    </div>
+                    {recentOperations.map((operation) => (
+                      <article className="operation-item" key={operation.operation_id}>
+                        <strong>{operation.label || operation.type}</strong>
+                        <span>{getOperationStatusLabel(operation.status)} · {operation.message || operation.instruction || '已同步到任务状态'}</span>
+                      </article>
+                    ))}
+                  </section>
+                )}
                 <details className="agent-card advanced-config">
                   <summary>需要重新生成整套 PPT？展开参数</summary>
                   <CreationForm compact currentJob={currentJob} onCreated={onJobCreated} />
@@ -155,8 +213,8 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                   {getPageSummary(activePage) && <p>{getPageSummary(activePage)}</p>}
                 </div>
 
-                <FeaturePending title="单页编辑待后端接入">
-                  下方控件用于确认交互形态和收集修改意图，暂不会触发真实重排、改稿或版本恢复。
+                <FeaturePending title="单页编辑逐步接入中">
+                  重新生成本页已接入后端流水线；文字优化、排版优化会先记录为页面编辑请求，等待 Agent 编辑执行器接入。
                 </FeaturePending>
 
                 <div className="edit-block">
@@ -198,11 +256,41 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                 </div>
 
                 <div className="edit-actions">
-                  <button type="button" className="btn btn-primary" disabled>重新生成本页</button>
-                  <button type="button" className="btn btn-secondary" disabled>仅优化文字</button>
-                  <button type="button" className="btn btn-secondary" disabled>仅优化排版</button>
-                  <button type="button" className="btn btn-secondary" disabled>恢复上一版</button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => submitOperation('page_regenerate', `第 ${activePage.page_no} 页重新生成`)}
+                    disabled={pendingKey !== '' || isRunning}
+                  >
+                    {pendingKey === 'page_regenerate' ? '提交中...' : '重新生成本页'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => submitOperation('page_text_optimize', `第 ${activePage.page_no} 页仅优化文字`)}
+                    disabled={pendingKey !== '' || !draftInstruction.trim()}
+                  >
+                    仅优化文字
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => submitOperation('page_layout_optimize', `第 ${activePage.page_no} 页仅优化排版`)}
+                    disabled={pendingKey !== '' || !draftInstruction.trim()}
+                  >
+                    仅优化排版
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => submitOperation('restore_page_version', `恢复第 ${activePage.page_no} 页上一版`)}
+                    disabled={pendingKey !== '' || isRunning || !latestVersion}
+                    title={latestVersion ? `恢复版本 ${latestVersion.version_id}` : '重新生成后才会产生可恢复版本'}
+                  >
+                    恢复上一版
+                  </button>
                 </div>
+                {actionError && <div className="form-error">{actionError}</div>}
               </>
             ) : (
               <div className="empty-state">右侧选择一页后，这里会显示该页编辑属性。</div>

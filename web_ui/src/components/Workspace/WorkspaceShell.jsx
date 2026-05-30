@@ -57,6 +57,7 @@ const WorkspaceShell = () => {
           selectedPageIndex={safeSelectedPageIndex}
           onSelectPage={setSelectedPageIndex}
           onJobCreated={handleJobCreated}
+          onJobUpdated={setCurrentJob}
         />
         <PPTStudio
           currentJob={currentJob}

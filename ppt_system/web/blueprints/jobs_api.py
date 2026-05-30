@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Blueprint
 
+from ppt_system.web.services import job_operations_service
 from ppt_system.web.services import jobs_api_service
 
 bp = Blueprint("jobs_api", __name__)
@@ -50,3 +51,8 @@ def api_resume_job(job_id: str):
 @bp.post("/api/jobs/<job_id>/deliver")
 def api_deliver_job(job_id: str):
     return jobs_api_service.api_deliver_job(job_id)
+
+
+@bp.post("/api/jobs/<job_id>/operations")
+def api_create_job_operation(job_id: str):
+    return job_operations_service.api_create_job_operation(job_id)

@@ -1,12 +1,16 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Download, ExternalLink, FileArchive, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
 import FeaturePending from './FeaturePending';
+import ImagePreviewSwitch from './ImagePreviewSwitch';
 import SlideImage from './SlideImage';
+import { useJobActions } from '../../hooks/useJobActions';
 import {
   getJobMeta,
   getJobPages,
   getPageImage,
   getPageImageKind,
+  getPageImageOptions,
   getPageSummary,
   getPageTitle,
   getStatusLabel,
@@ -18,43 +22,43 @@ const EXPORT_FALLBACKS = [
   { key: 'share', label: '复制分享链接', description: '分享服务待接入' },
 ];
 
-const postJobAction = async (jobId, action, payload) => {
-  const response = await fetch(`/api/jobs/${jobId}/${action}`, {
-    method: 'POST',
-    headers: payload ? { 'Content-Type': 'application/json' } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '操作失败');
-  return data;
-};
-
 const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJobUpdated }) => {
+  const [previewType, setPreviewType] = useState('element');
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
-  const activeImage = getPageImage(activePage);
-  const activeImageKind = getPageImageKind(activePage);
+  const previewOptions = useMemo(() => getPageImageOptions(activePage), [activePage]);
+  const selectedPreview = previewOptions.find((option) => option.key === previewType && option.src)
+    || previewOptions.find((option) => option.src)
+    || null;
+  const activeImage = selectedPreview?.src || getPageImage(activePage);
+  const activeImageKind = selectedPreview?.label || getPageImageKind(activePage);
   const actions = Array.isArray(currentJob?.delivery_actions) ? currentJob.delivery_actions : [];
   const meta = getJobMeta(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
   const canResume = ['interrupted', 'error'].includes(String(currentJob?.status || ''));
+  const { pendingKey, error: actionError, runAction } = useJobActions({
+    currentJob,
+    onJobUpdated,
+  });
 
-  const runAction = async (action, payload) => {
-    if (!currentJob?.job_id) return;
-    try {
-      const data = await postJobAction(currentJob.job_id, action, payload);
-      onJobUpdated?.(data);
-    } catch (err) {
-      alert(err.message || '操作失败');
-    }
-  };
+  useEffect(() => {
+    if (!selectedPreview?.key || selectedPreview.key === previewType) return;
+    setPreviewType(selectedPreview.key);
+  }, [previewType, selectedPreview?.key]);
 
   return (
     <aside className="workspace-panel ppt-studio">
-      <div className="workspace-panel__header">
-        <span className="eyebrow">PPT Studio</span>
-        <h2>预览与导出</h2>
-        <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.job_target_label || 'PPT 输出'}` : '生成后会在这里看到实时页面。'}</p>
+      <div className="workspace-panel__header ppt-studio__header">
+        <div>
+          <span className="eyebrow">PPT Studio</span>
+          <h2>预览与导出</h2>
+          <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.job_target_label || 'PPT 输出'}` : '生成后会在这里看到实时页面。'}</p>
+        </div>
+        <ImagePreviewSwitch
+          options={previewOptions}
+          value={selectedPreview?.key || previewType}
+          onChange={setPreviewType}
+        />
       </div>
 
       <div className="ppt-studio__body">
@@ -139,18 +143,19 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
 
           <div className="job-controls">
             {isRunning && currentJob?.status !== 'stopping' && (
-              <button type="button" className="btn btn-secondary" onClick={() => runAction('interrupt')}>
+              <button type="button" className="btn btn-secondary" onClick={() => runAction('interrupt')} disabled={pendingKey !== ''}>
                 <Square size={16} />
-                停止生成
+                {pendingKey === 'interrupt' ? '停止中...' : '停止生成'}
               </button>
             )}
             {canResume && (
-              <button type="button" className="btn btn-primary" onClick={() => runAction('resume')}>
+              <button type="button" className="btn btn-primary" onClick={() => runAction('resume')} disabled={pendingKey !== ''}>
                 <Play size={16} />
-                继续生成
+                {pendingKey === 'resume' ? '提交中...' : '继续生成'}
               </button>
             )}
           </div>
+          {actionError && <div className="form-error">{actionError}</div>}
 
           <div className="export-list">
             {actions.length === 0 && <div className="empty-state">完成参考图或可编辑元素后，会出现 PPTX 导出入口。</div>}
@@ -174,15 +179,20 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
                         <button
                           type="button"
                           key={option.layer_mode}
-                          onClick={() => runAction('deliver', { delivery_key: action.key, layer_mode: option.layer_mode })}
+                          onClick={() => runAction('deliver', { delivery_key: action.key, layer_mode: option.layer_mode }, { key: `deliver-${action.key}-${option.layer_mode}` })}
+                          disabled={pendingKey !== ''}
                         >
-                          {option.label}
+                          {pendingKey === `deliver-${action.key}-${option.layer_mode}` ? '生成中...' : option.label}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <button type="button" onClick={() => runAction('deliver', { delivery_key: action.key })}>
-                      生成
+                    <button
+                      type="button"
+                      onClick={() => runAction('deliver', { delivery_key: action.key }, { key: `deliver-${action.key}` })}
+                      disabled={pendingKey !== ''}
+                    >
+                      {pendingKey === `deliver-${action.key}` ? '生成中...' : '生成'}
                     </button>
                   )}
                 </div>

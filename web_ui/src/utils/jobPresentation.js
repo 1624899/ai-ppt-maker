@@ -109,6 +109,21 @@ export function getPageImageKind(page) {
   return '';
 }
 
+export function getPageImageOptions(page) {
+  if (!page) return [];
+
+  const options = [
+    { key: 'reference', label: '参考图', src: page.reference_image || '' },
+    { key: 'element', label: '元素图', src: page.element_image || '' },
+  ];
+
+  if (page.image && page.image !== page.reference_image && page.image !== page.element_image) {
+    options.push({ key: 'preview', label: '预览图', src: page.image });
+  }
+
+  return options;
+}
+
 export function getPageTitle(page) {
   const pageNo = Number(page?.page_no || 0);
   return String(page?.title || (pageNo ? `第 ${pageNo} 页` : '页面')).trim();
@@ -119,6 +134,38 @@ export function getPageSummary(page) {
   if (summary) return summary;
   const bullets = Array.isArray(page?.bullets) ? page.bullets.filter(Boolean) : [];
   return bullets.slice(0, 3).join(' / ');
+}
+
+export function getJobOperations(job) {
+  return Array.isArray(job?.operations) ? job.operations : [];
+}
+
+export function getRecentJobOperations(job, limit = 4) {
+  return getJobOperations(job).slice(-Math.max(1, limit)).reverse();
+}
+
+export function getPageVersions(job, pageNo) {
+  const targetPageNo = Number(pageNo || 0);
+  if (!targetPageNo) return [];
+  return (Array.isArray(job?.page_versions) ? job.page_versions : [])
+    .filter((version) => Number(version?.page_no || 0) === targetPageNo)
+    .slice()
+    .reverse();
+}
+
+export function getLatestPageVersion(job, pageNo) {
+  return getPageVersions(job, pageNo)[0] || null;
+}
+
+export function getOperationStatusLabel(status) {
+  const labels = {
+    accepted: '已记录',
+    created: '已创建',
+    submitted: '已提交',
+    completed: '已完成',
+    error: '失败',
+  };
+  return labels[String(status || '').trim()] || '处理中';
 }
 
 export function getPageCount(job) {
