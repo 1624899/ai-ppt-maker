@@ -5,6 +5,10 @@ from typing import Any
 from ppt_system.generation.design_grammar import compress_style_for_prompt, build_prompt_anchor
 from ppt_system.generation.page_richness import build_page_richness_render_guidance, normalize_page_richness_level
 from ppt_system.generation.reference_shape_constraints import build_shape_clarity_prompt_lines
+from ppt_system.generation.reference_style_adherence import (
+    build_reference_style_adherence_prompt_lines,
+    normalize_reference_style_adherence,
+)
 
 
 def build_reference_prompt_by_mode(
@@ -16,6 +20,7 @@ def build_reference_prompt_by_mode(
     prompt_mode: str,
     style_guide: dict[str, Any] | None = None,
     has_reference_images: bool = False,
+    reference_style_adherence: str = "balanced",
 ) -> str:
     normalized_mode = str(prompt_mode).strip().lower() or "baseline"
     if normalized_mode == "baseline":
@@ -29,6 +34,7 @@ def build_reference_prompt_by_mode(
             image_height,
             style_guide=style_guide,
             has_reference_images=has_reference_images,
+            reference_style_adherence=reference_style_adherence,
         )
     if normalized_mode == "compact":
         return build_compact_reference_prompt(
@@ -38,6 +44,7 @@ def build_reference_prompt_by_mode(
             image_height,
             style_guide=style_guide,
             has_reference_images=has_reference_images,
+            reference_style_adherence=reference_style_adherence,
         )
     if normalized_mode == "slot_brief":
         return build_slot_brief_reference_prompt(
@@ -47,6 +54,7 @@ def build_reference_prompt_by_mode(
             image_height,
             style_guide=style_guide,
             has_reference_images=has_reference_images,
+            reference_style_adherence=reference_style_adherence,
         )
     raise ValueError(f"未知的一阶段提示词模式：{prompt_mode}")
 
@@ -58,6 +66,7 @@ def build_reference_prompt(
     image_height: int,
     style_guide: dict[str, Any] | None = None,
     has_reference_images: bool = False,
+    reference_style_adherence: str = "balanced",
 ) -> str:
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页"))
@@ -98,6 +107,10 @@ def build_reference_prompt(
     negative_section = ""
     if negative_rules:
         negative_section = f"禁止事项：{'；'.join(negative_rules[:4])}"
+    adherence_lines = build_reference_style_adherence_prompt_lines(
+        reference_style_adherence,
+        has_reference_images=has_reference_images,
+    )
 
     prompt = "\n".join(
         [
@@ -106,6 +119,7 @@ def build_reference_prompt(
             f"页面标题：{title}",
             f"页面摘要：{summary}",
             f"参考风格要求：{style_notes}",
+            *adherence_lines,
             element_section,
             "文字要求：中文排版清晰，层级明确，标题和正文要可读；不要生成乱码。",
             "视觉要求：边界清晰，高级商务科技风格，元素低透明但轮廓明确，图标/logo/icon 可以保留。",
@@ -131,6 +145,7 @@ def build_reference_prompt(
             compressed_style,
             f"页面标题：{title}",
             f"页面摘要：{summary}",
+            *adherence_lines,
             element_section,
             negative_section,
             *text_lines,
@@ -146,6 +161,7 @@ def build_compact_reference_prompt(
     *,
     style_guide: dict[str, Any] | None = None,
     has_reference_images: bool = False,
+    reference_style_adherence: str = "balanced",
 ) -> str:
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
@@ -155,15 +171,24 @@ def build_compact_reference_prompt(
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide)
     page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
+    adherence = normalize_reference_style_adherence(reference_style_adherence, "balanced")
 
     lines = [
         f"生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字必须清晰可读。",
     ]
     if has_reference_images:
-        lines.append(
-            "如果提供了参考图，请把它们当成同一套 PPT 的视觉母版：优先继承背景明度、留白比例、描边粗细、圆角、卡片密度、图标语言和配色比例。"
+        lines.extend(
+            build_reference_style_adherence_prompt_lines(
+                adherence,
+                has_reference_images=has_reference_images,
+            )
         )
-        lines.append("不要复制任一参考图的具体构图，但要让新页面看起来明显属于同一套模板体系。")
+        if adherence == "loose":
+            lines.append("让新页面看起来明显属于同一套模板体系，但可以围绕内容重新安排模块重心。")
+        elif adherence == "strict":
+            lines.append("优先遵守参考图的模板秩序与视觉密度，不要随意改写模块骨架。")
+        else:
+            lines.append("让新页面延续同一套模板体系，同时为本页内容保留适度变化空间。")
     else:
         lines.append("整体保持高级企业汇报 / 咨询信息图气质，结构清晰、边界明确、留白充足。")
     lines.append(f"页面主题：{title}")
@@ -174,7 +199,12 @@ def build_compact_reference_prompt(
         lines.extend(f"- {bullet}" for bullet in bullets[:5])
     if slots:
         lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
-    lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排由你自主决定。")
+    if adherence == "strict" and has_reference_images:
+        lines.append(f"组织方式请严格贴合 {layout_family} 的版式骨架，并优先沿用参考图的模块秩序与卡片节奏。")
+    elif adherence == "loose" and has_reference_images:
+        lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排可由你围绕内容重新设计。")
+    else:
+        lines.append(f"组织方式可参考 {layout_family}，在统一框架下调整具体模块数量、箭头方向、图标组合和局部编排。")
     lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
         lines.append(f"统一视觉锚点：{anchor}")
@@ -193,6 +223,7 @@ def build_slot_brief_reference_prompt(
     *,
     style_guide: dict[str, Any] | None = None,
     has_reference_images: bool = False,
+    reference_style_adherence: str = "balanced",
 ) -> str:
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
@@ -202,13 +233,18 @@ def build_slot_brief_reference_prompt(
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide)
     page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
+    adherence = normalize_reference_style_adherence(reference_style_adherence, "balanced")
 
     lines = [
         f"请生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字清晰可读。",
     ]
     if has_reference_images:
-        lines.append("优先学习参考图的版芯比例、留白、背景纹理、线条样式、卡片层级和色彩节奏，再围绕本页内容重新设计。")
-        lines.append("不要照搬某一张参考图的具体版式，只需要保持同系列视觉一致性。")
+        lines.extend(
+            build_reference_style_adherence_prompt_lines(
+                adherence,
+                has_reference_images=has_reference_images,
+            )
+        )
     else:
         lines.append("围绕本页内容重新组织页面，保持咨询信息图式的理性与秩序。")
     lines.append(f"页面标题：{title}")
@@ -220,8 +256,15 @@ def build_slot_brief_reference_prompt(
     if slots:
         lines.append("请围绕以下语义分区组织页面，而不是机械照抄固定构图：")
         lines.extend(f"{index + 1}. {slot}" for index, slot in enumerate(slots[:5]))
-    lines.append(f"版式只需大致接近 {layout_family}，无需强行复刻具体卡片数量或指定图标。")
-    lines.append("你可以自主决定最适合的视觉重心、流程方向、卡片分组和图标组合。")
+    if adherence == "strict" and has_reference_images:
+        lines.append(f"版式请严格贴近 {layout_family} 对应的参考图骨架，卡片数量、层级关系和视觉节奏尽量与参考图同源。")
+        lines.append("优先按参考图的模块组织方式安排视觉重心、流程方向、卡片分组和图标组合。")
+    elif adherence == "loose" and has_reference_images:
+        lines.append(f"版式只需大致接近 {layout_family}，无需强行复刻具体卡片数量或指定图标。")
+        lines.append("你可以自主决定最适合的视觉重心、流程方向、卡片分组和图标组合。")
+    else:
+        lines.append(f"版式以 {layout_family} 为基准约束，保持框架统一，同时允许细节做适度调整。")
+        lines.append("请在统一框架下决定视觉重心、流程方向、卡片分组和图标组合。")
     lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
         lines.append(f"统一视觉锚点：{anchor}")

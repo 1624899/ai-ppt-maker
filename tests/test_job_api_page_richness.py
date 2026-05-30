@@ -89,6 +89,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "include_cover_page": "1",
                 "page_richness_default": "medium",
                 "page_richness_map": '{"1":"medium","2":"high"}',
+                "reference_style_adherence": "balanced",
             },
         )
         self.assertEqual(create_response.status_code, 202)
@@ -114,6 +115,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "include_cover_page": "1",
                 "page_richness_default": "high",
                 "page_richness_map": '{"1":"low","2":"medium"}',
+                "reference_style_adherence": "strict",
             },
         )
 
@@ -126,6 +128,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             payload["job_meta"]["generation_options"]["page_richness_map"],
             {"1": "low", "2": "medium"},
         )
+        self.assertEqual(payload["job_meta"]["generation_options"]["reference_style_adherence"], "strict")
 
         record = get_job_record(self.jobs_db_path, job_id)
         self.assertIsNotNone(record)
@@ -134,6 +137,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             record["request"]["generation_options"]["page_richness_map"],
             {"1": "low", "2": "medium"},
         )
+        self.assertEqual(record["request"]["generation_options"]["reference_style_adherence"], "strict")
         self.assertEqual(record["request"]["job_target"], "reference_only")
         self.assertEqual(payload["job_meta"]["job_target"], "reference_only")
         self.assertEqual(len(self.executor.calls), 1)
@@ -150,6 +154,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "include_cover_page": "0",
                 "page_richness_default": "medium",
                 "page_richness_map": '{"1":"high","2":"low"}',
+                "reference_style_adherence": "loose",
             },
         )
         self.assertEqual(create_response.status_code, 202)
@@ -187,6 +192,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             resumed["job_meta"]["generation_options"]["page_richness_map"],
             {"1": "high", "2": "low"},
         )
+        self.assertEqual(resumed["job_meta"]["generation_options"]["reference_style_adherence"], "loose")
 
         saved_state = load_job_state(job_id, job_dir)
         self.assertIsNotNone(saved_state)
@@ -196,6 +202,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             saved_state["job_meta"]["generation_options"]["page_richness_map"],
             {"1": "high", "2": "low"},
         )
+        self.assertEqual(saved_state["job_meta"]["generation_options"]["reference_style_adherence"], "loose")
         self.assertTrue(status_file(job_dir).exists())
         self.assertEqual(len(self.executor.calls), 2)
 

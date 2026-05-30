@@ -14,6 +14,7 @@ const jobTarget = document.querySelector("#jobTarget");
 const imageQuality = document.querySelector("#imageQuality");
 const pageRichnessDefault = document.querySelector("#pageRichnessDefault");
 const pageRichnessList = document.querySelector("#pageRichnessList");
+const referenceStyleAdherence = document.querySelector("#referenceStyleAdherence");
 const includeCoverPage = document.querySelector("#includeCoverPage");
 const reuseStyleRefsJobId = document.querySelector("#reuseStyleRefsJobId");
 const styleImages = document.querySelector("#styleImages");
@@ -263,6 +264,10 @@ function defaultPageRichnessValue() {
   return config?.default_page_richness || "medium";
 }
 
+function defaultReferenceStyleAdherenceValue() {
+  return config?.default_reference_style_adherence || "balanced";
+}
+
 function normalizePageRichnessValue(value, fallback = "medium") {
   if (pageRichnessHelpers?.normalizeValue) {
     return pageRichnessHelpers.normalizeValue(value, fallback);
@@ -272,6 +277,14 @@ function normalizePageRichnessValue(value, fallback = "medium") {
     return normalized;
   }
   return String(fallback || "medium");
+}
+
+function normalizeReferenceStyleAdherenceValue(value, fallback = "balanced") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["loose", "balanced", "strict"].includes(normalized)) {
+    return normalized;
+  }
+  return String(fallback || "balanced");
 }
 
 function formatPageRichnessText(value, fallback = "medium") {
@@ -486,6 +499,7 @@ function resetFormToDefaults() {
   jobTarget.value = "editable_ppt";
   imageQuality.value = config.image_quality || "medium";
   pageRichnessDefault.value = defaultPageRichnessValue();
+  referenceStyleAdherence.value = defaultReferenceStyleAdherenceValue();
   includeCoverPage.checked = defaultIncludeCoverPageValue();
   styleNotes.value = "";
   clearStyleReferenceBinding();
@@ -508,6 +522,10 @@ function applyJobParamsToForm(job, historyItem = null) {
     meta.generation_options?.page_richness_default,
     defaultPageRichnessValue()
   );
+  const nextReferenceStyleAdherence = normalizeReferenceStyleAdherenceValue(
+    meta.generation_options?.reference_style_adherence ?? meta.reference_style_adherence,
+    defaultReferenceStyleAdherenceValue()
+  );
   const nextPageRichnessMap = meta.generation_options?.page_richness_map || {};
 
   contentInput.value = nextContent;
@@ -522,6 +540,7 @@ function applyJobParamsToForm(job, historyItem = null) {
     jobTarget.value = nextJobTarget;
   }
   pageRichnessDefault.value = nextPageRichnessDefault;
+  referenceStyleAdherence.value = nextReferenceStyleAdherence;
   includeCoverPage.checked = Boolean(nextIncludeCoverPage);
   styleNotes.value = nextStyleNotes;
   renderPageRichnessControls(nextPageCount, nextPageRichnessMap);
@@ -560,6 +579,23 @@ async function loadConfig() {
   }
   imageQuality.value = config.image_quality || "medium";
   pageRichnessDefault.value = defaultPageRichnessValue();
+  if (referenceStyleAdherence) {
+    referenceStyleAdherence.innerHTML = "";
+    const options = Array.isArray(config.reference_style_adherence_options)
+      ? config.reference_style_adherence_options
+      : [
+          {value: "loose", label: "宽松"},
+          {value: "balanced", label: "适度"},
+          {value: "strict", label: "严格"},
+        ];
+    for (const item of options) {
+      const option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = item.label;
+      option.selected = item.value === defaultReferenceStyleAdherenceValue();
+      referenceStyleAdherence.appendChild(option);
+    }
+  }
   renderPageRichnessControls(Number(pageCount.value || config.default_pages), {});
   updatePresetSummary();
   renderWorkspaceStatus(null);
@@ -1838,6 +1874,10 @@ async function submitCurrentJob() {
     const formData = new FormData(form);
     formData.set("include_cover_page", includeCoverPage.checked ? "1" : "0");
     formData.set("page_richness_default", normalizePageRichnessValue(pageRichnessDefault.value, defaultPageRichnessValue()));
+    formData.set(
+      "reference_style_adherence",
+      normalizeReferenceStyleAdherenceValue(referenceStyleAdherence?.value, defaultReferenceStyleAdherenceValue())
+    );
     formData.set(
       "page_richness_map",
       JSON.stringify(

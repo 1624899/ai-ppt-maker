@@ -143,6 +143,18 @@
                 </div>
 
                 <div class="grid-1">
+                  <label class="field">
+                    <span>参考图约束强度</span>
+                    <select name="reference_style_adherence" id="referenceStyleAdherence" required>
+                      <option value="loose">宽松</option>
+                      <option value="balanced" selected>适度</option>
+                      <option value="strict">严格</option>
+                    </select>
+                    <p class="field-tip">控制参考风格图对版芯比例、留白、纹理、线条和卡片层级的约束强弱。</p>
+                  </label>
+                </div>
+
+                <div class="grid-1">
                   <label class="toggle-field" for="includeCoverPage">
                     <span class="toggle-copy">
                       <strong>生成 PPT 首页图</strong>

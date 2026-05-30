@@ -7,6 +7,7 @@ from ppt_system.generation.page_richness import (
     normalize_page_richness_level,
     normalize_page_richness_map,
 )
+from ppt_system.generation.reference_style_adherence import normalize_reference_style_adherence
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -36,6 +37,10 @@ def default_generation_options(config: Mapping[str, Any] | None = None) -> dict[
         "page_richness_default": normalize_page_richness_level(
             config.get("default_page_richness"),
             DEFAULT_PAGE_RICHNESS,
+        ),
+        "reference_style_adherence": normalize_reference_style_adherence(
+            config.get("default_reference_style_adherence"),
+            "balanced",
         ),
         "page_richness_map": {},
     }
@@ -72,5 +77,9 @@ def resolve_generation_options(
             raw_richness_map,
             page_count=int(payload.get("page_count") or 0),
             default_level=str(defaults["page_richness_default"]),
+        ),
+        "reference_style_adherence": normalize_reference_style_adherence(
+            payload.get("reference_style_adherence"),
+            str(defaults["reference_style_adherence"]),
         ),
     }

@@ -45,6 +45,16 @@
     return String(value || fallback || "medium");
   }
 
+  function formatReferenceStyleAdherenceLabel(value, fallback = "balanced") {
+    const normalized = String(value || fallback || "balanced").trim().toLowerCase();
+    const map = {
+      loose: "宽松",
+      balanced: "适度",
+      strict: "严格",
+    };
+    return map[normalized] || map[String(fallback || "balanced").trim().toLowerCase()] || "适度";
+  }
+
   function buildTaskContext(config, job) {
     if (!job?.job_id) {
       return {
@@ -69,6 +79,10 @@
       meta.generation_options?.page_richness_default,
       "medium"
     );
+    const referenceStyleAdherence = formatReferenceStyleAdherenceLabel(
+      meta.generation_options?.reference_style_adherence,
+      "balanced"
+    );
     const targetLabel = String(meta.job_target_label || (meta.job_target === "reference_only" ? "图片版 PPT" : "可编辑元素"));
     return {
       kicker: `当前任务 ${job.job_id}`,
@@ -80,6 +94,7 @@
         { label: "输出模式", value: targetLabel },
         { label: "输出尺寸", value: preset },
         { label: "默认丰富度", value: richnessDefault },
+        { label: "参考图约束", value: referenceStyleAdherence },
         { label: "参考风格图", value: styleCount > 0 ? `${styleCount} 张` : "未绑定" },
       ],
     };

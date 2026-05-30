@@ -41,12 +41,13 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
             style_notes="蓝白科技汇报",
             style_guide=self.style_guide,
             has_reference_images=True,
-            generation_options={"include_cover_page": False},
+            generation_options={"include_cover_page": False, "reference_style_adherence": "strict"},
         )
 
         self.assertEqual(plan["pages"][0]["reference_mode"], "edit_with_refs")
         self.assertEqual(plan["pages"][1]["reference_mode"], "edit_with_refs")
         self.assertIn("语义分区", plan["pages"][0]["image_prompt"])
+        self.assertIn("严格锁定参考图的版芯比例", plan["pages"][0]["image_prompt"])
         self.assertNotIn("这是规划器返回的长 prompt", plan["pages"][0]["image_prompt"])
 
     def test_no_reference_images_use_compact_generation_prompt(self) -> None:
@@ -59,12 +60,12 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
             style_notes="蓝白科技汇报",
             style_guide=self.style_guide,
             has_reference_images=False,
-            generation_options={"include_cover_page": False},
+            generation_options={"include_cover_page": False, "reference_style_adherence": "loose"},
         )
 
         self.assertEqual(plan["pages"][0]["reference_mode"], "generation")
         self.assertEqual(plan["pages"][1]["reference_mode"], "generation")
-        self.assertIn("具体模块数量、箭头方向、图标组合和局部编排由你自主决定", plan["pages"][0]["image_prompt"])
+        self.assertIn("统一框架下调整", plan["pages"][0]["image_prompt"])
 
 
 if __name__ == "__main__":

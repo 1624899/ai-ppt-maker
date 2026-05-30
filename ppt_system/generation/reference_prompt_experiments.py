@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
+from ppt_system.generation.reference_style_adherence import normalize_reference_style_adherence
 
 @dataclass(frozen=True)
 class PromptExperimentStrategy:
@@ -78,12 +79,14 @@ def build_prompt_experiment_case(
     image_height: int,
     strategy_id: str,
     style_reference_count: int = 0,
+    reference_style_adherence: str = "balanced",
 ) -> PromptExperimentCase:
     strategy = _find_strategy(strategy_id)
     effective_reference_mode = strategy.reference_mode
     uses_reference_images = strategy.reference_mode == "edit_with_refs" and style_reference_count > 0
     if strategy.reference_mode == "edit_with_refs" and not uses_reference_images:
         effective_reference_mode = "generation"
+    normalized_adherence = normalize_reference_style_adherence(reference_style_adherence, "balanced")
 
     prompt = build_reference_prompt_by_mode(
         page,
@@ -93,6 +96,7 @@ def build_prompt_experiment_case(
         prompt_mode=strategy.prompt_mode,
         style_guide=style_guide,
         has_reference_images=uses_reference_images,
+        reference_style_adherence=normalized_adherence,
     )
 
     return PromptExperimentCase(

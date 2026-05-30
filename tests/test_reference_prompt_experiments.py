@@ -87,10 +87,11 @@ class ReferencePromptExperimentTests(unittest.TestCase):
             image_height=1152,
             strategy_id="compact_edit_refs",
             style_reference_count=2,
+            reference_style_adherence="balanced",
         )
 
-        self.assertIn("由你自主决定", case.prompt)
-        self.assertIn("视觉母版", case.prompt)
+        self.assertIn("基准约束", case.prompt)
+        self.assertIn("统一框架下调整", case.prompt)
         self.assertTrue(case.uses_reference_images)
         self.assertEqual(case.effective_reference_mode, "edit_with_refs")
 
@@ -102,10 +103,12 @@ class ReferencePromptExperimentTests(unittest.TestCase):
             image_height=1152,
             strategy_id="slot_brief_edit_refs",
             style_reference_count=2,
+            reference_style_adherence="strict",
         )
 
         self.assertIn("语义分区", case.prompt)
         self.assertIn("1. 顶部主标题与核心判断区", case.prompt)
+        self.assertIn("严格锁定参考图的版芯比例", case.prompt)
         self.assertNotIn("x=", case.prompt)
 
 

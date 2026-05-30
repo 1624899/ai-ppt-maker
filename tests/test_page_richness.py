@@ -17,11 +17,13 @@ class PageRichnessTests(unittest.TestCase):
                 "page_count": "3",
                 "page_richness_default": "high",
                 "page_richness_map": {"1": "low", "2": "medium", "3": "high"},
+                "reference_style_adherence": "strict",
             }
         )
 
         self.assertEqual(options["page_richness_default"], "high")
         self.assertEqual(options["page_richness_map"], {"1": "low", "2": "medium", "3": "high"})
+        self.assertEqual(options["reference_style_adherence"], "strict")
 
     def test_normalize_content_plan_applies_per_page_richness(self) -> None:
         result = {
@@ -56,6 +58,7 @@ class PageRichnessTests(unittest.TestCase):
                 "include_cover_page": False,
                 "page_richness_default": "medium",
                 "page_richness_map": {"1": "low", "2": "high"},
+                "reference_style_adherence": "balanced",
             },
         )
 
@@ -80,13 +83,19 @@ class PageRichnessTests(unittest.TestCase):
             style_notes="蓝白科技汇报",
             style_image_count=1,
             style_guide=self.style_guide,
-            generation_options={"include_cover_page": True, "page_richness_default": "medium"},
+            generation_options={
+                "include_cover_page": True,
+                "page_richness_default": "medium",
+                "reference_style_adherence": "strict",
+            },
             page_richness_map=richness_map,
         )
 
         self.assertIn("第 1 页：丰富度低", prompt)
         self.assertIn("第 2 页：丰富度高", prompt)
         self.assertIn('"page_richness": "low/medium/high 之一"', prompt)
+        self.assertIn("参考图约束强度：严格", prompt)
+        self.assertIn("把参考图当成强约束模板", prompt)
 
 
 if __name__ == "__main__":

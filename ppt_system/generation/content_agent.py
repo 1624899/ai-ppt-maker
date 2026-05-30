@@ -27,6 +27,10 @@ from ppt_system.generation.page_richness import (
     resolve_page_richness_map,
 )
 from ppt_system.generation.planner import infer_style_type
+from ppt_system.generation.reference_style_adherence import (
+    build_reference_style_adherence_planning_guidance,
+    get_reference_style_adherence_label,
+)
 from ppt_system.generation.style_runtime import apply_text_theme
 from ppt_system.generation.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
 
@@ -53,6 +57,7 @@ def build_content_plan(
         explicit_map=generation_options.get("page_richness_map", {}),
     )
     generation_options["page_richness_map"] = page_richness_map
+    reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
     messages = [
         {
@@ -318,6 +323,8 @@ def build_planning_prompt(
         default_level=str(generation_options.get("page_richness_default", DEFAULT_PAGE_RICHNESS)),
         explicit_map=generation_options.get("page_richness_map", {}),
     )
+    reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
+    reference_style_adherence_label = get_reference_style_adherence_label(reference_style_adherence)
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     prompt_anchor = style_guide.get("prompt_anchor", "")
     style_core = style_guide.get("style_core", {})
@@ -345,6 +352,7 @@ def build_planning_prompt(
 {style_notes or "用户没有填写风格补充，请根据内容自行判断。"}
 
 参考风格图片数量：{style_image_count}
+参考图约束强度：{reference_style_adherence_label}
 画幅：16:9
 像素参考：{image_width}x{image_height}
 首页图策略：{"第 1 页允许作为 PPT 首页图/封面页，用于建立视觉基调" if include_cover_page else "不生成单独首页图；第 1 页必须直接进入正文内容"}
@@ -409,7 +417,7 @@ JSON 格式必须如下：
 9. 文字要出现在图中，因为这是第一阶段带文字参考图。
 10. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
 11. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
-12. 避免主动引入与参考图明显冲突的视觉风格，尤其不要偏离整体背景明度、版式秩序和信息图语言。
+12. {build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
 13. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
 14. page_richness 必须填写为 low、medium、high 之一，并与该页丰富度要求保持一致。
 15. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
@@ -438,6 +446,7 @@ def normalize_content_plan(
         explicit_map=generation_options.get("page_richness_map", {}),
     )
     generation_options["page_richness_map"] = page_richness_map
+    reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     resolved_prompt_mode = "slot_brief" if has_reference_images else "compact"
     fallback_pages = build_text_layouts(
         content,
@@ -548,6 +557,7 @@ def normalize_content_plan(
             "style_constraints": style_constraints,
             "reference_mode": reference_mode,
             "prompt_profile": prompt_profile,
+            "reference_style_adherence": reference_style_adherence,
             "texts": texts,
         }
         planner_image_prompt = str(raw.get("image_prompt", "")).strip()
@@ -562,6 +572,7 @@ def normalize_content_plan(
             prompt_mode=resolved_prompt_mode,
             style_guide=style_guide,
             has_reference_images=has_reference_images,
+            reference_style_adherence=reference_style_adherence,
         )
         pages.append(page)
 
