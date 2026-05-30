@@ -90,23 +90,25 @@
   "model_configs": {
     "chat": [
       {
-        "id": "chat_gpt_55",
         "name": "GPT-5.5 内容规划",
         "base_url": "https://anyaigc.com/v1",
-        "api_key": "",
+        "api_key": "__ENV__",
         "model": "gpt-5.5",
+        "enabled": true,
         "temperature": 0.3,
         "max_tokens": 5000,
-        "enabled": true
+        "reasoning_effort": "",
+        "id": "chat_gpt_55"
       },
       {
         "name": "次元",
         "base_url": "https://token.memoh.net/v1",
-        "api_key": "sk-2f7b72c22e174e4f2bf622b9c768d64725d917c0eb61f18b9fd3d935bee1960e",
+        "api_key": "__ENV__",
         "model": "gpt-5.5",
         "enabled": true,
         "temperature": 0.3,
-        "max_tokens": 4864,
+        "max_tokens": 5120,
+        "reasoning_effort": "",
         "id": "chat_ab40f06a"
       }
     ],
@@ -114,7 +116,7 @@
       {
         "name": "新的生图模型",
         "base_url": "https://anyaigc.com/v1",
-        "api_key": "sk-dUQNr0K9z9WcToHUX4W4HbVruyshrGVwEiK9JscjTIXJp2qD",
+        "api_key": "__ENV__",
         "model": "gpt-image-2",
         "enabled": true,
         "output_format": "png",

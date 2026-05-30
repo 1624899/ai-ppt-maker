@@ -284,7 +284,13 @@
             <div class="grid-2">
               <label class="field">
                 <span>API Key</span>
-                <input id="modelApiKey" type="password" placeholder="sk-..." autocomplete="off" />
+                <div class="secret-input-shell" id="modelApiKeyShell">
+                  <span class="secret-preview-text" id="modelApiKeyPreviewText" hidden></span>
+                  <input id="modelApiKey" type="password" autocomplete="off" />
+                  <button class="secret-preview-toggle" id="modelApiKeyPreviewToggle" type="button" title="显示或隐藏完整密钥" aria-label="显示或隐藏完整密钥">
+                    <span aria-hidden="true">👁</span>
+                  </button>
+                </div>
               </label>
               <label class="field">
                 <span>模型名</span>

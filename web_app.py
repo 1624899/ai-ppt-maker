@@ -23,6 +23,7 @@ from ppt_system.export.delivery_options import (
 from ppt_system.export.export_pipeline import export_editable_delivery, export_web_job_to_pptx
 from ppt_system.generation.generation_options import default_generation_options, resolve_generation_options
 from ppt_system.generation.generation_prompts import build_elements_prompt
+from ppt_system.jobs.active_job_registry import bind_job_future, is_job_managed, mark_job_managed
 from ppt_system.jobs.job_delivery_state import (
     attach_delivery_actions,
     build_editable_delivery_payload,
@@ -62,9 +63,11 @@ from ppt_system.integrations.model_config import (
     get_active_model_config,
     list_model_configs,
     read_config as read_json_config,
+    save_model_api_key,
     set_active_model_config,
     upsert_model_config,
     write_config,
+    delete_model_api_key,
 )
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
@@ -77,6 +80,7 @@ from ppt_system.export.stage_resume import has_expected_outputs, reconcile_compl
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
+ENV_PATH = ROOT / ".env"
 JOBS_DB_PATH = ROOT / "output" / "jobs.sqlite3"
 init_job_db(JOBS_DB_PATH)
 JOB_EXECUTOR = ThreadPoolExecutor(max_workers=2)
@@ -284,6 +288,8 @@ def normalize_stale_job_record(record: dict[str, Any]) -> dict[str, Any]:
         )
         return normalized
     if not job_id or not is_running_job_status(status):
+        return normalized
+    if is_job_managed(job_id):
         return normalized
     if not isinstance(state, dict) or not state:
         state = load_job_state(job_id, job_dir) or {}
@@ -927,10 +933,11 @@ def api_create_model_config(model_type: str):
     config = read_config()
     try:
         item = upsert_model_config(config, model_type, request.get_json(force=True))
+        save_model_api_key(ENV_PATH, model_type, item)
         write_config(CONFIG_PATH, config)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify(item)
+    return jsonify(list_model_configs(config)[model_type][-1])
 
 
 @app.put("/api/model-configs/<model_type>/<config_id>")
@@ -938,17 +945,22 @@ def api_update_model_config(model_type: str, config_id: str):
     config = read_config()
     try:
         item = upsert_model_config(config, model_type, request.get_json(force=True), config_id=config_id)
+        save_model_api_key(ENV_PATH, model_type, item)
         write_config(CONFIG_PATH, config)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify(item)
+    for candidate in list_model_configs(config)[model_type]:
+        if candidate.get("id") == config_id:
+            return jsonify(candidate)
+    return jsonify({"error": "保存后未找到配置。"}), 500
 
 
 @app.delete("/api/model-configs/<model_type>/<config_id>")
 def api_delete_model_config(model_type: str, config_id: str):
     config = read_config()
     try:
-        delete_model_config(config, model_type, config_id)
+        removed = delete_model_config(config, model_type, config_id)
+        delete_model_api_key(ENV_PATH, model_type, removed)
         write_config(CONFIG_PATH, config)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -1073,7 +1085,8 @@ def create_job():
         },
     )
     save_job_state(job_dir, state)
-    JOB_EXECUTOR.submit(
+    mark_job_managed(job_id)
+    future = JOB_EXECUTOR.submit(
         run_job_pipeline,
         job_id,
         job_dir,
@@ -1088,6 +1101,7 @@ def create_job():
         stage2_dir,
         refs_dir,
     )
+    bind_job_future(job_id, future)
     return jsonify(state), 202
 
 
@@ -1904,7 +1918,8 @@ def api_resume_job(job_id: str):
 
     mutate_job_state(job_dir, job_id, updater)
     reconcile_resume_state(job_dir, job_id)
-    JOB_EXECUTOR.submit(
+    mark_job_managed(job_id)
+    future = JOB_EXECUTOR.submit(
         run_job_pipeline,
         job_id,
         job_dir,
@@ -1919,6 +1934,7 @@ def api_resume_job(job_id: str):
         stage2_dir,
         refs_dir,
     )
+    bind_job_future(job_id, future)
     state = load_job_state(job_id, job_dir)
     return jsonify(state or {"ok": True})
 

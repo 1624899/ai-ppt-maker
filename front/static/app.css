@@ -921,6 +921,77 @@ form {
 .field {
   display: grid;
   gap: 8px;
+  min-width: 0;
+}
+
+.secret-input-shell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #e3e7f2;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f5f6fa 0%, #eff2f7 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  min-width: 0;
+  position: relative;
+}
+
+.secret-preview-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #46536d;
+  font-size: 14px;
+  line-height: 1;
+  font-family: Consolas, "SFMono-Regular", "Courier New", monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.secret-preview-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5c6a84;
+  box-shadow: none;
+}
+
+.secret-preview-toggle:hover,
+.secret-preview-toggle:focus {
+  background: rgba(31, 94, 255, 0.08);
+  color: #1f5eff;
+}
+
+.secret-input-shell input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.secret-input-shell input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.secret-input-shell.is-previewing input {
+  color: transparent;
+  caret-color: transparent;
+}
+
+.secret-input-shell.is-previewing input::placeholder {
+  color: transparent;
 }
 
 .field-head {
@@ -1099,6 +1170,11 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.grid-2 > * ,
+.grid-1 > * {
+  min-width: 0;
 }
 
 .grid-1 {

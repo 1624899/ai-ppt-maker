@@ -55,6 +55,9 @@ const modelConfigId = document.querySelector("#modelConfigId");
 const modelName = document.querySelector("#modelName");
 const modelBaseUrl = document.querySelector("#modelBaseUrl");
 const modelApiKey = document.querySelector("#modelApiKey");
+const modelApiKeyShell = document.querySelector("#modelApiKeyShell");
+const modelApiKeyPreviewText = document.querySelector("#modelApiKeyPreviewText");
+const modelApiKeyPreviewToggle = document.querySelector("#modelApiKeyPreviewToggle");
 const modelNameValue = document.querySelector("#modelNameValue");
 const modelTemperature = document.querySelector("#modelTemperature");
 const modelMaxTokens = document.querySelector("#modelMaxTokens");
@@ -71,6 +74,8 @@ let modelConfigs = null;
 let activeModelType = "chat";
 let selectedModelId = "";
 let isCreatingModel = false;
+let modelApiKeyVisible = false;
+let modelApiKeyEditing = false;
 let currentJob = null;
 let currentPreviewPageNo = 1;
 let stageOpenState = {};
@@ -1655,11 +1660,15 @@ function fillModelForm(item) {
   }
   modelName.value = item.name || "";
   modelBaseUrl.value = item.base_url || fallback.base_url || DEFAULT_MODEL_BASE_URL;
-  modelApiKey.value = item.api_key || "";
+  modelApiKey.value = "";
   modelNameValue.value = item.model || fallback.model || "";
   modelTemperature.value = item.temperature ?? fallback.temperature ?? 0.3;
   modelMaxTokens.value = item.max_tokens ?? fallback.max_tokens ?? 5000;
   modelOutputFormat.value = item.output_format || fallback.output_format || "png";
+  modelApiKeyVisible = false;
+  modelApiKeyEditing = false;
+  modelApiKey.placeholder = "";
+  renderApiKeyPreview(item);
   modelFormMessage.textContent = item.id ? `正在编辑：${item.name}` : "正在新建配置";
 }
 
@@ -1667,11 +1676,15 @@ function resetModelForm(item) {
   modelConfigId.value = "";
   modelName.value = item.name || "";
   modelBaseUrl.value = item.base_url || DEFAULT_MODEL_BASE_URL;
-  modelApiKey.value = item.api_key || "";
+  modelApiKey.value = "";
   modelNameValue.value = item.model || "";
   modelTemperature.value = item.temperature ?? 0.3;
   modelMaxTokens.value = item.max_tokens ?? 5000;
   modelOutputFormat.value = item.output_format || "png";
+  modelApiKeyVisible = false;
+  modelApiKeyEditing = true;
+  modelApiKey.placeholder = "sk-...";
+  renderApiKeyPreview({api_key: "", api_key_preview: "", api_key_configured: false});
   modelFormMessage.textContent = "正在新建配置";
 }
 
@@ -1710,10 +1723,36 @@ function collectModelPayload() {
   return payload;
 }
 
+function renderApiKeyPreview(item) {
+  if (!modelApiKeyShell || !modelApiKeyPreviewText || !modelApiKeyPreviewToggle) {
+    return;
+  }
+  const fullKey = String(item?.api_key || "").trim();
+  const previewKey = String(item?.api_key_preview || "").trim();
+  const hasKey = Boolean(item?.api_key_configured && fullKey);
+  const showPreview = hasKey && !modelApiKeyEditing && !modelApiKey.value.trim();
+  modelApiKeyShell.classList.toggle("is-previewing", showPreview);
+  if (!hasKey) {
+    modelApiKeyPreviewText.textContent = "";
+    modelApiKeyPreviewText.hidden = true;
+    modelApiKeyPreviewToggle.hidden = true;
+    return;
+  }
+  modelApiKeyPreviewText.textContent = modelApiKeyVisible ? fullKey : previewKey || fullKey;
+  modelApiKeyPreviewText.hidden = !showPreview;
+  modelApiKeyPreviewToggle.hidden = false;
+  modelApiKeyPreviewToggle.setAttribute("aria-pressed", modelApiKeyVisible ? "true" : "false");
+  modelApiKeyPreviewToggle.title = modelApiKeyVisible ? "隐藏完整密钥" : "显示完整密钥";
+}
+
 async function saveModel(event) {
   event.preventDefault();
   if (!modelName.value.trim() || !modelBaseUrl.value.trim() || !modelNameValue.value.trim()) {
     modelFormMessage.textContent = "配置名称、Base URL 和模型名不能为空";
+    return;
+  }
+  if (!modelConfigId.value && !modelApiKey.value.trim()) {
+    modelFormMessage.textContent = "新建配置时必须填写 API Key";
     return;
   }
   const id = modelConfigId.value;
@@ -1880,6 +1919,27 @@ confirmDeliveryDialogButton?.addEventListener("click", () => {
 cancelDeliveryDialogButton?.addEventListener("click", closeDeliveryDialog);
 closeDeliveryDialogButton?.addEventListener("click", closeDeliveryDialog);
 modelForm.addEventListener("submit", saveModel);
+modelApiKey?.addEventListener("focus", () => {
+  modelApiKeyEditing = true;
+  const currentItem = currentModelItems().find((item) => item.id === modelConfigId.value);
+  renderApiKeyPreview(currentItem || {api_key: "", api_key_preview: "", api_key_configured: false});
+});
+modelApiKey?.addEventListener("blur", () => {
+  if (modelApiKey.value.trim()) {
+    return;
+  }
+  modelApiKeyEditing = false;
+  const currentItem = currentModelItems().find((item) => item.id === modelConfigId.value);
+  renderApiKeyPreview(currentItem || {api_key: "", api_key_preview: "", api_key_configured: false});
+});
+modelApiKeyPreviewToggle?.addEventListener("click", () => {
+  const currentItem = currentModelItems().find((item) => item.id === modelConfigId.value);
+  if (!currentItem?.api_key_configured) {
+    return;
+  }
+  modelApiKeyVisible = !modelApiKeyVisible;
+  renderApiKeyPreview(currentItem);
+});
 document.querySelectorAll(".tab-button").forEach((button) => {
   button.addEventListener("click", () => {
     activeModelType = button.dataset.modelType;

@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import web_app
+from ppt_system.jobs.active_job_registry import clear_job_management_registry, mark_job_managed, release_job_management
 from ppt_system.jobs.job_store import create_job as create_job_record
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
@@ -29,6 +30,8 @@ class JobStateRecoveryTests(unittest.TestCase):
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
         web_app.JOB_STATUS_CACHE.clear()
+        clear_job_management_registry()
+        self.addCleanup(clear_job_management_registry)
         self.client = web_app.app.test_client()
 
     def test_job_status_request_recovers_orphaned_stopping_job(self) -> None:
@@ -106,6 +109,66 @@ class JobStateRecoveryTests(unittest.TestCase):
         self.assertEqual(saved_record["status"], "interrupted")
         saved_state = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
         self.assertEqual(saved_state["status"], "interrupted")
+
+    def test_job_status_request_keeps_managed_running_job(self) -> None:
+        job_id = "managed-running-job"
+        job_dir = self._seed_job(
+            job_id=job_id,
+            root_status="running",
+            current_stage="planning",
+            stop_requested=False,
+            stages=[
+                {"key": "planning", "status": "running", "summary": "正在规划", "logs": []},
+                {"key": "reference_generation", "status": "pending", "summary": "", "logs": []},
+            ],
+        )
+        mark_job_managed(job_id)
+        self.addCleanup(release_job_management, job_id)
+
+        response = self.client.get(f"/api/jobs/{job_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "running")
+        active_stage = next(stage for stage in payload["stages"] if stage["key"] == "planning")
+        self.assertEqual(active_stage["status"], "running")
+        self.assertEqual(active_stage["summary"], "正在规划")
+
+        saved_record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(saved_record)
+        self.assertEqual(saved_record["status"], "running")
+
+        saved_state = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_state["status"], "running")
+
+    def test_list_job_summaries_keeps_managed_running_job(self) -> None:
+        job_id = "managed-summary-job"
+        job_dir = self._seed_job(
+            job_id=job_id,
+            root_status="running",
+            current_stage="planning",
+            stop_requested=False,
+            stages=[
+                {"key": "planning", "status": "running", "summary": "正在规划", "logs": []},
+                {"key": "reference_generation", "status": "pending", "summary": "", "logs": []},
+            ],
+        )
+        mark_job_managed(job_id)
+        self.addCleanup(release_job_management, job_id)
+
+        summaries = web_app.list_job_summaries(limit=10)
+
+        summary = next(item for item in summaries if item["job_id"] == job_id)
+        self.assertEqual(summary["status"], "running")
+        self.assertEqual(summary["current_stage"], "planning")
+
+        saved_record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(saved_record)
+        self.assertEqual(saved_record["status"], "running")
+
+        saved_state = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_state["status"], "running")
 
     def _seed_job(
         self,

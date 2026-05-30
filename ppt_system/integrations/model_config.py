@@ -1,29 +1,34 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Any
 
 from ppt_system.integrations.api_url import normalize_api_base_url
+from ppt_system.runtime.env_loader import load_dotenv
 
 
 MODEL_TYPES = {"chat", "image"}
+KEY_PLACEHOLDER = "__ENV__"
+ENV_KEY_PREFIX = "PPT_SYSTEM"
 
 
 def read_config(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    config = json.loads(path.read_text(encoding="utf-8"))
+    return hydrate_model_config_api_keys(config, env_path=path.with_name(".env"))
 
 
 def write_config(path: Path, config: dict[str, Any]) -> None:
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(strip_model_config_api_keys(config), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def list_model_configs(config: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     model_configs = ensure_model_configs(config)
     return {
-        "chat": list(model_configs["chat"]),
-        "image": list(model_configs["image"]),
+        "chat": [build_public_model_config(item) for item in model_configs["chat"]],
+        "image": [build_public_model_config(item) for item in model_configs["image"]],
     }
 
 
@@ -66,6 +71,8 @@ def upsert_model_config(
         item["id"] = config_id
         for index, existing in enumerate(configs):
             if existing.get("id") == config_id:
+                if not item["api_key"]:
+                    item["api_key"] = str(existing.get("api_key", "")).strip()
                 configs[index] = item
                 return item
         raise ValueError("没有找到要更新的模型配置。")
@@ -76,19 +83,25 @@ def upsert_model_config(
     return item
 
 
-def delete_model_config(config: dict[str, Any], model_type: str, config_id: str) -> None:
+def delete_model_config(config: dict[str, Any], model_type: str, config_id: str) -> dict[str, Any]:
     if model_type not in MODEL_TYPES:
         raise ValueError("模型类型只能是 chat 或 image。")
 
     configs = ensure_model_configs(config)[model_type]
-    next_configs = [item for item in configs if item.get("id") != config_id]
-    if len(next_configs) == len(configs):
+    for existing in configs:
+        if existing.get("id") == config_id:
+            removed = dict(existing)
+            break
+    else:
         raise ValueError("没有找到要删除的模型配置。")
-    config["model_configs"][model_type] = next_configs
+
+    config["model_configs"][model_type] = [item for item in configs if item.get("id") != config_id]
 
     active_key = f"active_{model_type}_config_id"
+    next_configs = config["model_configs"][model_type]
     if config.get(active_key) == config_id:
         config[active_key] = next_configs[0]["id"] if next_configs else ""
+    return removed
 
 
 def set_active_model_config(config: dict[str, Any], model_type: str, config_id: str) -> None:
@@ -107,7 +120,7 @@ def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str,
         "enabled": bool(payload.get("enabled", True)),
     }
     if not item["name"] or not item["base_url"] or not item["model"]:
-        raise ValueError("名称、Base URL 和模型名不能为空。")
+        raise ValueError("配置名称、Base URL 和模型名不能为空。")
 
     if model_type == "chat":
         item["temperature"] = float(payload.get("temperature", 0.3))
@@ -121,3 +134,118 @@ def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str,
 
 def make_config_id(model_type: str) -> str:
     return f"{model_type}_{uuid.uuid4().hex[:8]}"
+
+
+def hydrate_model_config_api_keys(config: dict[str, Any], env_path: Path) -> dict[str, Any]:
+    load_dotenv(env_path)
+    hydrated = copy_config(config)
+    model_configs = ensure_model_configs(hydrated)
+    for model_type in MODEL_TYPES:
+        items = []
+        for item in model_configs[model_type]:
+            next_item = dict(item)
+            api_key = resolve_model_api_key(env_path, model_type, next_item)
+            next_item["api_key"] = api_key
+            items.append(next_item)
+        model_configs[model_type] = items
+    return hydrated
+
+
+def strip_model_config_api_keys(config: dict[str, Any]) -> dict[str, Any]:
+    sanitized = copy_config(config)
+    model_configs = ensure_model_configs(sanitized)
+    for model_type in MODEL_TYPES:
+        model_configs[model_type] = [build_persisted_model_config(item) for item in model_configs[model_type]]
+    return sanitized
+
+
+def build_public_model_config(item: dict[str, Any]) -> dict[str, Any]:
+    public_item = dict(item)
+    api_key = str(item.get("api_key", "")).strip()
+    public_item["api_key"] = api_key
+    public_item["api_key_configured"] = bool(api_key)
+    public_item["api_key_preview"] = build_api_key_preview(api_key)
+    return public_item
+
+
+def build_persisted_model_config(item: dict[str, Any]) -> dict[str, Any]:
+    persisted = dict(item)
+    persisted["api_key"] = KEY_PLACEHOLDER if str(item.get("api_key", "")).strip() else ""
+    return persisted
+
+
+def resolve_model_api_key_env_name(model_type: str, item: dict[str, Any]) -> str:
+    raw_config_id = str(item.get("id", "")).strip()
+    token = raw_config_id or str(item.get("name", "")).strip() or model_type
+    safe_token = "".join(char if char.isalnum() else "_" for char in token).upper().strip("_")
+    if not safe_token:
+        safe_token = model_type.upper()
+    return f"{ENV_KEY_PREFIX}_{model_type.upper()}_{safe_token}_API_KEY"
+
+
+def resolve_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> str:
+    env_key = resolve_model_api_key_env_name(model_type, item)
+    env_value = os.environ.get(env_key, "").strip()
+    if env_value:
+        return env_value
+    inline_value = str(item.get("api_key", "")).strip()
+    if inline_value and inline_value != KEY_PLACEHOLDER:
+        return inline_value
+    return ""
+
+
+def save_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> None:
+    api_key = str(item.get("api_key", "")).strip()
+    if not api_key:
+        return
+    entries = read_env_entries(env_path)
+    env_key = resolve_model_api_key_env_name(model_type, item)
+    entries[env_key] = api_key
+    write_env_entries(env_path, entries)
+    os.environ[env_key] = api_key
+
+
+def delete_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> None:
+    entries = read_env_entries(env_path)
+    env_key = resolve_model_api_key_env_name(model_type, item)
+    if env_key in entries:
+        del entries[env_key]
+        write_env_entries(env_path, entries)
+    os.environ.pop(env_key, None)
+
+
+def copy_config(config: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(config, ensure_ascii=False))
+
+
+def read_env_entries(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    entries: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        entries[key.strip()] = value.strip().strip('"').strip("'")
+    return entries
+
+
+def write_env_entries(path: Path, entries: dict[str, str]) -> None:
+    lines = [f"{key}={value}" for key, value in sorted(entries.items())]
+    content = "\n".join(lines)
+    if content:
+        content += "\n"
+    path.write_text(content, encoding="utf-8")
+
+
+def build_api_key_preview(api_key: str) -> str:
+    secret = str(api_key or "").strip()
+    if not secret:
+        return ""
+    if len(secret) <= 10:
+        return f"{secret[:2]}{'*' * max(1, len(secret) - 4)}{secret[-2:]}"
+    visible_prefix = min(7, len(secret) - 3)
+    visible_suffix = min(3, max(1, len(secret) - visible_prefix))
+    masked_length = max(4, len(secret) - visible_prefix - visible_suffix)
+    return f"{secret[:visible_prefix]}{'*' * masked_length}{secret[-visible_suffix:]}"

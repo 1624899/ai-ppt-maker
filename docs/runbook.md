@@ -7,7 +7,7 @@ conda activate aippt
 pip install -r requirements.txt
 ```
 
-配置文件是 `config.json`。常用密钥可放入 `.env`，模型档案也可以通过 Web 界面维护。
+配置文件是 `config.json`。高敏感 API Key 不写入 `config.json`，统一保存在本地 `.env`；模型档案可以通过 Web 界面维护，首次保存时会自动创建或更新 `.env`。
 
 ## 启动 Web
 
