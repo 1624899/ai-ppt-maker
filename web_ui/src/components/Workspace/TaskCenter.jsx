@@ -1,5 +1,6 @@
 import { Archive, FileImage, FolderKanban, LayoutTemplate, PlusCircle } from 'lucide-react';
 import clsx from 'clsx';
+import SlideImage from './SlideImage';
 import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
@@ -43,11 +44,13 @@ const TaskCenter = ({ jobs, loading, currentJobId, onSelectJob, onCreateTask }) 
                     className={clsx('task-card', active && 'is-active')}
                     onClick={() => onSelectJob(job.job_id)}
                   >
-                    {job.preview_image ? (
-                      <img className="task-card__preview" src={job.preview_image} alt="" />
-                    ) : (
-                      <span className="task-card__preview task-card__preview--empty">P</span>
-                    )}
+                    <SlideImage
+                      className="task-card__preview"
+                      src={job.preview_image}
+                      alt={job.title || '任务预览'}
+                      variant="mini"
+                      emptyTitle="P"
+                    />
                     <span className="task-card__content">
                       <strong>{job.title || '未命名任务'}</strong>
                       <span>

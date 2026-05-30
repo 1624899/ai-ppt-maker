@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Bot, MessageSquareText, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Bot, Lock, MessageSquareText, PanelTopOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import CreationForm from './CreationForm';
+import FeaturePending from './FeaturePending';
 import StageProgress from './StageProgress';
 import {
   buildAgentSummary,
@@ -101,9 +102,17 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
 
             {currentJob && (
               <>
-                <div className="quick-actions">
+                <FeaturePending title="对话修改待后端接入">
+                  当前可以先整理修改意图并切到编辑面板查看页面上下文；真正的 Agent 改稿、单页重做和版本恢复接口尚未实现。
+                </FeaturePending>
+                <div className="quick-actions quick-actions--pending" aria-label="待接入快捷修改">
                   {QUICK_ACTIONS.map((action) => (
-                    <button type="button" key={action} onClick={() => pushQuickAction(action)}>
+                    <button
+                      type="button"
+                      key={action}
+                      onClick={() => pushQuickAction(action)}
+                      title="会先写入修改要求，暂不直接调用后端"
+                    >
                       {action}
                     </button>
                   ))}
@@ -123,6 +132,10 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                       <PanelTopOpen size={17} />
                       应用到编辑面板
                     </button>
+                    <button type="button" className="btn btn-secondary" disabled title="Agent 对话修改接口尚未实现">
+                      <Lock size={16} />
+                      发送给 Agent
+                    </button>
                   </div>
                 </div>
                 <details className="agent-card advanced-config">
@@ -141,6 +154,10 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                   <h3>{getPageTitle(activePage)}</h3>
                   {getPageSummary(activePage) && <p>{getPageSummary(activePage)}</p>}
                 </div>
+
+                <FeaturePending title="单页编辑待后端接入">
+                  下方控件用于确认交互形态和收集修改意图，暂不会触发真实重排、改稿或版本恢复。
+                </FeaturePending>
 
                 <div className="edit-block">
                   <span>页面风格</span>
@@ -181,10 +198,10 @@ const AgentWorkspace = ({ currentJob, selectedPageIndex, onSelectPage, onJobCrea
                 </div>
 
                 <div className="edit-actions">
-                  <button type="button" className="btn btn-primary">重新生成本页</button>
-                  <button type="button" className="btn btn-secondary">仅优化文字</button>
-                  <button type="button" className="btn btn-secondary">仅优化排版</button>
-                  <button type="button" className="btn btn-secondary">恢复上一版</button>
+                  <button type="button" className="btn btn-primary" disabled>重新生成本页</button>
+                  <button type="button" className="btn btn-secondary" disabled>仅优化文字</button>
+                  <button type="button" className="btn btn-secondary" disabled>仅优化排版</button>
+                  <button type="button" className="btn btn-secondary" disabled>恢复上一版</button>
                 </div>
               </>
             ) : (

@@ -358,9 +358,17 @@ def build_job_title(content: str) -> str:
 
 
 def _find_preview_image(state: dict[str, Any]) -> str:
-    for page in state.get("pages", []):
-        if page.get("reference_image"):
-            return str(page["reference_image"])
+    for collection_name in ("element_pages", "reference_pages", "pages"):
+        collection = state.get(collection_name, [])
+        if not isinstance(collection, list):
+            continue
+        for page in collection:
+            if not isinstance(page, dict):
+                continue
+            for key in ("element_image", "reference_image", "image"):
+                image = str(page.get(key, "")).strip()
+                if image:
+                    return image
     return ""
 
 

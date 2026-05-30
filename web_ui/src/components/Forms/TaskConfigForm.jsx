@@ -4,6 +4,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, FileText, Settings, Image as ImageIcon } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
 
+const REFERENCE_STYLE_ADHERENCE_FALLBACKS = [
+  { value: 'loose', label: '宽松' },
+  { value: 'balanced', label: '适度' },
+  { value: 'strict', label: '严格' },
+];
+
+const buildPageRichnessMap = (list) => {
+  return list.reduce((acc, value, index) => {
+    if (value) acc[String(index + 1)] = value;
+    return acc;
+  }, {});
+};
+
 const CardHeader = ({ title, description, icon: Icon, isOpen, onToggle }) => (
   <div 
     onClick={onToggle}
@@ -50,12 +63,14 @@ const TaskConfigForm = ({ currentJob }) => {
   const [imageQuality, setImageQuality] = useState('medium');
   const [includeCoverPage, setIncludeCoverPage] = useState(true);
   const [pageRichnessDefault, setPageRichnessDefault] = useState('medium');
+  const [referenceStyleAdherence, setReferenceStyleAdherence] = useState('balanced');
   const [pageRichnessList, setPageRichnessList] = useState([]);
 
   useEffect(() => {
     if (config) {
       setPageCount(config.default_pages || 4);
       setImagePreset(config.default_image_preset || '');
+      setReferenceStyleAdherence(config.default_reference_style_adherence || 'balanced');
     }
   }, [config]);
 
@@ -71,7 +86,12 @@ const TaskConfigForm = ({ currentJob }) => {
       setImageQuality(meta.image_quality || 'medium');
       setIncludeCoverPage(meta.include_cover_page ?? true);
       setPageRichnessDefault(meta.generation_options?.page_richness_default || 'medium');
-      setPageRichnessList(meta.generation_options?.page_richness_list || []);
+      setReferenceStyleAdherence(
+        meta.generation_options?.reference_style_adherence || config?.default_reference_style_adherence || 'balanced',
+      );
+      const richnessMap = meta.generation_options?.page_richness_map || {};
+      const nextPageCount = currentJob.page_count || meta.page_count || config?.default_pages || 4;
+      setPageRichnessList(Array.from({ length: nextPageCount }, (_, index) => richnessMap[String(index + 1)] || ''));
     }
   }, [currentJob, config]);
 
@@ -110,7 +130,8 @@ const TaskConfigForm = ({ currentJob }) => {
     formData.append('image_quality', imageQuality);
     formData.append('include_cover_page', includeCoverPage.toString());
     formData.append('page_richness_default', pageRichnessDefault);
-    formData.append('page_richness_list', JSON.stringify(pageRichnessList));
+    formData.append('reference_style_adherence', referenceStyleAdherence);
+    formData.append('page_richness_map', JSON.stringify(buildPageRichnessMap(pageRichnessList)));
 
     try {
       const res = await fetch('/api/jobs', {
@@ -136,6 +157,9 @@ const TaskConfigForm = ({ currentJob }) => {
   }
 
   const presets = config?.image_presets || {};
+  const referenceStyleAdherenceOptions = Array.isArray(config?.reference_style_adherence_options)
+    ? config.reference_style_adherence_options
+    : REFERENCE_STYLE_ADHERENCE_FALLBACKS;
 
   return (
     <form onSubmit={handleSubmit} className="task-config-form" style={{ display: 'grid', gap: '16px' }}>
@@ -357,6 +381,16 @@ const TaskConfigForm = ({ currentJob }) => {
                   <input type="text" value={styleNotes} onChange={(e) => setStyleNotes(e.target.value)} placeholder="例如：蓝白科技线稿、低透明..." style={{
                     width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-app)'
                   }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>参考图约束强度</label>
+                  <select value={referenceStyleAdherence} onChange={(e) => setReferenceStyleAdherence(e.target.value)} required style={{
+                    width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-app)'
+                  }}>
+                    {referenceStyleAdherenceOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', marginBottom: '6px' }}>上传参考图 (可选)</label>

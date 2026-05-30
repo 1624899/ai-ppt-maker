@@ -37,13 +37,76 @@ export function getJobMeta(job) {
   return job?.job_meta || {};
 }
 
+function normalizePageNo(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function pickFirstText(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function indexArtifactsByPage(items) {
+  const map = new Map();
+  if (!Array.isArray(items)) return map;
+
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const pageNo = normalizePageNo(item.page_no);
+    if (!pageNo) return;
+    map.set(pageNo, item);
+  });
+
+  return map;
+}
+
 export function getJobPages(job) {
-  const pages = Array.isArray(job?.pages) ? job.pages : [];
-  return [...pages].sort((a, b) => Number(a.page_no || 0) - Number(b.page_no || 0));
+  const planPages = Array.isArray(job?.pages) ? job.pages : [];
+  const referencesByPage = indexArtifactsByPage(job?.reference_pages);
+  const elementsByPage = indexArtifactsByPage(job?.element_pages);
+  const pageNumbers = new Set();
+
+  planPages.forEach((page) => {
+    const pageNo = normalizePageNo(page?.page_no);
+    if (pageNo) pageNumbers.add(pageNo);
+  });
+  referencesByPage.forEach((_, pageNo) => pageNumbers.add(pageNo));
+  elementsByPage.forEach((_, pageNo) => pageNumbers.add(pageNo));
+
+  return [...pageNumbers]
+    .sort((a, b) => a - b)
+    .map((pageNo) => {
+      const page = planPages.find((item) => normalizePageNo(item?.page_no) === pageNo) || {};
+      const reference = referencesByPage.get(pageNo) || {};
+      const element = elementsByPage.get(pageNo) || {};
+
+      return {
+        ...page,
+        page_no: pageNo,
+        title: pickFirstText(page.title, reference.title, element.title, `第 ${pageNo} 页`),
+        summary: pickFirstText(page.summary, reference.summary, element.summary),
+        reference_image: pickFirstText(page.reference_image, reference.image, reference.reference_image),
+        element_image: pickFirstText(page.element_image, element.image, element.element_image),
+        image: pickFirstText(page.image, element.image, reference.image),
+        reference_artifact: reference,
+        element_artifact: element,
+      };
+    });
 }
 
 export function getPageImage(page) {
   return page?.element_image || page?.reference_image || page?.image || '';
+}
+
+export function getPageImageKind(page) {
+  if (page?.element_image) return '元素图';
+  if (page?.reference_image) return '参考图';
+  if (page?.image) return '预览图';
+  return '';
 }
 
 export function getPageTitle(page) {

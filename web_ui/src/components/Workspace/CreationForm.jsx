@@ -9,6 +9,12 @@ const RICHNESS_LEVELS = [
   { value: 'high', label: '高' },
 ];
 
+const REFERENCE_STYLE_ADHERENCE_FALLBACKS = [
+  { value: 'loose', label: '宽松' },
+  { value: 'balanced', label: '适度' },
+  { value: 'strict', label: '严格' },
+];
+
 const buildPageRichnessMap = (list) => {
   return list.reduce((acc, value, index) => {
     if (value) acc[String(index + 1)] = value;
@@ -43,6 +49,9 @@ const createInitialValues = (config, currentJob) => {
     imageQuality: String(meta.image_quality || currentJob?.image_quality || 'medium'),
     includeCoverPage: generationOptions.include_cover_page ?? true,
     pageRichnessDefault: String(generationOptions.page_richness_default || 'medium'),
+    referenceStyleAdherence: String(
+      generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced',
+    ),
     pageRichnessList: Array.from({ length: pageCount }, (_, index) => String(richnessMap[String(index + 1)] || '')),
   };
 };
@@ -72,6 +81,7 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
     formData.append('image_quality', form.imageQuality);
     formData.append('include_cover_page', String(form.includeCoverPage));
     formData.append('page_richness_default', form.pageRichnessDefault);
+    formData.append('reference_style_adherence', form.referenceStyleAdherence);
     formData.append('page_richness_map', JSON.stringify(buildPageRichnessMap(form.pageRichnessList)));
     if (currentJob?.job_id && styleFiles.length === 0) {
       formData.append('reuse_style_refs_from_job_id', currentJob.job_id);
@@ -97,6 +107,9 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
 
   const presets = config?.image_presets || {};
   const maxPages = Number(config?.max_pages || 20);
+  const referenceStyleAdherenceOptions = Array.isArray(config?.reference_style_adherence_options)
+    ? config.reference_style_adherence_options
+    : REFERENCE_STYLE_ADHERENCE_FALLBACKS;
 
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
@@ -198,6 +211,18 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
             </div>
           </div>
         </div>
+
+        <label className="field field--full">
+          <span>参考图约束强度</span>
+          <select
+            value={form.referenceStyleAdherence}
+            onChange={(event) => updateForm('referenceStyleAdherence', event.target.value)}
+          >
+            {referenceStyleAdherenceOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
 
         <div className="field field--full">
           <span>参考风格图</span>

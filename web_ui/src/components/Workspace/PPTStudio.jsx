@@ -1,18 +1,21 @@
-import { Download, ExternalLink, FileArchive, FileImage, FileText, Loader2, Play, Square } from 'lucide-react';
+import { Download, ExternalLink, FileArchive, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
+import FeaturePending from './FeaturePending';
+import SlideImage from './SlideImage';
 import {
   getJobMeta,
   getJobPages,
   getPageImage,
+  getPageImageKind,
   getPageSummary,
   getPageTitle,
   getStatusLabel,
 } from '../../utils/jobPresentation';
 
 const EXPORT_FALLBACKS = [
-  { key: 'pdf', label: '下载 PDF', disabled: true },
-  { key: 'png', label: '下载 PNG图片包', disabled: true },
-  { key: 'share', label: '复制分享链接', disabled: true },
+  { key: 'pdf', label: '下载 PDF', description: '后端导出接口待接入' },
+  { key: 'png', label: '下载 PNG 图片包', description: '后端导出接口待接入' },
+  { key: 'share', label: '复制分享链接', description: '分享服务待接入' },
 ];
 
 const postJobAction = async (jobId, action, payload) => {
@@ -30,6 +33,7 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
   const activeImage = getPageImage(activePage);
+  const activeImageKind = getPageImageKind(activePage);
   const actions = Array.isArray(currentJob?.delivery_actions) ? currentJob.delivery_actions : [];
   const meta = getJobMeta(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
@@ -58,7 +62,7 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
           <div className="studio-card__head">
             <div>
               <span>当前预览</span>
-              <strong>{activePage ? `第 ${activePage.page_no} 页` : '等待生成'}</strong>
+              <strong>{activePage ? `第 ${activePage.page_no} 页${activeImageKind ? ` · ${activeImageKind}` : ''}` : '等待生成'}</strong>
             </div>
             {activeImage && (
               <a className="icon-link" href={activeImage} target="_blank" rel="noreferrer">
@@ -67,32 +71,24 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
               </a>
             )}
           </div>
-          <div className="slide-preview">
-            {loading ? (
-              <div className="preview-placeholder">
-                <Loader2 className="spin" size={24} />
-                <span>正在同步任务...</span>
-              </div>
-            ) : activeImage ? (
-              <img src={activeImage} alt={getPageTitle(activePage)} />
-            ) : currentJob ? (
-              <div className="preview-placeholder">
-                <Loader2 className="spin" size={24} />
-                <span>{isRunning ? '页面生成中...' : '暂无可预览页面'}</span>
-              </div>
-            ) : (
-              <div className="preview-placeholder preview-placeholder--empty">
-                <FileImage size={26} />
-                <span>等待生成初稿</span>
-              </div>
-            )}
-          </div>
+          <SlideImage
+            src={activeImage}
+            alt={activePage ? getPageTitle(activePage) : 'PPT 页面预览'}
+            loading={loading || (currentJob && isRunning && !activeImage)}
+            emptyTitle={currentJob ? (isRunning ? '页面生成中' : '暂无可预览页面') : '等待生成初稿'}
+            emptyDescription={currentJob ? '规划或图片产物完成后会自动同步到这里。' : '创建任务后，右侧会成为实时预览控制台。'}
+            sourceLabel={activeImageKind}
+            showMeta
+          />
           <div className="preview-actions">
-            <button type="button" disabled={!activeImage}>替换</button>
+            <button type="button" disabled title="替换图片的后端接口尚未接入">替换</button>
             <a className={clsx(!activeImage && 'is-disabled')} href={activeImage || undefined} download>
               下载当前页 PNG
             </a>
           </div>
+          <FeaturePending compact title="替换图片待接入">
+            当前版本先支持查看与下载已生成图片，替换会在后端编辑接口完成后开放。
+          </FeaturePending>
         </section>
 
         <section className="studio-card page-structure">
@@ -115,9 +111,13 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
                     className={clsx('page-item', index === selectedPageIndex && 'is-active')}
                     onClick={() => onSelectPage(index)}
                   >
-                    <span className="page-item__thumb">
-                      {image ? <img src={image} alt="" /> : <FileText size={16} />}
-                    </span>
+                    <SlideImage
+                      className="page-item__thumb"
+                      src={image}
+                      alt={getPageTitle(page)}
+                      variant="mini"
+                      emptyTitle={String(page.page_no)}
+                    />
                     <span className="page-item__text">
                       <strong>{page.page_no}. {getPageTitle(page)}</strong>
                       <small>{getPageSummary(page) || page.status || '等待内容'}</small>
@@ -189,8 +189,9 @@ const PPTStudio = ({ currentJob, loading, selectedPageIndex, onSelectPage, onJob
               );
             })}
             {EXPORT_FALLBACKS.map((item) => (
-              <button type="button" className="export-fallback" key={item.key} disabled={item.disabled}>
-                {item.label}
+              <button type="button" className="export-fallback" key={item.key} disabled title={item.description}>
+                <span>{item.label}</span>
+                <small>{item.description}</small>
               </button>
             ))}
           </div>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from ppt_system.web.services.job_state_runtime import job_summary
 from web_app import enrich_job_state_with_record
 
 
@@ -20,6 +21,32 @@ class WebJobStateLabelTests(unittest.TestCase):
 
         self.assertEqual(result["stages"][0]["label"], "模型规划")
         self.assertEqual(result["stages"][1]["label"], "可编辑元素生成")
+
+    def test_job_summary_uses_generated_artifacts_as_preview_image(self) -> None:
+        record = {
+            "job_id": "demo",
+            "title": "演示任务",
+            "status": "completed",
+            "current_stage": "ppt_export",
+            "page_count": 2,
+            "image_preset": "wide",
+            "image_quality": "medium",
+            "style_notes": "",
+            "created_at": "2026-05-30 10:00:00",
+            "updated_at": "2026-05-30 10:01:00",
+            "state": {
+                "pages": [
+                    {"page_no": 1, "title": "第一页"},
+                    {"page_no": 2, "title": "第二页", "reference_image": "/runs/demo/page_02_reference.png"},
+                ],
+                "reference_pages": [{"page_no": 1, "image": "/runs/demo/page_01_reference.png"}],
+                "element_pages": [{"page_no": 1, "image": "/runs/demo/page_01_elements.png"}],
+            },
+        }
+
+        result = job_summary(record)
+
+        self.assertEqual(result["preview_image"], "/runs/demo/page_01_elements.png")
 
 
 if __name__ == "__main__":
