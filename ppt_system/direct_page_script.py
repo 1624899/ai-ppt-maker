@@ -31,23 +31,7 @@ DEFAULT_FONT_COLOR = "355C7D"
 
 
 @dataclass
-class DirectPageGenerationMetadata:
-    office_render_available: bool = False
-    refine_rounds_applied: int = 0
-    office_preview_paths: list[str] | None = None
-    comparison_paths: list[str] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "office_render_available": bool(self.office_render_available),
-            "refine_rounds_applied": int(self.refine_rounds_applied),
-            "office_preview_paths": list(self.office_preview_paths or []),
-            "comparison_paths": list(self.comparison_paths or []),
-        }
-
-
-@dataclass
-class DirectPageRefineResult:
+class DirectPageScriptRevision:
     page_script: str
     asset_adjustments: dict[str, Any]
 
@@ -63,14 +47,6 @@ class PreparedDirectPageAssets:
     removed_intermediate_images: list[str]
     global_alignment: dict[str, Any] | None
     asset_adjustments: dict[str, Any]
-
-
-def normalize_output_pptx_name(output_name: str) -> str:
-    """统一补全导出文件后缀，避免生成无扩展名文件。"""
-    resolved = str(output_name or "").strip() or "result.pptx"
-    if Path(resolved).suffix.lower() == ".pptx":
-        return resolved
-    return f"{resolved}.pptx"
 
 
 def resolve_canvas_size(reference_image: Path, elements_image: Path) -> tuple[int, int]:
@@ -161,7 +137,7 @@ def build_direct_page_refine_prompt(
     )
 
 
-def build_direct_single_page_project(
+def build_direct_page_preview_project(
     *,
     reference_image: Path,
     elements_image: Path,
@@ -170,7 +146,7 @@ def build_direct_single_page_project(
     slide_width_inch: float,
     page_no: int,
 ) -> dict[str, Any]:
-    """构建最小单页项目，供脚本模板复用。"""
+    """构建页级预览项目，供主链生成预览脚本复用。"""
     return {
         "slide_width_inch": float(slide_width_inch),
         "image_width": int(image_width),
@@ -321,7 +297,7 @@ def render_direct_comparison_image(reference_image: Path, preview_image: Path, o
     return output_path
 
 
-def _write_direct_page_script(
+def _write_page_preview_script(
     *,
     project: dict[str, Any],
     work_dir: Path,
@@ -349,7 +325,7 @@ def _write_direct_page_script(
     return script_path
 
 
-def _request_direct_page_script(
+def _generate_page_script_from_images(
     provider: OpenAIChatProvider,
     *,
     reference_image: Path,
@@ -385,7 +361,7 @@ def _request_direct_page_script(
     return normalize_page_script(raw_script)
 
 
-def _refine_direct_page_script(
+def _revise_page_script_with_rendered_preview(
     provider: OpenAIChatProvider,
     *,
     reference_image: Path,
@@ -395,7 +371,7 @@ def _refine_direct_page_script(
     page_script: str,
     asset_adjustments: dict[str, Any],
     round_index: int,
-) -> DirectPageRefineResult:
+) -> DirectPageScriptRevision:
     """基于真实 PPT 渲染图请求模型修正单页文字脚本。"""
     prompt = build_direct_page_refine_prompt(
         image_width=image_width,
@@ -422,191 +398,9 @@ def _refine_direct_page_script(
     raw_script = str(result.get("page_script", "")).strip()
     resolved_script = normalize_page_script(raw_script) if raw_script else page_script
     resolved_adjustments = normalize_asset_adjustments(asset_adjustments)
-    return DirectPageRefineResult(
+    return DirectPageScriptRevision(
         page_script=resolved_script,
         asset_adjustments=resolved_adjustments,
     )
 
 
-def _generate_direct_single_page_script_with_metadata(
-    provider: OpenAIChatProvider,
-    reference_image: Path,
-    elements_image: Path,
-    work_dir: Path,
-    output_pptx: Path,
-    *,
-    slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
-    page_no: int = 1,
-    refine_rounds: int = 1,
-) -> tuple[Path, DirectPageGenerationMetadata]:
-    """生成单页文字脚本，并在可用时走真实 PPT 渲染闭环。"""
-    resolved_reference = Path(reference_image)
-    resolved_elements = Path(elements_image)
-    if not resolved_reference.exists():
-        raise FileNotFoundError(f"缺少参考图：{resolved_reference}")
-    if not resolved_elements.exists():
-        raise FileNotFoundError(f"缺少元素图：{resolved_elements}")
-
-    work_dir.mkdir(parents=True, exist_ok=True)
-    image_width, image_height = resolve_canvas_size(resolved_reference, resolved_elements)
-    page_dir = work_dir / f"page_{int(page_no):02d}"
-    text_placeholders = save_text_placeholders(
-        resolved_reference,
-        resolved_elements,
-        page_dir / "text_placeholders.json",
-        slide_width_inch=slide_width_inch,
-    )
-    asset_result = prepare_direct_page_assets(
-        work_dir=work_dir,
-        page_no=page_no,
-        elements_image=resolved_elements,
-        reference_image=resolved_reference,
-        reference_text_boxes=placeholder_bboxes(text_placeholders),
-        image_width=image_width,
-        image_height=image_height,
-    )
-    project = build_direct_single_page_project(
-        reference_image=resolved_reference,
-        elements_image=resolved_elements,
-        image_width=image_width,
-        image_height=image_height,
-        slide_width_inch=slide_width_inch,
-        page_no=page_no,
-    )
-    current_asset_adjustments: dict[str, Any] = dict(asset_result.asset_adjustments)
-    project["asset_adjustments"] = {str(int(page_no)): dict(current_asset_adjustments)}
-    current_script = _request_direct_page_script(
-        provider,
-        reference_image=resolved_reference,
-        elements_image=resolved_elements,
-        image_width=image_width,
-        image_height=image_height,
-        text_placeholders=text_placeholders,
-    )
-
-    metadata = DirectPageGenerationMetadata(
-        office_render_available=False,
-        refine_rounds_applied=0,
-        office_preview_paths=[],
-        comparison_paths=[],
-    )
-    for round_index in range(max(0, int(refine_rounds))):
-        preview_pptx = work_dir / f"render_preview_round_{round_index + 1:02d}.pptx"
-        preview_script_path = work_dir / f"generated_text_layout_preview_round_{round_index + 1:02d}.py"
-        _write_direct_page_script(
-            project=project,
-            work_dir=work_dir,
-            output_pptx=preview_pptx,
-            page_no=page_no,
-            page_script=current_script,
-            script_path=preview_script_path,
-        )
-        execute_generated_text_script(preview_script_path)
-
-        preview_image_path = work_dir / f"office_preview_round_{round_index + 1:02d}.png"
-        rendered_preview = render_pptx_first_slide_to_png(
-            preview_pptx,
-            preview_image_path,
-            image_width=image_width,
-            image_height=image_height,
-        )
-        if rendered_preview is None:
-            break
-
-        metadata.office_render_available = True
-        metadata.office_preview_paths.append(str(rendered_preview))
-        comparison_path = work_dir / f"comparison_round_{round_index + 1:02d}.png"
-        render_direct_comparison_image(
-            reference_image=resolved_reference,
-            preview_image=rendered_preview,
-            output_path=comparison_path,
-        )
-        metadata.comparison_paths.append(str(comparison_path))
-
-        refine_result = _refine_direct_page_script(
-            provider,
-            reference_image=resolved_reference,
-            rendered_preview=rendered_preview,
-            image_width=image_width,
-            image_height=image_height,
-            page_script=current_script,
-            asset_adjustments=current_asset_adjustments,
-            round_index=round_index,
-        )
-        candidate_script = refine_result.page_script
-        candidate_adjustments = refine_result.asset_adjustments
-        if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:
-            break
-        current_script = candidate_script
-        current_asset_adjustments = candidate_adjustments
-        project["asset_adjustments"] = {str(int(page_no)): dict(current_asset_adjustments)}
-        metadata.refine_rounds_applied += 1
-
-    script_path = work_dir / "generated_text_layout.py"
-    project["asset_adjustments"] = {str(int(page_no)): dict(current_asset_adjustments)}
-    _write_direct_page_script(
-        project=project,
-        work_dir=work_dir,
-        output_pptx=output_pptx,
-        page_no=page_no,
-        page_script=current_script,
-        script_path=script_path,
-    )
-    return script_path, metadata
-
-
-def generate_direct_single_page_script(
-    provider: OpenAIChatProvider,
-    reference_image: Path,
-    elements_image: Path,
-    work_dir: Path,
-    output_pptx: Path,
-    *,
-    slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
-    page_no: int = 1,
-    refine_rounds: int = 1,
-) -> Path:
-    """生成单页文字脚本，并在可用时尝试真实 PPT 渲染回看。"""
-    script_path, _ = _generate_direct_single_page_script_with_metadata(
-        provider,
-        reference_image,
-        elements_image,
-        work_dir,
-        output_pptx,
-        slide_width_inch=slide_width_inch,
-        page_no=page_no,
-        refine_rounds=refine_rounds,
-    )
-    return script_path
-
-
-def generate_direct_single_page_ppt(
-    provider: OpenAIChatProvider,
-    reference_image: Path,
-    elements_image: Path,
-    work_dir: Path,
-    output_pptx: Path,
-    *,
-    slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
-    page_no: int = 1,
-    refine_rounds: int = 1,
-) -> dict[str, Any]:
-    """生成并执行单页脚本，直接得到 PPT。"""
-    script_path, metadata = _generate_direct_single_page_script_with_metadata(
-        provider,
-        reference_image,
-        elements_image,
-        work_dir,
-        output_pptx,
-        slide_width_inch=slide_width_inch,
-        page_no=page_no,
-        refine_rounds=refine_rounds,
-    )
-    execute_generated_text_script(script_path)
-    result: dict[str, Any] = {
-        "output_pptx": str(output_pptx),
-        "work_dir": str(work_dir),
-        "text_script_path": str(script_path),
-    }
-    result.update(metadata.to_dict())
-    return result

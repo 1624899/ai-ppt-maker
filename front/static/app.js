@@ -4,7 +4,6 @@ const submitButton = document.querySelector("#submitButton");
 const regenerateButton = document.querySelector("#regenerateButton");
 const progress = document.querySelector("#progress");
 const configText = document.querySelector("#configText");
-const modeText = document.querySelector("#modeText");
 const jobMeta = document.querySelector("#jobMeta");
 const deliveryResult = document.querySelector("#deliveryResult");
 const pageTemplate = document.querySelector("#pageTemplate");
@@ -562,7 +561,6 @@ async function loadConfig() {
   await loadModelConfigs();
   await loadJobHistory();
   startHistoryStream();
-  updateModeText();
 }
 
 async function loadJobHistory() {
@@ -596,16 +594,6 @@ function startHistoryStream() {
 async function loadModelConfigs() {
   const res = await fetch("/api/model-configs");
   modelConfigs = await res.json();
-}
-
-function updateModeText() {
-  if (!modelConfigs) {
-    modeText.textContent = `${config.generation_mode} · ${config.image_model}`;
-    return;
-  }
-  const chat = findActiveConfig("chat");
-  const image = findActiveConfig("image");
-  modeText.textContent = `${chat?.model || "chat"} → ${image?.model || "image"} · ${config.image_size}`;
 }
 
 function findActiveConfig(type) {
@@ -1752,7 +1740,6 @@ async function saveModel(event) {
   isCreatingModel = false;
   fillModelForm(savedItem);
   renderModelSettings();
-  updateModeText();
 }
 
 async function activateModel(id) {
@@ -1764,7 +1751,6 @@ async function activateModel(id) {
   }
   await loadModelConfigs();
   renderModelSettings();
-  updateModeText();
 }
 
 async function deleteModel(id) {
@@ -1782,7 +1768,6 @@ async function deleteModel(id) {
   isCreatingModel = false;
   await loadModelConfigs();
   renderModelSettings();
-  updateModeText();
 }
 
 async function submitCurrentJob() {

@@ -10,13 +10,13 @@ from typing import Any, Callable
 from ppt_system.asset_alignment_runtime import analyze_text_asset_overlaps
 from ppt_system.concurrent_stage import drain_fail_safe_futures
 from ppt_system.direct_page_script import (
-    _refine_direct_page_script,
-    _request_direct_page_script,
-    _write_direct_page_script,
-    build_direct_single_page_project,
+    build_direct_page_preview_project,
+    _generate_page_script_from_images,
     prepare_direct_page_assets,
     render_direct_comparison_image,
     resolve_canvas_size,
+    _revise_page_script_with_rendered_preview,
+    _write_page_preview_script,
 )
 from ppt_system.export_page_resume import (
     build_export_page_signature,
@@ -47,25 +47,6 @@ class PreparedProjectPageAssets:
     asset_adjustments: dict[str, Any]
     image_width: int
     image_height: int
-
-    def to_summary(self, *, source_image: Path, merge_distance: int) -> dict[str, Any]:
-        return {
-            "page_no": int(self.page_no),
-            "asset_count": int(self.asset_count),
-            "assets_manifest": str(self.assets_manifest),
-            "text_placeholders": str(self.text_placeholders_path),
-            "split_source_image": str(self.split_source_image),
-            "transparent_preview_image": str(self.transparent_preview_image or ""),
-            "global_alignment": self.global_alignment,
-            "asset_adjustments": dict(self.asset_adjustments),
-            "processing": {
-                "page_no": int(self.page_no),
-                "source_image": str(source_image),
-                "asset_strategy": "direct_split_elements",
-                "merge_distance": int(merge_distance),
-                "split_mode": "classic",
-            },
-        }
 
 
 def _log(stage_logger: StageLogger | None, message: str) -> None:
@@ -106,31 +87,68 @@ def _build_asset_option_signature_payload(
     }
 
 
-def _sorted_project_pages(project: dict[str, Any]) -> list[dict[str, Any]]:
-    return sorted(project.get("pages", []), key=lambda item: int(item.get("page_no", 0)))
+def _iter_exportable_project_pages(project: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        page
+        for page in sorted(project.get("pages", []), key=lambda item: int(item.get("page_no", 0)))
+        if int(page.get("page_no", 0)) > 0
+    ]
 
 
-def _build_prepared_assets_record(
+def _summarize_prepared_page_assets(
+    prepared_assets: PreparedProjectPageAssets,
     *,
+    source_image: Path,
+    merge_distance: int,
+) -> dict[str, Any]:
+    return {
+        "page_no": int(prepared_assets.page_no),
+        "asset_count": int(prepared_assets.asset_count),
+        "assets_manifest": str(prepared_assets.assets_manifest),
+        "text_placeholders": str(prepared_assets.text_placeholders_path),
+        "split_source_image": str(prepared_assets.split_source_image),
+        "transparent_preview_image": str(prepared_assets.transparent_preview_image or ""),
+        "global_alignment": prepared_assets.global_alignment,
+        "asset_adjustments": dict(prepared_assets.asset_adjustments),
+        "processing": {
+            "page_no": int(prepared_assets.page_no),
+            "source_image": str(source_image),
+            "asset_strategy": "direct_split_elements",
+            "merge_distance": int(merge_distance),
+            "split_mode": "classic",
+        },
+    }
+
+
+def _log_page_alignment_result(
+    page_logger: PageLogger | None,
     page_no: int,
-    asset_result: Any,
-    text_placeholders_path: Path,
-    image_width: int,
-    image_height: int,
-) -> PreparedProjectPageAssets:
-    manifest = dict(asset_result.manifest)
-    return PreparedProjectPageAssets(
-        page_no=int(page_no),
-        assets_manifest=str(asset_result.manifest_path),
-        text_placeholders_path=str(text_placeholders_path),
-        split_source_image=str(asset_result.split_source_image),
-        transparent_preview_image=asset_result.transparent_preview_image,
-        asset_count=int(manifest.get("count", 0)),
-        global_alignment=asset_result.global_alignment if isinstance(asset_result.global_alignment, dict) else None,
-        asset_adjustments=dict(asset_result.asset_adjustments),
-        image_width=int(image_width),
-        image_height=int(image_height),
+    global_alignment: dict[str, Any] | None,
+) -> None:
+    if not isinstance(global_alignment, dict):
+        return
+    if bool(global_alignment.get("should_apply")):
+        _log_page(
+            page_logger,
+            page_no,
+            f"整页元素拟合对齐已应用：dx={int(global_alignment.get('dx', 0))}, dy={int(global_alignment.get('dy', 0))}",
+        )
+        return
+    _log_page(
+        page_logger,
+        page_no,
+        f"整页元素拟合未应用：{str(global_alignment.get('reason', 'unknown'))}",
     )
+
+
+def _build_text_asset_overlap_summary(overlap_report: Any) -> dict[str, Any]:
+    return {
+        "total_boxes": int(overlap_report.total_boxes),
+        "overlap_box_count": int(overlap_report.overlap_box_count),
+        "overlap_ratio": float(overlap_report.overlap_ratio),
+        "max_overlap_pixels": int(overlap_report.max_overlap_pixels),
+        "overlapping_box_indices": list(overlap_report.overlapping_box_indices),
+    }
 
 
 def prepare_direct_project_assets(
@@ -153,11 +171,9 @@ def prepare_direct_project_assets(
     work_dir.mkdir(parents=True, exist_ok=True)
     page_summaries: list[dict[str, Any]] = []
     prepared_assets_by_page: dict[int, PreparedProjectPageAssets] = {}
-    for page in sorted(project.get("pages", []), key=lambda item: int(item.get("page_no", 0))):
+    for page in _iter_exportable_project_pages(project):
         _ensure_not_stopped(stop_checker)
         page_no = int(page.get("page_no", 0))
-        if page_no <= 0:
-            continue
         visual_image = Path(str(page.get("visual_image", "")))
         reference_image = Path(str(page.get("reference_image", "")))
         if not visual_image.exists():
@@ -191,30 +207,29 @@ def prepare_direct_project_assets(
             skip_enhance=skip_enhance,
             skip_transparent=skip_transparent,
         )
-        prepared_record = _build_prepared_assets_record(
+        manifest = dict(asset_result.manifest)
+        prepared_record = PreparedProjectPageAssets(
             page_no=page_no,
-            asset_result=asset_result,
-            text_placeholders_path=text_placeholders_path,
-            image_width=image_width,
-            image_height=image_height,
+            assets_manifest=str(asset_result.manifest_path),
+            text_placeholders_path=str(text_placeholders_path),
+            split_source_image=str(asset_result.split_source_image),
+            transparent_preview_image=asset_result.transparent_preview_image,
+            asset_count=int(manifest.get("count", 0)),
+            global_alignment=asset_result.global_alignment if isinstance(asset_result.global_alignment, dict) else None,
+            asset_adjustments=dict(asset_result.asset_adjustments),
+            image_width=int(image_width),
+            image_height=int(image_height),
         )
         prepared_assets_by_page[page_no] = prepared_record
         _log_page(page_logger, page_no, f"已准备分割元素资产，共 {int(prepared_record.asset_count)} 个元素")
-        global_alignment = prepared_record.global_alignment
-        if isinstance(global_alignment, dict):
-            if bool(global_alignment.get("should_apply")):
-                _log_page(
-                    page_logger,
-                    page_no,
-                    f"整页元素拟合对齐已应用：dx={int(global_alignment.get('dx', 0))}, dy={int(global_alignment.get('dy', 0))}",
-                )
-            else:
-                _log_page(
-                    page_logger,
-                    page_no,
-                    f"整页元素拟合未应用：{str(global_alignment.get('reason', 'unknown'))}",
-                )
-        page_summaries.append(prepared_record.to_summary(source_image=visual_image, merge_distance=merge_distance))
+        _log_page_alignment_result(page_logger, page_no, prepared_record.global_alignment)
+        page_summaries.append(
+            _summarize_prepared_page_assets(
+                prepared_record,
+                source_image=visual_image,
+                merge_distance=merge_distance,
+            )
+        )
     _log(stage_logger, f"分割元素资产准备完成，共 {len(page_summaries)} 页")
     return {
         "page_count": len(page_summaries),
@@ -273,7 +288,7 @@ def _generate_direct_project_page_script(
             dict(checkpoint.page_result),
         )
 
-    single_page_project = build_direct_single_page_project(
+    preview_project = build_direct_page_preview_project(
         reference_image=reference_image,
         elements_image=visual_image,
         image_width=image_width,
@@ -290,10 +305,10 @@ def _generate_direct_project_page_script(
             slide_width_inch=float(project.get("slide_width_inch", 13.333333)),
         )
     current_asset_adjustments: dict[str, Any] = dict(prepared_page_assets.asset_adjustments)
-    single_page_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
+    preview_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
     _log_page(page_logger, page_no, "开始直出首轮文字脚本")
     request_started_at = time.perf_counter()
-    current_script = _request_direct_page_script(
+    current_script = _generate_page_script_from_images(
         provider,
         reference_image=reference_image,
         elements_image=visual_image,
@@ -318,8 +333,8 @@ def _generate_direct_project_page_script(
         _ensure_not_stopped(stop_checker)
         preview_pptx = page_dir / f"render_preview_round_{round_index + 1:02d}.pptx"
         preview_script_path = page_dir / f"generated_text_layout_preview_round_{round_index + 1:02d}.py"
-        _write_direct_page_script(
-            project=single_page_project,
+        _write_page_preview_script(
+            project=preview_project,
             work_dir=work_dir,
             output_pptx=preview_pptx,
             page_no=page_no,
@@ -354,7 +369,7 @@ def _generate_direct_project_page_script(
         page_result["comparison_paths"].append(str(comparison_path))
         _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
         refine_started_at = time.perf_counter()
-        refine_result = _refine_direct_page_script(
+        refine_result = _revise_page_script_with_rendered_preview(
             provider,
             reference_image=reference_image,
             rendered_preview=rendered_preview,
@@ -372,7 +387,7 @@ def _generate_direct_project_page_script(
             break
         current_script = candidate_script
         current_asset_adjustments = candidate_adjustments
-        single_page_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
+        preview_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
         page_result["refine_rounds_applied"] = int(page_result["refine_rounds_applied"]) + 1
         page_result["asset_adjustments"] = dict(current_asset_adjustments)
 
@@ -387,13 +402,7 @@ def _generate_direct_project_page_script(
             page_script=current_script,
             current_adjustments=current_asset_adjustments,
         )
-        page_result["text_asset_overlap"] = {
-            "total_boxes": int(overlap_report.total_boxes),
-            "overlap_box_count": int(overlap_report.overlap_box_count),
-            "overlap_ratio": float(overlap_report.overlap_ratio),
-            "max_overlap_pixels": int(overlap_report.max_overlap_pixels),
-            "overlapping_box_indices": list(overlap_report.overlapping_box_indices),
-        }
+        page_result["text_asset_overlap"] = _build_text_asset_overlap_summary(overlap_report)
     save_export_page_checkpoint(
         page_dir,
         signature=page_signature,
@@ -454,7 +463,7 @@ def generate_direct_project_text_script(
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
     )
-    pages = [page for page in _sorted_project_pages(project) if int(page.get("page_no", 0)) > 0]
+    pages = _iter_exportable_project_pages(project)
     concurrency = max(1, int(page_concurrency))
     _log(stage_logger, f"页级导出并发数：{concurrency}")
 

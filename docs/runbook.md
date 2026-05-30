@@ -30,19 +30,6 @@ python ppt_pipeline.py --project project.generated.json --output auto_ppt_output
 - `--work-dir`：导出中间产物目录。
 - `--script-refine-rounds`：真实 PPT 导出回看轮数。
 
-### 单页直出
-
-```powershell
-python tools\generate_direct_single_page_ppt.py `
-  --reference-image "output\...\page_02_reference.png" `
-  --elements-image "output\...\page_02_elements.png" `
-  --output-dir "output\direct_run" `
-  --output-name "direct_page_02.pptx" `
-  --page-no 2 `
-  --refine-rounds 1 `
-  --config config.json
-```
-
 ### 单页复跑
 
 ```powershell

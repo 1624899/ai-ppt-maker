@@ -34,7 +34,7 @@ flowchart TD
 ├── ppt_pipeline.py
 ├── rerun_text_page.py
 ├── tools/
-│   └── generate_direct_single_page_ppt.py
+│   └── ...
 ├── ppt_system/
 │   ├── content_agent.py
 │   ├── design_grammar.py
@@ -67,24 +67,11 @@ python web_app.py
 python ppt_pipeline.py --project project.generated.json --output auto_ppt_output.pptx
 ```
 
-### CLI：单页直出实验
-
-```powershell
-python tools\generate_direct_single_page_ppt.py `
-  --reference-image "output\...\page_02_reference.png" `
-  --elements-image "output\...\page_02_elements.png" `
-  --output-dir "output\direct_run" `
-  --output-name "direct_page_02.pptx" `
-  --page-no 2 `
-  --refine-rounds 1 `
-  --config config.json
-```
-
 ## 输出产物
 
 `output/<job_id>/` 或指定输出目录下通常包含：
 
-- `project.single_page.json` 或 `project.generated.json`
+- `project.generated.json`
 - `work/generated_text_layout.py`
 - `work/page_XX/assets/assets.json`
 - `work/office_preview_round_01.png`

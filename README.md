@@ -22,7 +22,6 @@ python web_app.py
 
 ```powershell
 python ppt_pipeline.py --project project.generated.json --output auto_ppt_output.pptx
-python tools\generate_direct_single_page_ppt.py --reference-image output\...\page_02_reference.png --elements-image output\...\page_02_elements.png --output-dir output\direct_run --output-name direct_page_02.pptx --page-no 2 --refine-rounds 1 --config config.json
 python -m pytest -q
 ```
 
