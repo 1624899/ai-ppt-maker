@@ -41,6 +41,7 @@ class PreparedProjectPageAssets:
     assets_manifest: str
     text_placeholders_path: str
     split_source_image: str
+    transparent_preview_image: str | None
     asset_count: int
     global_alignment: dict[str, Any] | None
     asset_adjustments: dict[str, Any]
@@ -54,6 +55,7 @@ class PreparedProjectPageAssets:
             "assets_manifest": str(self.assets_manifest),
             "text_placeholders": str(self.text_placeholders_path),
             "split_source_image": str(self.split_source_image),
+            "transparent_preview_image": str(self.transparent_preview_image or ""),
             "global_alignment": self.global_alignment,
             "asset_adjustments": dict(self.asset_adjustments),
             "processing": {
@@ -122,6 +124,7 @@ def _build_prepared_assets_record(
         assets_manifest=str(asset_result.manifest_path),
         text_placeholders_path=str(text_placeholders_path),
         split_source_image=str(asset_result.split_source_image),
+        transparent_preview_image=asset_result.transparent_preview_image,
         asset_count=int(manifest.get("count", 0)),
         global_alignment=asset_result.global_alignment if isinstance(asset_result.global_alignment, dict) else None,
         asset_adjustments=dict(asset_result.asset_adjustments),

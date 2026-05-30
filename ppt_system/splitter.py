@@ -20,6 +20,7 @@ from ppt_system.component_graph_clustering import (
     split_suspicious_sparse_components,
 )
 from ppt_system.component_bridge_cut import cut_container_bridges
+from ppt_system.component_icon_grouping import merge_local_icon_fragments
 from ppt_system.component_instance_grouping import group_components_into_instances
 from ppt_system.component_postprocess import merge_dashed_line_components
 from ppt_system.cv_mask_components import find_mask_components, grow_mask_from_seed
@@ -115,6 +116,17 @@ def split_transparent_png(
     components = split_suspicious_sparse_components(
         components,
         image_array=image_array,
+    )
+    components = annotate_component_color_signatures(
+        components,
+        image_array=image_array,
+    )
+    components = merge_local_icon_fragments(
+        components,
+        image_array=image_array,
+        image_width=image.width,
+        image_height=image.height,
+        merge_distance=merge_distance,
     )
     components = annotate_component_color_signatures(
         components,

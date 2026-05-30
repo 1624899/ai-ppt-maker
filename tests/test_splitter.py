@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ppt_system.splitter import split_transparent_png
 
@@ -33,7 +33,7 @@ class SplitterTests(unittest.TestCase):
             saved = json.loads((out_dir / "assets.json").read_text(encoding="utf-8"))
             self.assertEqual(saved["merge_distance"], 0)
 
-    def test_split_transparent_png_classic_mode_keeps_nearby_components_separate(self) -> None:
+    def test_split_transparent_png_groups_nearby_mixed_color_icon_fragments(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             image_path = root / "sample.png"
@@ -50,9 +50,9 @@ class SplitterTests(unittest.TestCase):
                 merge_distance=2,
             )
 
-            self.assertEqual(manifest["count"], 2)
+            self.assertEqual(manifest["count"], 1)
 
-    def test_split_transparent_png_classic_mode_keeps_compact_fragment_cluster_separate(self) -> None:
+    def test_split_transparent_png_groups_compact_adjacent_icon_fragments(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             image_path = root / "sample.png"
@@ -61,6 +61,71 @@ class SplitterTests(unittest.TestCase):
             image[5:11, 5:11] = [255, 0, 0, 255]
             image[5:11, 14:20] = [255, 0, 0, 255]
             image[13:19, 9:15] = [255, 0, 0, 255]
+            Image.fromarray(image, mode="RGBA").save(image_path)
+
+            manifest = split_transparent_png(
+                image_path,
+                out_dir,
+                min_area=1,
+                merge_distance=6,
+            )
+
+            self.assertEqual(manifest["count"], 1)
+            asset = manifest["assets"][0]
+            self.assertEqual((asset["left"], asset["top"], asset["width"], asset["height"]), (5, 5, 15, 14))
+
+    def test_split_transparent_png_groups_small_icon_shell_with_inner_mark(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "sample.png"
+            out_dir = root / "assets"
+            image = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            blue = (24, 88, 220, 255)
+            draw.ellipse((210, 190, 270, 250), outline=blue, width=5)
+            draw.line([(225, 221), (237, 233), (258, 207)], fill=blue, width=6)
+            image.save(image_path)
+
+            manifest = split_transparent_png(
+                image_path,
+                out_dir,
+                min_area=1,
+                merge_distance=6,
+            )
+
+            self.assertEqual(manifest["count"], 1)
+            asset = manifest["assets"][0]
+            self.assertTrue(58 <= asset["width"] <= 66)
+            self.assertTrue(58 <= asset["height"] <= 66)
+
+    def test_split_transparent_png_keeps_parallel_line_fragments_editable(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "sample.png"
+            out_dir = root / "assets"
+            image = np.zeros((48, 48, 4), dtype=np.uint8)
+            image[10:14, 10:28] = [255, 120, 20, 255]
+            image[24:28, 10:28] = [255, 120, 20, 255]
+            Image.fromarray(image, mode="RGBA").save(image_path)
+
+            manifest = split_transparent_png(
+                image_path,
+                out_dir,
+                min_area=1,
+                merge_distance=6,
+            )
+
+            self.assertEqual(manifest["count"], 2)
+
+    def test_split_transparent_png_keeps_distant_small_layout_parts_separate(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "sample.png"
+            out_dir = root / "assets"
+            image = np.zeros((72, 72, 4), dtype=np.uint8)
+            image[10:16, 10:16] = [255, 0, 0, 255]
+            image[10:16, 34:40] = [255, 0, 0, 255]
+            image[34:40, 10:16] = [255, 0, 0, 255]
             Image.fromarray(image, mode="RGBA").save(image_path)
 
             manifest = split_transparent_png(

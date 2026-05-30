@@ -1286,7 +1286,14 @@ function renderGenerationStage(stage, job, imageKey) {
 
 function renderStageBody(stage, job) {
   const logs = stage.logs?.length
-    ? `<ul class="stage-logs">${stage.logs.map((log) => `<li>${escapeHtml(log)}</li>`).join("")}</ul>`
+    ? `
+      <section class="stage-log-panel">
+        <div class="stage-log-panel-head">阶段日志</div>
+        <div class="stage-log-panel-body">
+          <ul class="stage-logs">${stage.logs.map((log) => `<li>${escapeHtml(log)}</li>`).join("")}</ul>
+        </div>
+      </section>
+    `
     : "";
   let extra = "";
   if (stage.key === "planning") {

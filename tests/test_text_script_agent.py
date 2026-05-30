@@ -143,6 +143,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             self.assertEqual(Path(str(manifest["assets_dir"])).name, "assets")
             self.assertFalse((work_dir / "page_02" / "page_02_enhanced.png").exists())
             self.assertFalse((work_dir / "page_02" / "page_02_transparent.png").exists())
+            self.assertTrue((work_dir / "page_02" / "page_02_transparent_preview.png").exists())
             self.assertFalse((work_dir / "page_02" / "page_02_aligned_for_split.png").exists())
             final_script = (work_dir / "generated_text_layout.py").read_text(encoding="utf-8")
             self.assertIn("PAGE_ASSET_ADJUSTMENTS", final_script)
@@ -219,6 +220,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             )
 
             self.assertEqual(result.split_source_image, str(visual_path))
+            self.assertEqual(result.transparent_preview_image, str(visual_path))
             self.assertEqual(int(result.manifest["min_area"]), 1)
             self.assertEqual(int(result.manifest["count"]), 2)
             self.assertFalse((work_dir / "page_01" / "page_01_enhanced.png").exists())
@@ -524,6 +526,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                     "image_width": 240,
                     "image_height": 140,
                     "split_source_image": str(visual_path),
+                    "transparent_preview_image": str(visual_path),
                     "removed_intermediate_images": [],
                     "global_alignment": {"should_apply": True, "dx": 12, "dy": -7},
                     "asset_adjustments": {"global": {"dx": 12, "dy": -7}},
@@ -691,6 +694,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                     "image_width": 400,
                     "image_height": 240,
                     "split_source_image": str(visual_path),
+                    "transparent_preview_image": str(visual_path),
                     "removed_intermediate_images": [],
                     "global_alignment": {"should_apply": True, "dx": -10, "dy": 40},
                     "asset_adjustments": {"global": {"dx": -10, "dy": 40}},

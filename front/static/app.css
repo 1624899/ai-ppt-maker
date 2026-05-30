@@ -1733,6 +1733,28 @@ button {
   padding: 0 20px 20px;
 }
 
+.stage-log-panel {
+  border: 1px solid #dbe4f3;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fbfcff 0%, #f5f8ff 100%);
+  overflow: hidden;
+}
+
+.stage-log-panel-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid #e2e9f6;
+  color: #425372;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.stage-log-panel-body {
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
 .stage-logs {
   margin: 0;
   padding-left: 18px;
@@ -1743,6 +1765,16 @@ button {
 
 .stage-logs li + li {
   margin-top: 4px;
+}
+
+.stage-log-panel-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.stage-log-panel-body::-webkit-scrollbar-thumb {
+  background: #d5deef;
+  border-radius: 999px;
 }
 
 .plan-meta {

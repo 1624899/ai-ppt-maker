@@ -7,8 +7,6 @@ import numpy as np
 from PIL import Image
 
 from ppt_system.alpha_matte_refinement import (
-    build_color_guided_alpha,
-    estimate_background_model,
     refine_background_removed_image,
 )
 
@@ -76,20 +74,9 @@ def _remove_background_with_threshold(
     *,
     warning: str | None,
 ) -> BackgroundRemovalResult:
-    source_rgba = np.array(image.convert("RGBA"), dtype=np.uint8)
-    background = estimate_background_model(
-        source_rgba,
-        fallback_bg_threshold=fallback_bg_threshold,
-    )
-    guided_alpha = build_color_guided_alpha(
-        source_rgba,
-        background=background,
-    )
-    initial_removed = np.array(source_rgba, copy=True)
-    initial_removed[:, :, 3] = np.minimum(initial_removed[:, :, 3], guided_alpha)
     refined = refine_background_removed_image(
         image,
-        Image.fromarray(initial_removed, mode="RGBA"),
+        image,
         fallback_bg_threshold=fallback_bg_threshold,
     )
     rgba = prune_alpha_artifacts(np.asarray(refined, dtype=np.uint8))
