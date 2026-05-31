@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from flask import jsonify, request
 
+from ppt_system.integrations.model_config import sanitize_model_config
+from ppt_system.integrations.model_connectivity import test_model_connectivity
 from ppt_system.generation.reference_style_adherence import (
     REFERENCE_STYLE_ADHERENCE_LABELS,
     REFERENCE_STYLE_ADHERENCE_LEVELS,
@@ -108,3 +110,45 @@ def api_activate_model_config(model_type: str, config_id: str):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify({"ok": True})
+
+
+def api_test_model_config(model_type: str):
+    runtime = get_runtime_module()
+    config = runtime.read_config()
+    payload = request.get_json(force=True) or {}
+    try:
+        profile = build_connectivity_profile(runtime, config, model_type, payload)
+        timeout = int(config.get("connectivity_test_timeout_seconds", 20))
+        result = test_model_connectivity(model_type, profile, timeout=timeout)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "ok": False}), 400
+    return jsonify(result.to_dict()), (200 if result.ok else 400)
+
+
+def build_connectivity_profile(runtime, config: dict, model_type: str, payload: dict) -> dict:
+    if model_type not in {"chat", "image"}:
+        raise ValueError("模型类型只能是 chat 或 image。")
+
+    profile = dict(payload)
+    config_id = str(profile.get("id", "")).strip()
+    existing = find_model_config(config, model_type, config_id) if config_id else None
+    if existing:
+        merged = dict(existing)
+        merged.update({key: value for key, value in profile.items() if key != "api_key"})
+        api_key = str(profile.get("api_key", "")).strip()
+        if api_key:
+            merged["api_key"] = api_key
+        profile = merged
+
+    sanitized = sanitize_model_config(model_type, profile)
+    if not sanitized.get("api_key") and existing:
+        sanitized["api_key"] = str(existing.get("api_key", "")).strip()
+    return sanitized
+
+
+def find_model_config(config: dict, model_type: str, config_id: str) -> dict | None:
+    configs = config.get("model_configs", {}).get(model_type, [])
+    for item in configs:
+        if str(item.get("id", "")).strip() == config_id:
+            return dict(item)
+    return None

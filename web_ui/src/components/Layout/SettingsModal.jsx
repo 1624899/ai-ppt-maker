@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle2, Eye, EyeOff, Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Activity, CheckCircle2, Eye, EyeOff, Loader2, Plus, Trash2, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useModelConfigs } from '../../hooks/useModelConfigs';
 
@@ -56,6 +56,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
     saveModelConfig,
     activateModelConfig,
     deleteModelConfig,
+    testModelConfig,
   } = useModelConfigs(isOpen);
   const [activeModelType, setActiveModelType] = useState('chat');
   const [selectedModelId, setSelectedModelId] = useState('');
@@ -63,6 +64,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
   const [form, setForm] = useState(() => createFormValues('chat'));
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
   const activeId = modelConfigs?.[`active_${activeModelType}_config_id`] || '';
@@ -142,6 +144,35 @@ const SettingsModal = ({ isOpen, onClose }) => {
       setMessage(err.message || '保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestConnectivity = async () => {
+    if (!form.name.trim() || !form.base_url.trim() || !form.model.trim()) {
+      setMessage('配置名称、Base URL 和模型名不能为空');
+      return;
+    }
+    if (!form.api_key.trim() && !form.api_key_configured) {
+      setMessage('请先填写 API Key 再测试连通性');
+      return;
+    }
+
+    setTesting(true);
+    setMessage('正在测试模型连通性...');
+    try {
+      const result = await testModelConfig({
+        modelType: activeModelType,
+        payload: {
+          ...collectPayload(),
+          id: form.id,
+        },
+      });
+      const elapsedText = Number.isFinite(result.elapsed_ms) ? `（${result.elapsed_ms}ms）` : '';
+      setMessage(`${result.message || '连通测试通过'}${elapsedText}`);
+    } catch (err) {
+      setMessage(err.message || '连通测试失败');
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -343,10 +374,16 @@ const SettingsModal = ({ isOpen, onClose }) => {
 
                   <div className="model-form__actions">
                     <p className="model-form__message">{message}</p>
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
-                      {saving && <Loader2 className="spin" size={16} />}
-                      <span>{saving ? '保存中...' : '保存配置'}</span>
-                    </button>
+                    <div className="model-form__action-buttons">
+                      <button type="button" className="btn btn-secondary" disabled={saving || testing} onClick={handleTestConnectivity}>
+                        {testing ? <Loader2 className="spin" size={16} /> : <Activity size={16} />}
+                        <span>{testing ? '测试中...' : '连通测试'}</span>
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={saving || testing}>
+                        {saving && <Loader2 className="spin" size={16} />}
+                        <span>{saving ? '保存中...' : '保存配置'}</span>
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>

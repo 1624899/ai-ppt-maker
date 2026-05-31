@@ -35,3 +35,8 @@ def api_delete_model_config(model_type: str, config_id: str):
 @bp.post("/api/model-configs/<model_type>/<config_id>/active")
 def api_activate_model_config(model_type: str, config_id: str):
     return config_api_service.api_activate_model_config(model_type, config_id)
+
+
+@bp.post("/api/model-configs/<model_type>/test")
+def api_test_model_config(model_type: str):
+    return config_api_service.api_test_model_config(model_type)

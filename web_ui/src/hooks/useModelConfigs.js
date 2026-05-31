@@ -5,7 +5,7 @@ const fetchJson = async (url, options) => {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || '请求失败');
+    throw new Error(data.error || data.message || '请求失败');
   }
   return data;
 };
@@ -55,6 +55,14 @@ export const useModelConfigs = (enabled = true) => {
     return fetchJson(`/api/model-configs/${modelType}/${id}`, { method: 'DELETE' });
   }, []);
 
+  const testModelConfig = useCallback(async ({ modelType, payload }) => {
+    return fetchJson(`/api/model-configs/${modelType}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }, []);
+
   return {
     modelConfigs,
     loading,
@@ -63,5 +71,6 @@ export const useModelConfigs = (enabled = true) => {
     saveModelConfig,
     activateModelConfig,
     deleteModelConfig,
+    testModelConfig,
   };
 };

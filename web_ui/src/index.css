@@ -2346,6 +2346,14 @@ a {
   min-width: 0;
 }
 
+.model-form__action-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
