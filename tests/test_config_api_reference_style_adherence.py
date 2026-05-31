@@ -36,6 +36,7 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
             "image_quality": "medium",
             "image_background": "opaque",
             "image_output_format": "png",
+            "default_include_cover_page": False,
             "default_reference_style_adherence": "strict",
             "output_dir": str(self.temp_root / "runs"),
             "active_chat_config_id": "",
@@ -52,6 +53,7 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertIsNotNone(payload)
+        self.assertFalse(payload["default_include_cover_page"])
         self.assertEqual(payload["default_reference_style_adherence"], "strict")
         self.assertEqual(
             payload["reference_style_adherence_options"],

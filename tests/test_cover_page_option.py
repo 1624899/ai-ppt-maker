@@ -82,6 +82,19 @@ class CoverPageOptionTests(unittest.TestCase):
         self.assertEqual(plan["pages"][0]["reference_mode"], "edit_with_refs")
         self.assertEqual(plan["pages"][0]["difference_from_previous"], "首页建立视觉基调")
 
+    def test_resolve_generation_options_uses_config_default_for_cover_page(self) -> None:
+        options = resolve_generation_options({}, config={"default_include_cover_page": False})
+
+        self.assertFalse(options["include_cover_page"])
+
+    def test_resolve_generation_options_payload_overrides_cover_page_default(self) -> None:
+        options = resolve_generation_options(
+            {"include_cover_page": "1"},
+            config={"default_include_cover_page": False},
+        )
+
+        self.assertTrue(options["include_cover_page"])
+
 
 if __name__ == "__main__":
     unittest.main()

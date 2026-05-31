@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileUp, WandSparkles } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
+import { resolveIncludeCoverPage } from '../../utils/generationOptions';
 import { getJobMeta } from '../../utils/jobPresentation';
 
 const RICHNESS_LEVELS = [
@@ -47,7 +48,7 @@ const createInitialValues = (config, currentJob) => {
     styleNotes: String(meta.style_notes || currentJob?.style_notes || ''),
     jobTarget: String(meta.job_target || 'editable_ppt'),
     imageQuality: String(meta.image_quality || currentJob?.image_quality || 'medium'),
-    includeCoverPage: generationOptions.include_cover_page ?? true,
+    includeCoverPage: resolveIncludeCoverPage(config, currentJob),
     pageRichnessDefault: String(generationOptions.page_richness_default || 'medium'),
     referenceStyleAdherence: String(
       generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced',
@@ -170,6 +171,15 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
           </select>
         </label>
 
+        <label className="checkbox-row checkbox-row--framed field--full">
+          <input
+            type="checkbox"
+            checked={form.includeCoverPage}
+            onChange={(event) => updateForm('includeCoverPage', event.target.checked)}
+          />
+          <span>包含首页生成，第 1 页作为封面视觉基调。</span>
+        </label>
+
         <label className="field field--full">
           <span>风格补充</span>
           <input
@@ -239,14 +249,6 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
           </label>
         </div>
 
-        <label className="checkbox-row field--full">
-          <input
-            type="checkbox"
-            checked={form.includeCoverPage}
-            onChange={(event) => updateForm('includeCoverPage', event.target.checked)}
-          />
-          <span>生成 PPT 首页图，并把第 1 页作为封面视觉基调。</span>
-        </label>
       </div>
 
       {error && <div className="form-error">{error}</div>}

@@ -1,6 +1,7 @@
 {
   "max_pages": 10,
   "default_pages": 4,
+  "default_include_cover_page": true,
   "default_image_preset": "landscape_2k",
   "image_presets": {
     "square_1k": {

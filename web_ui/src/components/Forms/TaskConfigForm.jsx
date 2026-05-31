@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, FileText, Settings, Image as ImageIcon } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
+import { getDefaultIncludeCoverPage, resolveIncludeCoverPage } from '../../utils/generationOptions';
 
 const REFERENCE_STYLE_ADHERENCE_FALLBACKS = [
   { value: 'loose', label: '宽松' },
@@ -71,8 +72,11 @@ const TaskConfigForm = ({ currentJob }) => {
       setPageCount(config.default_pages || 4);
       setImagePreset(config.default_image_preset || '');
       setReferenceStyleAdherence(config.default_reference_style_adherence || 'balanced');
+      if (!currentJob) {
+        setIncludeCoverPage(getDefaultIncludeCoverPage(config));
+      }
     }
-  }, [config]);
+  }, [config, currentJob]);
 
   useEffect(() => {
     if (currentJob) {
@@ -84,7 +88,7 @@ const TaskConfigForm = ({ currentJob }) => {
       
       setJobTarget(meta.job_target || 'editable_ppt');
       setImageQuality(meta.image_quality || 'medium');
-      setIncludeCoverPage(meta.include_cover_page ?? true);
+      setIncludeCoverPage(resolveIncludeCoverPage(config, currentJob));
       setPageRichnessDefault(meta.generation_options?.page_richness_default || 'medium');
       setReferenceStyleAdherence(
         meta.generation_options?.reference_style_adherence || config?.default_reference_style_adherence || 'balanced',

@@ -1485,6 +1485,15 @@ a {
   font-size: 13px;
 }
 
+.checkbox-row--framed {
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--text-main);
+  background: rgba(245, 248, 252, 0.82);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
 .checkbox-row input {
   width: 16px;
   min-height: 16px;
