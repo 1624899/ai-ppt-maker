@@ -4,6 +4,7 @@ import {
   Edit3,
   FileImage,
   FolderKanban,
+  Images,
   LayoutTemplate,
   MoreHorizontal,
   Pin,
@@ -14,9 +15,10 @@ import {
 import clsx from 'clsx';
 import { StaggerContainer, StaggerItem, ScaleButton } from '../Motion/MotionUI';
 import SlideImage from './SlideImage';
+import StyleReferenceViewer from './StyleReferenceViewer';
 import TaskActionMenu from './TaskActionMenu';
 import TaskSkeletonList from './TaskSkeletonList';
-import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';
+import { formatTaskTime, getPageCount, getStatusLabel, getStyleReferenceImages } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
   { key: 'materials', label: '素材库', description: '原稿图、无文字元素图', icon: FileImage },
@@ -50,6 +52,7 @@ const TaskCenter = ({
   const [pendingJobId, setPendingJobId] = useState('');
   const [message, setMessage] = useState('');
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [styleReferenceJob, setStyleReferenceJob] = useState(null);
   const pinnedJobs = jobs
     .filter((job) => String(job.pinned_at || '').trim())
     .sort((first, second) => String(second.pinned_at || '').localeCompare(String(first.pinned_at || '')));
@@ -161,6 +164,12 @@ const TaskCenter = ({
     }
   };
 
+  const openStyleReferenceViewer = (job) => {
+    setStyleReferenceJob(job);
+    closeMenu();
+    setMessage('');
+  };
+
   const renderTaskCard = (job) => {
     const active = currentJobId === job.job_id;
     const renaming = renamingJobId === job.job_id;
@@ -168,6 +177,8 @@ const TaskCenter = ({
     const canDelete = !RUNNING_STATUSES.has(String(job.status || ''));
     const menuOpen = menuJobId === job.job_id;
     const pinned = Boolean(String(job.pinned_at || '').trim());
+    const styleReferenceImages = getStyleReferenceImages(job);
+    const hasStyleReferenceImages = styleReferenceImages.length > 0;
     return (
       <StaggerItem
         key={job.job_id}
@@ -210,8 +221,16 @@ const TaskCenter = ({
             ) : (
               <strong>{job.title || '未命名任务'}</strong>
             )}
-            <span>
-              {getStatusLabel(job.status)} · {getPageCount(job) || '-'} 页 · {formatTaskTime(job.updated_at)}
+            <span className="task-card__meta">
+              <span className="task-card__meta-text">
+                {getStatusLabel(job.status)} · {getPageCount(job) || '-'} 页 · {formatTaskTime(job.updated_at)}
+              </span>
+              {hasStyleReferenceImages && (
+                <span className="task-card__reference-hint" title={`有 ${styleReferenceImages.length} 张参考风格图`}>
+                  <Images size={13} />
+                  <small>{styleReferenceImages.length}</small>
+                </span>
+              )}
             </span>
           </span>
         </button>
@@ -241,6 +260,12 @@ const TaskCenter = ({
                 <Edit3 size={18} />
                 <span>重命名</span>
               </button>
+              {hasStyleReferenceImages && (
+                <button type="button" role="menuitem" onClick={() => openStyleReferenceViewer(job)} disabled={pending}>
+                  <Images size={18} />
+                  <span>参考风格图</span>
+                </button>
+              )}
               {pinned ? (
                 <button type="button" role="menuitem" onClick={() => unpinJob(job)} disabled={pending}>
                   <PinOff size={18} />
@@ -335,6 +360,13 @@ const TaskCenter = ({
           </StaggerContainer>
         </section>
       </div>
+      <StyleReferenceViewer
+        key={styleReferenceJob?.job_id || 'closed'}
+        open={Boolean(styleReferenceJob)}
+        images={getStyleReferenceImages(styleReferenceJob)}
+        jobTitle={styleReferenceJob?.title || ''}
+        onClose={() => setStyleReferenceJob(null)}
+      />
     </aside>
   );
 };

@@ -593,6 +593,7 @@ a {
 
 .task-card__content {
   display: grid;
+  gap: 2px;
   min-width: 0;
   align-content: center;
 }
@@ -623,6 +624,44 @@ a {
   box-shadow: 0 0 0 3px rgba(31, 94, 255, 0.1);
 }
 
+.task-card__meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.task-card__meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card__reference-hint {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0 6px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  border: 1px solid rgba(15, 159, 143, 0.16);
+  border-radius: 999px;
+}
+
+.task-card__reference-hint svg {
+  stroke-width: 2.2;
+}
+
+.task-card__reference-hint small {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .task-card__menu-wrap {
   position: relative;
   display: flex;
@@ -650,7 +689,7 @@ a {
   position: fixed;
   z-index: 1000;
   display: grid;
-  width: 156px;
+  width: 184px;
   gap: 6px;
   padding: 8px;
   background: #ffffff;
@@ -1852,6 +1891,157 @@ a {
   border-radius: var(--radius-md);
 }
 
+.style-reference-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.style-reference-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 19, 36, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.style-reference-modal__shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(215, 223, 239, 0.92);
+  border-radius: 24px;
+  box-shadow: 0 28px 90px rgba(14, 24, 45, 0.28);
+}
+
+.style-reference-modal__head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.style-reference-modal__head h2 {
+  max-width: min(680px, 72vw);
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 21px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-reference-modal__head p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.style-reference-modal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  gap: 16px;
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+}
+
+.style-reference-stage {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, rgba(21, 32, 51, 0.045) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(21, 32, 51, 0.045) 25%, transparent 25%),
+    rgba(238, 243, 248, 0.86);
+  background-size: 20px 20px;
+  border: 1px solid rgba(198, 211, 231, 0.78);
+  border-radius: 18px;
+}
+
+.style-reference-stage img {
+  display: block;
+  width: 100%;
+  max-height: min(68vh, 620px);
+  object-fit: contain;
+}
+
+.style-reference-empty,
+.style-reference-list__empty {
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.style-reference-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+}
+
+.style-reference-thumb {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  color: var(--text-main);
+  text-align: left;
+  background: rgba(245, 248, 252, 0.82);
+  border: 1px solid rgba(198, 211, 231, 0.64);
+  border-radius: 14px;
+}
+
+.style-reference-thumb:hover,
+.style-reference-thumb.is-active {
+  background: #ffffff;
+  border-color: rgba(31, 94, 255, 0.38);
+  box-shadow: 0 10px 24px rgba(58, 79, 115, 0.08);
+}
+
+.style-reference-thumb img {
+  width: 64px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #ffffff;
+  border: 1px solid rgba(198, 211, 231, 0.64);
+  border-radius: 10px;
+}
+
+.style-reference-thumb span {
+  display: grid;
+  min-width: 0;
+}
+
+.style-reference-thumb strong,
+.style-reference-thumb small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-reference-thumb strong {
+  font-size: 12px;
+}
+
+.style-reference-thumb small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .settings-modal {
   position: fixed;
   inset: 0;
@@ -2508,7 +2698,8 @@ a {
     padding: 10px;
   }
 
-  .settings-modal__shell {
+  .settings-modal__shell,
+  .style-reference-modal__shell {
     max-height: calc(100vh - 20px);
   }
 
@@ -2521,11 +2712,13 @@ a {
   }
 
   .chat-composer,
-  .markup-panel__body {
+  .markup-panel__body,
+  .style-reference-modal__body {
     grid-template-columns: 1fr;
   }
 
-  .markup-panel {
+  .markup-panel,
+  .style-reference-modal {
     padding: 10px;
   }
 

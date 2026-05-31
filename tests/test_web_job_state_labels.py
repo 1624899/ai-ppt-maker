@@ -101,6 +101,35 @@ class WebJobStateLabelTests(unittest.TestCase):
 
         self.assertEqual(result["preview_image"], "/runs/demo/page_01_elements.png")
 
+    def test_job_summary_exposes_style_reference_images(self) -> None:
+        record = {
+            "job_id": "demo",
+            "title": "演示任务",
+            "status": "completed",
+            "current_stage": "ppt_export",
+            "page_count": 1,
+            "image_preset": "wide",
+            "image_quality": "medium",
+            "style_notes": "",
+            "created_at": "2026-05-30 10:00:00",
+            "updated_at": "2026-05-30 10:01:00",
+            "state": {
+                "job_meta": {
+                    "style_reference_images": [
+                        {"name": "style-a.png", "url": "/runs/demo/style_refs/style-a.png", "size": 12},
+                        {"name": "missing-url.png", "url": "", "size": 8},
+                    ],
+                },
+            },
+        }
+
+        result = job_summary(record)
+
+        self.assertEqual(
+            result["style_reference_images"],
+            [{"name": "style-a.png", "url": "/runs/demo/style_refs/style-a.png", "size": 12}],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

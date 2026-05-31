@@ -306,6 +306,53 @@ def _find_preview_image(state: dict[str, Any]) -> str:
     return ""
 
 
+def _normalize_style_reference_images(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url", "")).strip()
+        if not url:
+            continue
+        normalized.append(
+            {
+                "name": str(item.get("name", "")).strip(),
+                "url": url,
+                "size": _normalize_file_size(item.get("size")),
+            }
+        )
+    return normalized
+
+
+def _normalize_file_size(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _find_style_reference_images(record: dict[str, Any], state: dict[str, Any]) -> list[dict[str, Any]]:
+    job_meta = state.get("job_meta", {})
+    if isinstance(job_meta, dict):
+        from_state = _normalize_style_reference_images(job_meta.get("style_reference_images"))
+        if from_state:
+            return from_state
+
+    request_payload = record.get("request", {})
+    if isinstance(request_payload, dict):
+        from_request = _normalize_style_reference_images(request_payload.get("style_reference_images"))
+        if from_request:
+            return from_request
+
+    job_dir = str(record.get("job_dir") or "").strip()
+    job_id = str(record.get("job_id") or "").strip()
+    if not job_dir or not job_id:
+        return []
+    return _normalize_style_reference_images(_runtime().list_style_reference_images(job_id, Path(job_dir)))
+
+
 def job_summary(record: dict[str, Any]) -> dict[str, Any]:
     state = record.get("state", {})
     return {
@@ -322,6 +369,7 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
         "pinned_at": str(record.get("pinned_at") or ""),
         "stop_requested": record.get("stop_requested", False),
         "preview_image": _find_preview_image(state),
+        "style_reference_images": _find_style_reference_images(record, state),
     }
 
 

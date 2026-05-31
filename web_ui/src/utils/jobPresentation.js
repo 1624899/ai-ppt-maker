@@ -37,6 +37,23 @@ export function getJobMeta(job) {
   return job?.job_meta || {};
 }
 
+function normalizeImageItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item) => item && typeof item === 'object' && String(item.url || '').trim())
+    .map((item) => ({
+      ...item,
+      name: String(item.name || '').trim(),
+      url: String(item.url || '').trim(),
+    }));
+}
+
+export function getStyleReferenceImages(job) {
+  const fromSummary = normalizeImageItems(job?.style_reference_images);
+  if (fromSummary.length > 0) return fromSummary;
+  return normalizeImageItems(getJobMeta(job).style_reference_images);
+}
+
 function normalizePageNo(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;

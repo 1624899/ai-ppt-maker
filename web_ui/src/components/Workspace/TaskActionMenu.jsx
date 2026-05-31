@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 8;
-const FALLBACK_MENU_WIDTH = 156;
-const FALLBACK_MENU_HEIGHT = 150;
+const FALLBACK_MENU_WIDTH = 184;
+const FALLBACK_MENU_HEIGHT = 198;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
