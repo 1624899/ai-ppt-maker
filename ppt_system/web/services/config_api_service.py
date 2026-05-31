@@ -37,6 +37,7 @@ def api_config():
                 {"value": value, "label": REFERENCE_STYLE_ADHERENCE_LABELS[value]}
                 for value in REFERENCE_STYLE_ADHERENCE_LEVELS
             ],
+            "job_db_maintenance": runtime.resolve_job_db_maintenance_config(config),
             "active_chat_config_id": config.get("active_chat_config_id", ""),
             "active_image_config_id": config.get("active_image_config_id", ""),
         }

@@ -48,6 +48,12 @@ from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from ppt_system.jobs.job_store import list_jobs as list_job_records
 from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.jobs.db_lifecycle import collect_db_stats as collect_job_db_stats
+from ppt_system.jobs.db_lifecycle import delete_jobs_by_ids as delete_job_db_records
+from ppt_system.jobs.db_lifecycle import list_cleanup_candidates as list_job_db_cleanup_candidates
+from ppt_system.jobs.db_lifecycle import vacuum_db as vacuum_job_db
+from ppt_system.jobs.db_maintenance_scheduler import JobDbMaintenanceScheduler
+from ppt_system.jobs.db_maintenance_scheduler import resolve_job_db_maintenance_config
 from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
 from ppt_system.jobs.job_targets import (
     JOB_TARGET_EDITABLE_PPT,
@@ -116,6 +122,7 @@ from ppt_system.web.services.job_state_runtime import (
     write_error,
 )
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
+from ppt_system.web.services.job_db_maintenance_service import execute_job_db_maintenance
 
 
 sys.modules.setdefault("main", sys.modules[__name__])
@@ -128,6 +135,14 @@ init_job_db(JOBS_DB_PATH)
 JOB_EXECUTOR = ThreadPoolExecutor(max_workers=2)
 JOB_STATUS_LOCK = threading.Lock()
 JOB_STATUS_CACHE: dict[str, dict[str, Any]] = {}
+JOB_DB_MAINTENANCE_SCHEDULER = JobDbMaintenanceScheduler(
+    db_path=JOBS_DB_PATH,
+    config_loader=read_config,
+    maintenance_runner=execute_job_db_maintenance,
+    stats_collector=collect_job_db_stats,
+    running_jobs_counter=lambda: sum(1 for job in list_job_records(JOBS_DB_PATH, limit=None) if str(job.get("status") or "").strip() in {"queued", "running", "stopping"}),
+)
+JOB_DB_MAINTENANCE_SCHEDULER.start()
 
 
 class JobInterruptedError(RuntimeError):

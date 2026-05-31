@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint
 
 from ppt_system.web.services import job_agent_draft_service
+from ppt_system.web.services import job_db_maintenance_service
 from ppt_system.web.services import job_image_edit_service
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services import jobs_api_service
@@ -28,6 +29,16 @@ def api_job_stream(job_id: str):
 @bp.get("/api/jobs")
 def api_job_history():
     return jobs_api_service.api_job_history()
+
+
+@bp.get("/api/jobs/db")
+def api_job_db_stats():
+    return job_db_maintenance_service.api_job_db_stats()
+
+
+@bp.post("/api/jobs/db/maintenance")
+def api_job_db_maintenance():
+    return job_db_maintenance_service.api_job_db_maintenance()
 
 
 @bp.delete("/api/jobs/<job_id>")
