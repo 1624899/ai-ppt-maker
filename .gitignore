@@ -4,3 +4,15 @@ output/
 *node_modules
 .codegraph
 .playwright-cli
+
+# 测试脚本相关的 Node 配置不纳入版本控制
+/package.json
+/package-lock.json
+/ppt_system/package.json
+
+# 临时规划文档不纳入版本控制
+/docs/guided-planning-workflow-plan.md
+/docs/frontend-editor-plan.md
+
+# 临时审计脚本不纳入版本控制
+/ppt_system/scripts/ui_playwright_audit.js

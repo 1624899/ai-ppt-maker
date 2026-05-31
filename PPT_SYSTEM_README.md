@@ -89,11 +89,3 @@ Set-Location ..
 - 最终分层 `.pptx`
 
 任务状态还会保存 `operations`、`page_versions`、`agent_conversation`、`agent_pending_draft` 和 `image_edit_candidates` 等增量协作信息。
-
-## 设计原则
-
-- 只有一条导出主路径，不再保留 legacy/builtin 文字回退。
-- 文本框始终使用 `MSO_AUTO_SIZE.NONE`，避免 PowerPoint 自动缩放破坏字号。
-- 元素图会经过增强、透明化与分割，再作为图片资源与文字框一起叠加进 PPT。
-- 真实闭环优先依赖 PowerPoint COM 真导出图，不再使用 PIL 预览校正链。
-- Agent 对话先沉淀为结构化草案或候选图，用户确认后才应用到任务状态或替换页面图片。
