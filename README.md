@@ -33,6 +33,11 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输�
   <img src="docs/readme-assets/system-interface.png" alt="AI PPT Maker 系统界面" width="100%">
 </p>
 
+## 📎 效果演示
+
+- [图片 PPT 演示](图片ppt演示.pptx)：展示系统生成的图片版 PPT 效果。
+- [可编辑效果演示（手动调整）](可编辑效果演示（手动调整）.pptx)：展示导出后可继续编辑和人工微调的分层 PPTX 效果。
+
 ## 🚀 核心特性
 
 ### 🧠 智能内容规划
