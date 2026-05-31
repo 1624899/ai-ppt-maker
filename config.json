@@ -1,0 +1,123 @@
+{
+  "max_pages": 10,
+  "default_pages": 4,
+  "default_include_cover_page": true,
+  "default_image_preset": "landscape_2k",
+  "image_presets": {
+    "square_1k": {
+      "label": "1024x1024 · 1:1 正方形",
+      "width": 1024,
+      "height": 1024,
+      "size": "1024x1024",
+      "resolution": ""
+    },
+    "landscape_1k": {
+      "label": "1536x1024 · 3:2 横图",
+      "width": 1536,
+      "height": 1024,
+      "size": "1536x1024",
+      "resolution": ""
+    },
+    "portrait_1k": {
+      "label": "1024x1536 · 2:3 竖图",
+      "width": 1024,
+      "height": 1536,
+      "size": "1024x1536",
+      "resolution": ""
+    },
+    "square_2k": {
+      "label": "2048x2048 · 1:1 2K 正方形",
+      "width": 2048,
+      "height": 2048,
+      "size": "2048x2048",
+      "resolution": ""
+    },
+    "landscape_2k": {
+      "label": "2048x1152 · 16:9 2K 横图",
+      "width": 2048,
+      "height": 1152,
+      "size": "2048x1152",
+      "resolution": ""
+    },
+    "landscape_4k": {
+      "label": "3840x2160 · 16:9 4K 横图",
+      "width": 3840,
+      "height": 2160,
+      "size": "3840x2160",
+      "resolution": ""
+    },
+    "portrait_4k": {
+      "label": "2160x3840 · 9:16 4K 竖图",
+      "width": 2160,
+      "height": 3840,
+      "size": "2160x3840",
+      "resolution": ""
+    }
+  },
+  "image_width": 2048,
+  "image_height": 1152,
+  "generation_mode": "openai",
+  "api_base_url": "https://api.openai.com/v1",
+  "chat_api_base_url": "https://api.openai.com/v1",
+  "chat_model": "gpt-4.1",
+  "chat_temperature": 0.3,
+  "chat_max_tokens": 5000,
+  "image_model": "gpt-image-1",
+  "image_size": "2048x1152",
+  "image_resolution": "",
+  "image_quality": "medium",
+  "image_background": "opaque",
+  "image_output_format": "png",
+  "image_response_format": "url",
+  "image_moderation": "low",
+  "image_n": 1,
+  "use_style_refs_for_first_stage": true,
+  "request_timeout_seconds": 600,
+  "request_retry_count": 4,
+  "request_retry_initial_delay_seconds": 6,
+  "stage1_concurrency": 5,
+  "stage2_concurrency": 5,
+  "output_dir": "output",
+  "job_db_maintenance_enabled": false,
+  "job_db_maintenance_interval_seconds": 3600,
+  "job_db_maintenance_keep_latest": 20,
+  "job_db_maintenance_include_pinned": false,
+  "job_db_maintenance_vacuum": true,
+  "job_db_maintenance_min_reclaimable_bytes": 8388608,
+  "active_chat_config_id": "chat_openai_compatible",
+  "active_image_config_id": "image_openai_compatible",
+  "enable_design_grammar": true,
+  "min_distinct_layout_families": 3,
+  "max_adjacent_layout_repeat": 1,
+  "stage1_reference_strategy": "hybrid",
+  "enable_page_evaluation": true,
+  "page_evaluation_retry_count": 1,
+  "prompt_compression_mode": "compressed",
+  "prompt_max_chars": 1800,
+  "model_configs": {
+    "chat": [
+      {
+        "name": "OpenAI 兼容对话模型",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "__ENV__",
+        "model": "gpt-4.1",
+        "enabled": true,
+        "temperature": 0.3,
+        "max_tokens": 5000,
+        "reasoning_effort": "",
+        "id": "chat_openai_compatible"
+      }
+    ],
+    "image": [
+      {
+        "name": "OpenAI 兼容图像模型",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "__ENV__",
+        "model": "gpt-image-1",
+        "enabled": true,
+        "output_format": "png",
+        "id": "image_openai_compatible"
+      }
+    ]
+  }
+}
