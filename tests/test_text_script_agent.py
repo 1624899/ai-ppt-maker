@@ -14,6 +14,7 @@ from pptx.enum.text import MSO_AUTO_SIZE
 
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
+from ppt_system.export.export_step_checkpoint import STEP_CHECKPOINT_DIR_NAME
 from ppt_system.export.direct_page_script import (
     build_direct_page_refine_prompt,
     build_direct_page_prompt,
@@ -28,6 +29,11 @@ class FakeChatProvider:
     def __init__(self, responses: list[dict[str, Any]]) -> None:
         self.responses = list(responses)
         self.calls: list[list[dict[str, Any]]] = []
+        self.api_base_url = "https://example.com/v1"
+        self.model = "fake-chat"
+        self.temperature = 0.3
+        self.max_tokens = 5000
+        self.reasoning_effort = ""
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
         return {"type": "image_url", "image_url": {"url": str(image_path)}}
@@ -691,11 +697,7 @@ def build_deck():
                     {"page_script": 'add_text(slide, "第二页临时稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
                 ]
             )
-            second_run_provider = FakeChatProvider(
-                [
-                    {"page_script": 'add_text(slide, "第二页成稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
-                ]
-            )
+            second_run_provider = FakeChatProvider([])
 
             original_execute = execute_generated_text_script
             failing_state = {"triggered": False}
@@ -728,6 +730,7 @@ def build_deck():
             checkpoint_path = work_dir / "page_01" / CHECKPOINT_FILE_NAME
             self.assertTrue(checkpoint_path.exists())
             self.assertFalse((work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists())
+            self.assertTrue(list((work_dir / "page_02" / STEP_CHECKPOINT_DIR_NAME).glob("initial_script.*.json")))
             self.assertEqual(len(first_run_provider.calls), 2)
 
             with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
@@ -739,8 +742,8 @@ def build_deck():
                 )
 
             self.assertTrue(output_pptx.exists())
-            self.assertEqual(len(second_run_provider.calls), 1)
-            self.assertIn("第二页成稿", Path(result["text_script_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(len(second_run_provider.calls), 0)
+            self.assertIn("第二页临时稿", Path(result["text_script_path"]).read_text(encoding="utf-8"))
             self.assertIn("第一页成稿", Path(result["text_script_path"]).read_text(encoding="utf-8"))
             self.assertTrue((work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists())
 

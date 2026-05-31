@@ -11,7 +11,11 @@ import requests
 
 from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.chat_response_parser import AmbiguousChatResponseError, extract_chat_completion_text
-from ppt_system.integrations.http_retry_policy import is_retryable_status_code
+from ppt_system.integrations.http_retry_policy import (
+    build_transport_error_message,
+    is_retryable_status_code,
+    transport_retry_budget,
+)
 from ppt_system.runtime.logging_utils import format_log_line
 
 
@@ -30,7 +34,13 @@ class OpenAIChatProvider:
         self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
         self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
         self.timeout = int(config.get("request_timeout_seconds", 600))
-        self.retry_count = int(config.get("request_retry_count", 3))
+        self.retry_count = int(config.get("chat_retry_count", config.get("request_retry_count", 3)))
+        self.transport_retry_count = int(
+            config.get("chat_transport_retry_count", config.get("request_transport_retry_count", 1))
+        )
+        self.ambiguous_transport_retry_count = int(
+            config.get("chat_ambiguous_transport_retry_count", config.get("request_ambiguous_retry_count", 0))
+        )
         self.ambiguous_retry_count = int(config.get("chat_ambiguous_retry_count", 1))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
 
@@ -83,12 +93,16 @@ class OpenAIChatProvider:
 
     def _post_with_retry(self, payload: dict[str, Any]) -> requests.Response:
         last_response: requests.Response | None = None
-        for attempt in range(self.retry_count + 1):
-            attempt_no = attempt + 1
+        response_attempt = 0
+        transport_attempt = 0
+        request_attempt = 0
+        max_attempts_label = self._build_max_attempts_label()
+        while True:
+            request_attempt += 1
             print(
                 format_log_line(
                     "chat",
-                    f"发送第 {attempt_no}/{self.retry_count + 1} 次请求 -> {self.chat_completions_url}",
+                    f"发送第 {request_attempt}/{max_attempts_label} 次请求 -> {self.chat_completions_url}",
                 ),
                 flush=True,
             )
@@ -103,33 +117,24 @@ class OpenAIChatProvider:
                     json=payload,
                     timeout=self.timeout,
                 )
-            except requests.Timeout as exc:
-                elapsed = time.perf_counter() - request_started_at
-                print(
-                    format_log_line(
-                        "chat",
-                        f"第 {attempt_no} 次请求超时，耗时={elapsed:.1f}s，timeout={self.timeout}s",
-                    ),
-                    flush=True,
-                )
-                if attempt >= self.retry_count:
-                    raise RuntimeError(f"对话模型请求超时：{self.timeout}s") from exc
-                delay = self.retry_initial_delay * (2**attempt)
-                print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
-                time.sleep(delay)
-                continue
             except requests.RequestException as exc:
                 elapsed = time.perf_counter() - request_started_at
                 print(
                     format_log_line(
                         "chat",
-                        f"第 {attempt_no} 次请求异常：{exc.__class__.__name__}，耗时={elapsed:.1f}s",
+                        f"第 {request_attempt} 次请求异常：{exc.__class__.__name__}，耗时={elapsed:.1f}s",
                     ),
                     flush=True,
                 )
-                if attempt >= self.retry_count:
-                    raise RuntimeError(f"对话模型请求异常：{exc}") from exc
-                delay = self.retry_initial_delay * (2**attempt)
+                retry_budget = transport_retry_budget(
+                    exc,
+                    transport_retry_count=self.transport_retry_count,
+                    ambiguous_transport_retry_count=self.ambiguous_transport_retry_count,
+                )
+                if transport_attempt >= retry_budget:
+                    raise RuntimeError(build_transport_error_message(exc, api_name="对话模型")) from exc
+                delay = self.retry_initial_delay * (2**transport_attempt)
+                transport_attempt += 1
                 print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
                 time.sleep(delay)
                 continue
@@ -138,15 +143,16 @@ class OpenAIChatProvider:
             print(
                 format_log_line(
                     "chat",
-                    f"第 {attempt_no} 次请求返回 HTTP {response.status_code}，耗时={elapsed:.1f}s",
+                    f"第 {request_attempt} 次请求返回 HTTP {response.status_code}，耗时={elapsed:.1f}s",
                 ),
                 flush=True,
             )
-            if not should_retry(response) or attempt >= self.retry_count:
+            if not should_retry(response) or response_attempt >= self.retry_count:
                 return response
 
             retry_after = response.headers.get("Retry-After", "").strip()
-            delay = float(retry_after) if retry_after.isdigit() else self.retry_initial_delay * (2**attempt)
+            delay = float(retry_after) if retry_after.isdigit() else self.retry_initial_delay * (2**response_attempt)
+            response_attempt += 1
             print(
                 format_log_line(
                     "chat",
@@ -156,6 +162,14 @@ class OpenAIChatProvider:
             )
             time.sleep(delay)
         return last_response
+
+    def _build_max_attempts_label(self) -> str:
+        response_attempts = max(0, int(self.retry_count)) + 1
+        transport_attempts = max(
+            max(0, int(self.transport_retry_count)),
+            max(0, int(self.ambiguous_transport_retry_count)),
+        )
+        return str(response_attempts + transport_attempts)
 
     def _extract_json_content_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> str:
         attempt = 0

@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -23,9 +22,17 @@ from ppt_system.export.export_page_resume import (
     load_export_page_checkpoint,
     save_export_page_checkpoint,
 )
+from ppt_system.export.export_step_checkpoint import (
+    build_export_step_signature,
+    build_file_content_signature,
+    load_export_step_checkpoint,
+    save_export_step_checkpoint,
+    stable_hash_payload,
+)
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
+from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
 from ppt_system.image.text_placeholder_detection import load_text_placeholders, placeholder_bboxes, save_text_placeholders
 
@@ -149,6 +156,189 @@ def _build_text_asset_overlap_summary(overlap_report: Any) -> dict[str, Any]:
         "max_overlap_pixels": int(overlap_report.max_overlap_pixels),
         "overlapping_box_indices": list(overlap_report.overlapping_box_indices),
     }
+
+
+def _build_initial_script_step_inputs(
+    *,
+    reference_image: Path,
+    visual_image: Path,
+    image_width: int,
+    image_height: int,
+    text_placeholders: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "reference_image": build_file_content_signature(reference_image),
+        "visual_image": build_file_content_signature(visual_image),
+        "image_width": int(image_width),
+        "image_height": int(image_height),
+        "text_placeholders": text_placeholders if isinstance(text_placeholders, dict) else {},
+    }
+
+
+def _load_cached_initial_page_script(
+    *,
+    page_dir: Path,
+    step_signature: dict[str, Any],
+) -> str | None:
+    checkpoint = load_export_step_checkpoint(page_dir, step_name="initial_script", expected_signature=step_signature)
+    if checkpoint is None:
+        return None
+    try:
+        return normalize_page_script(str(checkpoint.payload.get("page_script", "")))
+    except RuntimeError:
+        return None
+
+
+def _generate_initial_page_script_with_checkpoint(
+    *,
+    provider: OpenAIChatProvider,
+    page_dir: Path,
+    page_signature: dict[str, Any],
+    reference_image: Path,
+    visual_image: Path,
+    image_width: int,
+    image_height: int,
+    text_placeholders: dict[str, Any] | None,
+    page_logger: PageLogger | None,
+    page_no: int,
+) -> str:
+    step_inputs = _build_initial_script_step_inputs(
+        reference_image=reference_image,
+        visual_image=visual_image,
+        image_width=image_width,
+        image_height=image_height,
+        text_placeholders=text_placeholders,
+    )
+    step_signature = build_export_step_signature(
+        step_name="initial_script",
+        operation="direct_page_initial_script",
+        page_signature=page_signature,
+        provider=provider,
+        inputs=step_inputs,
+    )
+    cached_script = _load_cached_initial_page_script(page_dir=page_dir, step_signature=step_signature)
+    if cached_script is not None:
+        _log_page(page_logger, page_no, "命中首轮文字脚本子步骤缓存")
+        return cached_script
+
+    current_script = _generate_page_script_from_images(
+        provider,
+        reference_image=reference_image,
+        elements_image=visual_image,
+        image_width=image_width,
+        image_height=image_height,
+        text_placeholders=text_placeholders,
+    )
+    save_export_step_checkpoint(
+        page_dir,
+        step_name="initial_script",
+        signature=step_signature,
+        payload={"page_script": current_script},
+    )
+    return current_script
+
+
+def _build_refine_script_step_inputs(
+    *,
+    reference_image: Path,
+    rendered_preview: Path,
+    image_width: int,
+    image_height: int,
+    page_script: str,
+    asset_adjustments: dict[str, Any],
+    round_index: int,
+) -> dict[str, Any]:
+    return {
+        "reference_image": build_file_content_signature(reference_image),
+        "rendered_preview": build_file_content_signature(rendered_preview),
+        "image_width": int(image_width),
+        "image_height": int(image_height),
+        "page_script_hash": _stable_script_hash(page_script),
+        "asset_adjustments": normalize_asset_adjustments(asset_adjustments),
+        "round_index": int(round_index),
+    }
+
+
+def _load_cached_refine_page_script(
+    *,
+    page_dir: Path,
+    step_name: str,
+    step_signature: dict[str, Any],
+    fallback_asset_adjustments: dict[str, Any],
+) -> tuple[str, dict[str, Any]] | None:
+    checkpoint = load_export_step_checkpoint(page_dir, step_name=step_name, expected_signature=step_signature)
+    if checkpoint is None:
+        return None
+    try:
+        page_script = normalize_page_script(str(checkpoint.payload.get("page_script", "")))
+    except RuntimeError:
+        return None
+    raw_adjustments = checkpoint.payload.get("asset_adjustments", fallback_asset_adjustments)
+    return page_script, normalize_asset_adjustments(raw_adjustments)
+
+
+def _revise_page_script_with_checkpoint(
+    *,
+    provider: OpenAIChatProvider,
+    page_dir: Path,
+    page_signature: dict[str, Any],
+    reference_image: Path,
+    rendered_preview: Path,
+    image_width: int,
+    image_height: int,
+    page_script: str,
+    asset_adjustments: dict[str, Any],
+    round_index: int,
+    page_logger: PageLogger | None,
+    page_no: int,
+) -> tuple[str, dict[str, Any]]:
+    step_name = f"refine_round_{int(round_index) + 1:02d}"
+    step_inputs = _build_refine_script_step_inputs(
+        reference_image=reference_image,
+        rendered_preview=rendered_preview,
+        image_width=image_width,
+        image_height=image_height,
+        page_script=page_script,
+        asset_adjustments=asset_adjustments,
+        round_index=round_index,
+    )
+    step_signature = build_export_step_signature(
+        step_name=step_name,
+        operation="direct_page_refine_script",
+        page_signature=page_signature,
+        provider=provider,
+        inputs=step_inputs,
+    )
+    cached = _load_cached_refine_page_script(
+        page_dir=page_dir,
+        step_name=step_name,
+        step_signature=step_signature,
+        fallback_asset_adjustments=asset_adjustments,
+    )
+    if cached is not None:
+        _log_page(page_logger, page_no, f"命中第 {int(round_index) + 1} 轮回看修正子步骤缓存")
+        return cached
+
+    refine_result = _revise_page_script_with_rendered_preview(
+        provider,
+        reference_image=reference_image,
+        rendered_preview=rendered_preview,
+        image_width=image_width,
+        image_height=image_height,
+        page_script=page_script,
+        asset_adjustments=asset_adjustments,
+        round_index=round_index,
+    )
+    payload = {
+        "page_script": refine_result.page_script,
+        "asset_adjustments": refine_result.asset_adjustments,
+    }
+    save_export_step_checkpoint(page_dir, step_name=step_name, signature=step_signature, payload=payload)
+    return refine_result.page_script, refine_result.asset_adjustments
+
+
+def _stable_script_hash(page_script: str) -> str:
+    return stable_hash_payload(str(page_script))
 
 
 def prepare_direct_project_assets(
@@ -308,13 +498,17 @@ def _generate_direct_project_page_script(
     preview_project["asset_adjustments"] = {str(page_no): dict(current_asset_adjustments)}
     _log_page(page_logger, page_no, "开始直出首轮文字脚本")
     request_started_at = time.perf_counter()
-    current_script = _generate_page_script_from_images(
-        provider,
+    current_script = _generate_initial_page_script_with_checkpoint(
+        provider=provider,
+        page_dir=page_dir,
+        page_signature=page_signature,
         reference_image=reference_image,
-        elements_image=visual_image,
+        visual_image=visual_image,
         image_width=image_width,
         image_height=image_height,
         text_placeholders=text_placeholders,
+        page_logger=page_logger,
+        page_no=page_no,
     )
     _ensure_not_stopped(stop_checker)
     _log_page(page_logger, page_no, f"首轮文字脚本生成完成，耗时 {time.perf_counter() - request_started_at:.1f}s")
@@ -372,8 +566,10 @@ def _generate_direct_project_page_script(
         page_result["comparison_paths"].append(str(comparison_path))
         _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
         refine_started_at = time.perf_counter()
-        refine_result = _revise_page_script_with_rendered_preview(
-            provider,
+        candidate_script, candidate_adjustments = _revise_page_script_with_checkpoint(
+            provider=provider,
+            page_dir=page_dir,
+            page_signature=page_signature,
             reference_image=reference_image,
             rendered_preview=rendered_preview,
             image_width=image_width,
@@ -381,11 +577,11 @@ def _generate_direct_project_page_script(
             page_script=current_script,
             asset_adjustments=current_asset_adjustments,
             round_index=round_index,
+            page_logger=page_logger,
+            page_no=page_no,
         )
         _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
-        candidate_script = refine_result.page_script
-        candidate_adjustments = refine_result.asset_adjustments
         if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:
             _log_page(page_logger, page_no, "修正轮未返回更优脚本，保留当前结果")
             break

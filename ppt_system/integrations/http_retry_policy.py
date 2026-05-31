@@ -71,10 +71,10 @@ def is_ambiguous_transport_error(exc: BaseException) -> bool:
     return any(marker in message for marker in markers)
 
 
-def build_transport_error_message(exc: BaseException) -> str:
+def build_transport_error_message(exc: BaseException, *, api_name: str = "图像接口") -> str:
     if is_ambiguous_transport_error(exc):
-        return f"图像接口请求异常：{exc}。该异常可能发生在服务端已接收请求之后；为避免重复扣费，系统已停止自动重试，可直接点击“继续”从当前进度恢复。"
-    return f"图像接口请求异常：{exc}"
+        return f"{api_name}请求异常：{exc}。该异常可能发生在服务端已接收请求之后；为避免重复扣费，系统已停止自动重试，可直接点击“继续”从当前进度恢复。"
+    return f"{api_name}请求异常：{exc}"
 
 
 def iter_exception_chain(exc: BaseException):
