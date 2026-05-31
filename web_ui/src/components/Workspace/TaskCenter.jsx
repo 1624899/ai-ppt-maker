@@ -275,7 +275,7 @@ const TaskCenter = ({
       <div className="workspace-panel__header">
         <span className="eyebrow">任务中心</span>
         <h2>围绕一份 PPT 持续协作</h2>
-        <p>历史任务、项目素材和模板入口都放在这里，主舞台留给创作。</p>
+        <p>历史任务、项目素材和模板入口都放在这里</p>
       </div>
 
       <div className="task-center__body">

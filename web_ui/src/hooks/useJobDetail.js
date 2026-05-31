@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 
 export const useJobDetail = (jobId) => {
   const [job, setJob] = useState(null);
-  const [error, setError] = useState(null);
+  const [errorState, setErrorState] = useState(null);
+  const visibleJob = jobId && job?.job_id === jobId ? job : null;
+  const visibleError = errorState?.jobId === jobId ? errorState.error : null;
 
   useEffect(() => {
     if (!jobId) {
@@ -19,11 +21,11 @@ export const useJobDetail = (jobId) => {
       .then((data) => {
         if (!cancelled) {
           setJob(data);
-          setError(null);
+          setErrorState(null);
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err);
+        if (!cancelled) setErrorState({ jobId, error: err });
       });
 
     const source = new EventSource(`/api/jobs/${jobId}/stream`);
@@ -32,7 +34,7 @@ export const useJobDetail = (jobId) => {
         const data = JSON.parse(event.data);
         if (!cancelled) setJob(data);
       } catch (err) {
-        if (!cancelled) setError(err);
+        if (!cancelled) setErrorState({ jobId, error: err });
       }
     });
     source.addEventListener('error', () => {
@@ -45,6 +47,6 @@ export const useJobDetail = (jobId) => {
     };
   }, [jobId]);
 
-  const loading = Boolean(jobId && (!job || job.job_id !== jobId) && !error);
-  return { job, loading, error, setJob };
+  const loading = Boolean(jobId && !visibleJob && !visibleError);
+  return { job: visibleJob, loading, error: visibleError, setJob };
 };

@@ -74,7 +74,8 @@ const WorkspaceShell = () => {
   };
 
   const selectJob = (jobId) => {
-    setCurrentJob(null);
+    if (jobId === currentJobId) return;
+    setCurrentJob((current) => (current?.job_id === jobId ? current : null));
     setCurrentJobId(jobId);
     setSelectedPageIndex(0);
     setSelectedPreviewType('reference');
