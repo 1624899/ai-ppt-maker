@@ -21,9 +21,9 @@ import TaskSkeletonList from './TaskSkeletonList';
 import { formatTaskTime, getPageCount, getStatusLabel, getStyleReferenceImages } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
-  { key: 'materials', label: '素材库', description: '原稿图、无文字元素图', icon: FileImage },
-  { key: 'styles', label: '参考风格', description: '品牌色与风格图', icon: FolderKanban },
-  { key: 'templates', label: '历史模板', description: '复用版式和导出结构', icon: LayoutTemplate },
+  { key: 'materials', label: '素材库', description: '原稿图、无文字元素图', icon: FileImage, disabled: true },
+  { key: 'styles', label: '参考风格', description: '品牌色与风格图', icon: FolderKanban, disabled: true },
+  { key: 'templates', label: '历史模板', description: '复用版式和导出结构', icon: LayoutTemplate, disabled: true },
 ];
 
 const RUNNING_STATUSES = new Set(['queued', 'running', 'stopping']);
@@ -346,9 +346,9 @@ const TaskCenter = ({
             <span>素材与知识库</span>
           </div>
           <StaggerContainer className="resource-list" itemCount={RESOURCE_LINKS.length}>
-            {RESOURCE_LINKS.map(({ key, label, description, icon: Icon }) => (
+            {RESOURCE_LINKS.map(({ key, label, description, icon: Icon, disabled }) => (
               <StaggerItem key={key}>
-                <ScaleButton className="resource-link">
+                <ScaleButton className={clsx('resource-link', disabled && 'is-disabled')} disabled={disabled}>
                   <Icon size={17} />
                   <span>
                     <strong>{label}</strong>

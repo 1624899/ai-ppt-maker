@@ -760,8 +760,30 @@ a {
   border-color: rgba(15, 159, 143, 0.2);
 }
 
+.resource-link:disabled,
+.resource-link.is-disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  background: rgba(241, 245, 249, 0.64);
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+.resource-link:disabled:hover,
+.resource-link.is-disabled:hover {
+  transform: none;
+  background: rgba(241, 245, 249, 0.64);
+  border-color: transparent;
+}
+
 .resource-link svg {
   color: var(--teal);
+}
+
+.resource-link:disabled svg,
+.resource-link.is-disabled svg {
+  color: var(--text-muted);
 }
 
 .resource-link span {

@@ -11,6 +11,7 @@
     <a href="#-核心特性">核心特性</a> •
     <a href="#-架构总览">架构总览</a> •
     <a href="#-项目结构">项目结构</a> •
+    <a href="#-请我喝一杯咖啡">请我喝咖啡</a> •
     <a href="docs/architecture.md">架构文档</a> •
     <a href="docs/runbook.md">运行手册</a>
   </p>
@@ -23,6 +24,14 @@
 AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输入一段长文内容和可选的风格参考图，系统就能自动完成内容规划、版式设计、配图生成和可编辑 PPT 导出的全流程——无需手动排版，即可获得专业级的演示文稿。
 
 系统采用 **Flask 后端 + React/Vite 前端** 架构，内置完整的 Web 创作工作区，支持任务管理、实时进度追踪、Agent 辅助编辑和图片标注等交互功能。
+
+## 🖥️ 系统界面
+
+当前 Web 工作区将任务中心、Agent 对话和 PPT Studio 预览导出集中在同一界面，方便围绕一份 PPT 持续协作。
+
+<p align="center">
+  <img src="docs/readme-assets/system-interface.png" alt="AI PPT Maker 系统界面" width="100%">
+</p>
 
 ## 🚀 核心特性
 
@@ -313,6 +322,24 @@ npm run build
 3. 提交更改：`git commit -m 'Add amazing feature'`
 4. 推送分支：`git push origin feature/amazing-feature`
 5. 发起 Pull Request
+
+## ☕ 请我喝一杯咖啡
+
+如果这个项目对你有帮助，欢迎请我喝一杯咖啡。你的支持会用于持续维护项目、完善文档和补充更多实用示例。
+
+我会认真感谢每一位支持我的朋友，也感谢每一次反馈、建议和使用。
+
+<p align="center">
+  <img src="docs/readme-assets/wx-qrcode.jpg" alt="微信赞赏码" width="220">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/readme-assets/zfb-qrcode.jpg" alt="支付宝收款码" width="220">
+</p>
+
+<p align="center">
+  <strong>微信</strong>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <strong>支付宝</strong>
+</p>
 
 ## 📄 许可证
 
