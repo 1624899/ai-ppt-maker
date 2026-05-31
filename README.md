@@ -116,7 +116,7 @@ flowchart TD
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/your-username/ai-ppt-maker.git
+git clone https://github.com/1624899/ai-ppt-maker.git
 cd ai-ppt-maker
 ```
 
@@ -143,11 +143,13 @@ cd ..
 
 ```env
 # 对话模型 API Key（用于内容规划和文字脚本生成）
-CHAT_API_KEY_<config_id>=sk-xxx
+PPT_SYSTEM_CHAT_<CONFIG_ID>_API_KEY=sk-xxx
 
 # 图像模型 API Key（用于原稿图和元素图生成）
-IMAGE_API_KEY_<config_id>=sk-xxx
+PPT_SYSTEM_IMAGE_<CONFIG_ID>_API_KEY=sk-xxx
 ```
+
+默认配置对应的变量名可参考 [.env.example](.env.example)。
 
 ### 5. 启动服务
 

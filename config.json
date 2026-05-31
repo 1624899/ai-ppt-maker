@@ -57,12 +57,12 @@
   "image_width": 2048,
   "image_height": 1152,
   "generation_mode": "openai",
-  "api_base_url": "https://anyaigc.com/v1",
-  "chat_api_base_url": "https://anyaigc.com/v1",
-  "chat_model": "gpt-5.5",
+  "api_base_url": "https://api.openai.com/v1",
+  "chat_api_base_url": "https://api.openai.com/v1",
+  "chat_model": "gpt-4.1",
   "chat_temperature": 0.3,
   "chat_max_tokens": 5000,
-  "image_model": "gpt-image-2",
+  "image_model": "gpt-image-1",
   "image_size": "2048x1152",
   "image_resolution": "",
   "image_quality": "medium",
@@ -84,8 +84,8 @@
   "job_db_maintenance_include_pinned": false,
   "job_db_maintenance_vacuum": true,
   "job_db_maintenance_min_reclaimable_bytes": 8388608,
-  "active_chat_config_id": "chat_ab40f06a",
-  "active_image_config_id": "image_11ac17b8",
+  "active_chat_config_id": "chat_openai_compatible",
+  "active_image_config_id": "image_openai_compatible",
   "enable_design_grammar": true,
   "min_distinct_layout_families": 3,
   "max_adjacent_layout_repeat": 1,
@@ -97,46 +97,26 @@
   "model_configs": {
     "chat": [
       {
-        "name": "GPT-5.5 内容规划",
-        "base_url": "https://anyaigc.com/v1",
+        "name": "OpenAI 兼容对话模型",
+        "base_url": "https://api.openai.com/v1",
         "api_key": "__ENV__",
-        "model": "gpt-5.5",
+        "model": "gpt-4.1",
         "enabled": true,
         "temperature": 0.3,
         "max_tokens": 5000,
         "reasoning_effort": "",
-        "id": "chat_gpt_55"
-      },
-      {
-        "name": "次元",
-        "base_url": "https://token.memoh.net/v1",
-        "api_key": "__ENV__",
-        "model": "gpt-5.5",
-        "enabled": true,
-        "temperature": 0.3,
-        "max_tokens": 5120,
-        "reasoning_effort": "",
-        "id": "chat_ab40f06a"
+        "id": "chat_openai_compatible"
       }
     ],
     "image": [
       {
-        "name": "新的生图模型",
-        "base_url": "https://anyaigc.com/v1",
+        "name": "OpenAI 兼容图像模型",
+        "base_url": "https://api.openai.com/v1",
         "api_key": "__ENV__",
-        "model": "gpt-image-2",
+        "model": "gpt-image-1",
         "enabled": true,
         "output_format": "png",
-        "id": "image_11ac17b8"
-      },
-      {
-        "name": "新的生图模型",
-        "base_url": "https://tcdmx.com/v1",
-        "api_key": "__ENV__",
-        "model": "gpt-image-2-all",
-        "enabled": true,
-        "output_format": "png",
-        "id": "image_22e5a28b"
+        "id": "image_openai_compatible"
       }
     ]
   }
