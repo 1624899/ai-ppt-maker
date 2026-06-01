@@ -143,6 +143,7 @@ def _normalize_asset_options(asset_options: dict[str, Any]) -> dict[str, Any]:
         "merge_distance": int(asset_options.get("merge_distance", 0)),
         "skip_enhance": bool(asset_options.get("skip_enhance", False)),
         "skip_transparent": bool(asset_options.get("skip_transparent", False)),
+        "global_alignment_version": int(asset_options.get("global_alignment_version", 0)),
     }
 
 

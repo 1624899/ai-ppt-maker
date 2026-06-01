@@ -335,7 +335,11 @@ class JobApiPageRichnessTests(unittest.TestCase):
             ),
         )
 
-        with patch.object(main, "export_reference_images_to_pptx", return_value={"page_count": 2}):
+        def fake_reference_export(reference_pages, job_dir_value, output_pptx, *, image_width, image_height):
+            output_pptx.write_bytes(b"reference pptx")
+            return {"page_count": 2}
+
+        with patch.object(main, "export_reference_images_to_pptx", side_effect=fake_reference_export):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "reference_ppt"},
@@ -408,6 +412,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
         )
 
         def fake_export(bundle_path_value, output_pptx, *, layer_mode):
+            output_pptx.write_bytes(f"editable-{layer_mode}".encode("utf-8"))
             return {
                 "output_pptx": str(output_pptx),
                 "page_count": 4 if layer_mode == SEPARATE_LAYER_MODE else 2,
@@ -457,6 +462,71 @@ class JobApiPageRichnessTests(unittest.TestCase):
         by_layer_mode = record["state"]["result"]["deliveries"]["editable_ppt"]["by_layer_mode"]
         self.assertIn(SEPARATE_LAYER_MODE, by_layer_mode)
         self.assertIn(OVERLAY_LAYER_MODE, by_layer_mode)
+
+    def test_deliver_editable_ppt_reuses_fresh_existing_overlay_file(self) -> None:
+        job_id, job_dir = self._seed_completed_reference_job(job_target="editable_ppt")
+        bundle_dir = job_dir / "03_ppt_build"
+        work_dir = bundle_dir
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        bundle_path = bundle_dir / "editable_delivery.bundle.json"
+        output_pptx = job_dir / "result.editable.overlay.pptx"
+        bundle_path.write_text(
+            json.dumps(
+                {
+                    "project": {"pages": [{"page_no": 1}, {"page_no": 2}]},
+                    "work_dir": str(work_dir),
+                    "assets": {},
+                    "page_results": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        output_pptx.write_bytes(b"existing pptx")
+        bundle_mtime = bundle_path.stat().st_mtime
+        output_mtime = max(output_pptx.stat().st_mtime, bundle_mtime + 1)
+        import os
+
+        os.utime(output_pptx, (output_mtime, output_mtime))
+
+        mutate_job_state(
+            job_dir,
+            job_id,
+            lambda state: state.update(
+                {
+                    "status": "completed",
+                    "current_stage": "ppt_export",
+                    "result": {
+                        "editable_delivery_bundle": {
+                            "bundle_path": str(bundle_path),
+                            "logical_page_count": 2,
+                        }
+                    },
+                }
+            ),
+        )
+        update_job_record(
+            self.jobs_db_path,
+            job_id,
+            status="completed",
+            current_stage="ppt_export",
+            stop_requested=False,
+        )
+
+        with patch.object(main, "export_editable_delivery", side_effect=AssertionError("不应重新导出")):
+            response = self.client.post(
+                f"/api/jobs/{job_id}/deliver",
+                json={"delivery_key": "editable_ppt_overlay"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        actions_by_key = {item["key"]: item for item in payload["delivery_actions"]}
+        generated_file = actions_by_key["editable_ppt_overlay"]["generated_file"]
+        self.assertEqual(generated_file["pptx_path"], str(output_pptx))
+        self.assertEqual(generated_file["logical_page_count"], 2)
+        self.assertEqual(generated_file["page_count"], 2)
 
 
 if __name__ == "__main__":

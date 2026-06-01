@@ -9,6 +9,10 @@ from typing import Any
 from flask import Response, jsonify, request, send_from_directory, stream_with_context
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.export.editable_delivery_cache import (
+    load_cached_editable_delivery,
+    save_editable_delivery_cache,
+)
 from ppt_system.web.services.job_submission_runtime import (
     bind_submitted_job,
     build_active_config,
@@ -409,11 +413,23 @@ def api_deliver_job(job_id: str):
             if not bundle_path.exists():
                 return jsonify({"error": "可编辑元素尚未生成完成，暂时不能导出可编辑PPT。"}), 400
             output_pptx = job_dir / runtime.build_editable_ppt_filename(requested_layer_mode)
-            export_payload = runtime.export_editable_delivery(
+            export_payload = load_cached_editable_delivery(
                 bundle_path,
                 output_pptx,
                 layer_mode=requested_layer_mode,
             )
+            if export_payload is None:
+                export_payload = runtime.export_editable_delivery(
+                    bundle_path,
+                    output_pptx,
+                    layer_mode=requested_layer_mode,
+                )
+                save_editable_delivery_cache(
+                    bundle_path,
+                    output_pptx,
+                    layer_mode=requested_layer_mode,
+                    export_payload=export_payload,
+                )
             editable_delivery = runtime.build_editable_delivery_payload(job_id, job_dir, export_payload)
             result_payload = runtime.set_editable_delivery(
                 result_payload,

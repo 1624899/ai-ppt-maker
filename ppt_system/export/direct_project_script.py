@@ -40,6 +40,7 @@ from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
+from ppt_system.image.global_element_alignment import GLOBAL_ELEMENT_ALIGNMENT_VERSION
 from ppt_system.image.text_placeholder_detection import load_text_placeholders, placeholder_bboxes, save_text_placeholders
 
 
@@ -97,6 +98,7 @@ def _build_asset_option_signature_payload(
         "merge_distance": int(merge_distance),
         "skip_enhance": bool(skip_enhance),
         "skip_transparent": bool(skip_transparent),
+        "global_alignment_version": int(GLOBAL_ELEMENT_ALIGNMENT_VERSION),
     }
 
 

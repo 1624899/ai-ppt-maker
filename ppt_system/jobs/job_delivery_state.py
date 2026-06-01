@@ -9,12 +9,15 @@ from ppt_system.export.delivery_options import (
     EDITABLE_PPT_DELIVERY_KEY,
     EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY,
     EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY,
+    REFERENCE_PPT_FILENAME,
     REFERENCE_PPT_DELIVERY_KEY,
+    build_editable_delivery_mode,
     build_editable_delivery_description,
     build_editable_delivery_label,
+    build_editable_ppt_filename,
     normalize_editable_delivery_layer_mode,
 )
-from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE
+from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE, count_output_slides
 
 
 REFERENCE_DELIVERY_MODE = "reference_only"
@@ -177,6 +180,12 @@ def build_delivery_actions(job_state: dict[str, Any], job_dir: Path) -> list[dic
     editable_ready = bool(editable_bundle) and editable_bundle_path is not None and editable_bundle_path.exists()
     reference_delivery = get_reference_delivery(result_payload)
     editable_delivery_store = get_editable_delivery_store(result_payload)
+    reference_generated_file = _resolve_reference_generated_file(
+        reference_delivery,
+        job_id=job_id,
+        job_dir=job_dir,
+        logical_page_count=len(reference_pages),
+    )
 
     actions: list[dict[str, Any]] = []
     if reference_ready:
@@ -186,8 +195,8 @@ def build_delivery_actions(job_state: dict[str, Any], job_dir: Path) -> list[dic
                 "label": "图片PPT生成",
                 "description": "使用当前原稿图导出图片版 PPT，适合保留原始视觉效果。",
                 "visible": True,
-                "generated": bool(reference_delivery),
-                "generated_file": reference_delivery,
+                "generated": bool(reference_generated_file),
+                "generated_file": reference_generated_file,
                 "logical_page_count": len(reference_pages),
                 "page_count": len(reference_pages),
             }
@@ -195,6 +204,8 @@ def build_delivery_actions(job_state: dict[str, Any], job_dir: Path) -> list[dic
     if editable_ready:
         actions.extend(
             _build_editable_delivery_actions(
+                job_id=job_id,
+                job_dir=job_dir,
                 editable_bundle=editable_bundle,
                 editable_delivery_store=editable_delivery_store,
                 fallback_logical_page_count=len(pages),
@@ -251,6 +262,8 @@ def _extract_pages(job_state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _build_editable_delivery_actions(
     *,
+    job_id: str,
+    job_dir: Path,
     editable_bundle: dict[str, Any],
     editable_delivery_store: dict[str, Any],
     fallback_logical_page_count: int,
@@ -264,6 +277,8 @@ def _build_editable_delivery_actions(
             action_key=EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY,
             label="可编辑ppt单页生成",
             layer_mode=OVERLAY_LAYER_MODE,
+            job_id=job_id,
+            job_dir=job_dir,
             deliveries_by_layer_mode=deliveries_by_layer_mode,
             logical_page_count=logical_page_count,
         ),
@@ -271,6 +286,8 @@ def _build_editable_delivery_actions(
             action_key=EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY,
             label="文字/元素拆分双页生成",
             layer_mode=SEPARATE_LAYER_MODE,
+            job_id=job_id,
+            job_dir=job_dir,
             deliveries_by_layer_mode=deliveries_by_layer_mode,
             logical_page_count=logical_page_count,
         ),
@@ -282,12 +299,18 @@ def _build_editable_delivery_action(
     action_key: str,
     label: str,
     layer_mode: str,
+    job_id: str,
+    job_dir: Path,
     deliveries_by_layer_mode: dict[str, Any],
     logical_page_count: int,
 ) -> dict[str, Any]:
-    generated_file = deliveries_by_layer_mode.get(layer_mode)
-    if not isinstance(generated_file, dict):
-        generated_file = {}
+    generated_file = _resolve_editable_generated_file(
+        deliveries_by_layer_mode.get(layer_mode),
+        job_id=job_id,
+        job_dir=job_dir,
+        layer_mode=layer_mode,
+        logical_page_count=logical_page_count,
+    )
     return {
         "key": action_key,
         "delivery_key": EDITABLE_PPT_DELIVERY_KEY,
@@ -313,6 +336,74 @@ def _extract_reference_pages(job_state: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         rebuilt.append({"page_no": page.get("page_no"), "image": image_ref})
     return rebuilt
+
+
+def _resolve_reference_generated_file(
+    generated_file: Any,
+    *,
+    job_id: str,
+    job_dir: Path,
+    logical_page_count: int,
+) -> dict[str, Any]:
+    output_pptx = job_dir / REFERENCE_PPT_FILENAME
+    if not output_pptx.exists():
+        return {}
+    payload = clone_payload(generated_file) if isinstance(generated_file, dict) else {}
+    payload.update(
+        {
+            "key": REFERENCE_PPT_DELIVERY_KEY,
+            "label": str(payload.get("label") or "图片PPT"),
+            "description": str(payload.get("description") or "按当前原稿图原样导出的图片版 PPT。"),
+            "pptx_path": str(output_pptx),
+            "pptx_url": build_run_file_url(job_id, job_dir, output_pptx),
+            "page_count": int(payload.get("page_count", logical_page_count) or logical_page_count),
+            "logical_page_count": int(payload.get("logical_page_count", logical_page_count) or logical_page_count),
+            "delivery_mode": REFERENCE_DELIVERY_MODE,
+        }
+    )
+    payload.setdefault("generated_at", _build_file_timestamp(output_pptx))
+    return payload
+
+
+def _resolve_editable_generated_file(
+    generated_file: Any,
+    *,
+    job_id: str,
+    job_dir: Path,
+    layer_mode: str,
+    logical_page_count: int,
+) -> dict[str, Any]:
+    resolved_layer_mode = normalize_editable_delivery_layer_mode(layer_mode)
+    output_pptx = job_dir / build_editable_ppt_filename(resolved_layer_mode)
+    if not output_pptx.exists():
+        return {}
+    payload = clone_payload(generated_file) if isinstance(generated_file, dict) else {}
+    page_count = count_output_slides(logical_page_count, resolved_layer_mode)
+    payload.update(
+        {
+            "key": EDITABLE_PPT_DELIVERY_KEY,
+            "label": str(payload.get("label") or build_editable_delivery_label(resolved_layer_mode)),
+            "description": str(
+                payload.get("description") or build_editable_delivery_description(resolved_layer_mode)
+            ),
+            "pptx_path": str(output_pptx),
+            "pptx_url": build_run_file_url(job_id, job_dir, output_pptx),
+            "page_count": int(payload.get("page_count", page_count) or page_count),
+            "logical_page_count": int(payload.get("logical_page_count", logical_page_count) or logical_page_count),
+            "delivery_mode": str(payload.get("delivery_mode") or build_editable_delivery_mode(resolved_layer_mode)),
+            "layer_mode": resolved_layer_mode,
+        }
+    )
+    payload.setdefault("generated_at", _build_file_timestamp(output_pptx))
+    return payload
+
+
+def _build_file_timestamp(path: Path) -> str:
+    try:
+        timestamp = path.stat().st_mtime
+    except OSError:
+        return build_generated_timestamp()
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
 
 
 def _is_stage_completed(job_state: dict[str, Any], stage_key: str) -> bool:

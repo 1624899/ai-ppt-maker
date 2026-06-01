@@ -9,6 +9,10 @@ import numpy as np
 from PIL import Image
 
 
+GLOBAL_ELEMENT_ALIGNMENT_VERSION = 2
+DEFAULT_MAX_SHIFT_RATIO = 0.18
+
+
 @dataclass(frozen=True)
 class GlobalElementAlignmentDecision:
     should_apply: bool
@@ -32,6 +36,7 @@ def align_elements_image_to_reference(
     mask_padding: int = 12,
     min_shift_px: int = 8,
     min_iou_gain: float = 0.01,
+    max_shift_ratio: float = DEFAULT_MAX_SHIFT_RATIO,
 ) -> GlobalElementAlignmentDecision:
     """在切分前把整张元素图按原稿图坐标系做全局平移拟合。"""
     decision = analyze_global_element_alignment(
@@ -43,6 +48,7 @@ def align_elements_image_to_reference(
         mask_padding=mask_padding,
         min_shift_px=min_shift_px,
         min_iou_gain=min_iou_gain,
+        max_shift_ratio=max_shift_ratio,
     )
     with Image.open(elements_image).convert("RGBA") as image:
         aligned = shift_image_content(image, dx=decision.dx, dy=decision.dy) if decision.should_apply else image.copy()
@@ -61,6 +67,7 @@ def analyze_global_element_alignment(
     mask_padding: int = 12,
     min_shift_px: int = 8,
     min_iou_gain: float = 0.01,
+    max_shift_ratio: float = DEFAULT_MAX_SHIFT_RATIO,
     coarse_downsample: int = 4,
     coarse_margin_px: int = 40,
     fine_radius_px: int = 12,
@@ -145,6 +152,7 @@ def analyze_global_element_alignment(
     baseline_iou = _mask_iou_after_shift(reference_mask, elements_mask, dx=0, dy=0)
     iou_gain = float(shifted_iou - baseline_iou)
     shift_magnitude = max(abs(int(dx)), abs(int(dy)))
+    max_allowed_shift = int(round(min(reference_mask.shape) * max(0.0, float(max_shift_ratio))))
     diagnostics = {
         "reference_bbox": reference_bbox,
         "elements_bbox": elements_bbox,
@@ -153,6 +161,7 @@ def analyze_global_element_alignment(
         "coarse_dx": fine_center_dx,
         "coarse_dy": fine_center_dy,
         "iou_gain": iou_gain,
+        "max_allowed_shift": max_allowed_shift,
     }
 
     if shift_magnitude < int(min_shift_px):
@@ -164,6 +173,17 @@ def analyze_global_element_alignment(
             shifted_iou=float(shifted_iou),
             confidence=max(0.0, iou_gain),
             reason="shift-too-small",
+            diagnostics=diagnostics,
+        )
+    if max_allowed_shift > 0 and shift_magnitude > max_allowed_shift:
+        return GlobalElementAlignmentDecision(
+            should_apply=False,
+            dx=int(dx),
+            dy=int(dy),
+            baseline_iou=baseline_iou,
+            shifted_iou=float(shifted_iou),
+            confidence=max(0.0, iou_gain),
+            reason="shift-too-large",
             diagnostics=diagnostics,
         )
     if iou_gain < float(min_iou_gain):
@@ -245,7 +265,8 @@ def _build_elements_mask(
 ) -> np.ndarray:
     rgba = np.array(image.convert("RGBA"), dtype=np.uint8)
     alpha = rgba[:, :, 3]
-    if int(alpha.max()) > 0:
+    has_real_alpha = int(alpha.min()) < 255
+    if has_real_alpha and int(alpha.max()) > 0:
         return alpha > int(alpha_threshold)
     rgb = rgba[:, :, :3]
     return np.any(rgb < int(white_threshold), axis=2)
