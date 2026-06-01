@@ -4,7 +4,7 @@ import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image
 
@@ -23,11 +23,18 @@ from ppt_system.export.text_script_runtime import (
     normalize_page_script,
 )
 from ppt_system.image.text_placeholder_detection import placeholder_bboxes, save_text_placeholders
+from ppt_system.runtime.interruptible_execution import run_interruptible_call
 
 
 DEFAULT_SLIDE_WIDTH_INCH = 13.333333
 DEFAULT_FONT_NAME = "Microsoft YaHei"
 DEFAULT_FONT_COLOR = "355C7D"
+StopChecker = Callable[[], bool]
+
+
+def _ensure_not_stopped(stop_checker: StopChecker | None) -> None:
+    if stop_checker and stop_checker():
+        raise InterruptedError("导出流程已被中断")
 
 
 @dataclass
@@ -191,8 +198,10 @@ def prepare_direct_page_assets(
     preserve_existing_transparency: bool = True,
     preserve_tiny_components: bool | None = None,
     cleanup_intermediate_images: bool = True,
+    stop_checker: StopChecker | None = None,
 ) -> PreparedDirectPageAssets:
     """把元素图处理成分割后的 PNG 资产，供生成脚本与文字框叠加。"""
+    _ensure_not_stopped(stop_checker)
     page_dir = work_dir / f"page_{int(page_no):02d}"
     assets_dir = page_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -211,6 +220,7 @@ def prepare_direct_page_assets(
         enhanced_path = page_dir / f"page_{int(page_no):02d}_enhanced.png"
         enhance_image(current_source, enhanced_path)
         current_source = enhanced_path
+    _ensure_not_stopped(stop_checker)
 
     if not resolved_skip_transparent:
         transparent_path = page_dir / f"page_{int(page_no):02d}_transparent.png"
@@ -220,6 +230,7 @@ def prepare_direct_page_assets(
         shutil.copyfile(transparent_path, transparent_preview_image)
     elif transparent_input:
         transparent_preview_image = current_source
+    _ensure_not_stopped(stop_checker)
 
     alignment_decision = None
     if reference_image is not None:
@@ -231,6 +242,7 @@ def prepare_direct_page_assets(
             text_boxes=list(reference_text_boxes or []),
             alpha_threshold=int(alpha_threshold),
         )
+    _ensure_not_stopped(stop_checker)
 
     manifest = split_transparent_png(
         current_source,
@@ -244,9 +256,11 @@ def prepare_direct_page_assets(
     )
     if int(manifest.get("count", 0)) <= 0:
         raise RuntimeError(f"第 {page_no} 页元素分割结果为空，无法继续导出。")
+    _ensure_not_stopped(stop_checker)
     removed_intermediate_images: list[str] = []
     if bool(cleanup_intermediate_images):
         removed_intermediate_images = cleanup_split_intermediate_images(page_dir, page_no=page_no)
+    _ensure_not_stopped(stop_checker)
     manifest_path = assets_dir / "assets.json"
     global_alignment = None
     asset_adjustments: dict[str, Any] = {}
@@ -333,6 +347,7 @@ def _generate_page_script_from_images(
     image_width: int,
     image_height: int,
     text_placeholders: dict[str, Any] | None = None,
+    stop_checker: StopChecker | None = None,
 ) -> str:
     """首轮基于原稿图和元素图请求模型生成单页文字脚本。"""
     prompt = build_direct_page_prompt(
@@ -354,7 +369,11 @@ def _generate_page_script_from_images(
             ],
         },
     ]
-    result = provider.complete_json(messages)
+    result = run_interruptible_call(
+        lambda: provider.complete_json(messages),
+        stop_checker=stop_checker,
+        interruption_message="首轮文字脚本模型请求已被中断",
+    )
     raw_script = str(result.get("page_script", "")).strip()
     if not raw_script:
         raise RuntimeError("模型没有返回可执行 page_script。")
@@ -371,6 +390,7 @@ def _revise_page_script_with_rendered_preview(
     page_script: str,
     asset_adjustments: dict[str, Any],
     round_index: int,
+    stop_checker: StopChecker | None = None,
 ) -> DirectPageScriptRevision:
     """基于真实 PPT 渲染图请求模型修正单页文字脚本。"""
     prompt = build_direct_page_refine_prompt(
@@ -394,7 +414,11 @@ def _revise_page_script_with_rendered_preview(
             ],
         },
     ]
-    result = provider.complete_json(messages)
+    result = run_interruptible_call(
+        lambda: provider.complete_json(messages),
+        stop_checker=stop_checker,
+        interruption_message="文字脚本回看修正模型请求已被中断",
+    )
     raw_script = str(result.get("page_script", "")).strip()
     resolved_script = normalize_page_script(raw_script) if raw_script else page_script
     resolved_adjustments = normalize_asset_adjustments(asset_adjustments)
@@ -402,5 +426,3 @@ def _revise_page_script_with_rendered_preview(
         page_script=resolved_script,
         asset_adjustments=resolved_adjustments,
     )
-
-

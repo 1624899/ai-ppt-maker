@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -332,6 +333,60 @@ def build_deck():
 
             self.assertFalse(output_path.exists())
             self.assertGreater(checks["count"], 0)
+
+    def test_execute_generated_script_stops_child_process_tree(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            marker_path = root / "started.txt"
+            child_marker_path = root / "child_started.txt"
+            output_path = root / "child_done.txt"
+            child_script_path = root / "slow_child.py"
+            script_path = root / "slow_parent_generated_text_layout.py"
+            child_script_path.write_text(
+                f"""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+
+Path(r"{child_marker_path}").write_text("started", encoding="utf-8")
+time.sleep(30)
+Path(r"{output_path}").write_text("done", encoding="utf-8")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            script_path.write_text(
+                f"""
+from __future__ import annotations
+
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def build_deck():
+    Path(r"{marker_path}").write_text("started", encoding="utf-8")
+    subprocess.Popen([sys.executable, r"{child_script_path}"])
+    time.sleep(30)
+    return Path(r"{output_path}")
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            def stop_after_child_starts() -> bool:
+                return child_marker_path.exists()
+
+            with self.assertRaises(InterruptedError):
+                execute_generated_text_script(
+                    script_path,
+                    timeout_seconds=10,
+                    stop_checker=stop_after_child_starts,
+                )
+
+            time.sleep(0.5)
+            self.assertFalse(output_path.exists())
 
     def test_generated_script_can_split_assets_and_texts_into_two_slides(self) -> None:
         with TemporaryDirectory() as temp_dir:

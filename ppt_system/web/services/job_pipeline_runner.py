@@ -652,6 +652,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
     except JobInterruptedError as exc:
         finalize_job_interrupted(job_dir, job_id, str(exc), INTERRUPTED_MESSAGE)
         update_job_record(JOBS_DB_PATH, job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
+        clear_job_stop_request(job_dir, job_id)
     except Exception as exc:
         stage_key = "reference_generation"
         current_state = load_job_state(job_id, job_dir) or {}

@@ -55,6 +55,7 @@ from ppt_system.jobs.db_lifecycle import vacuum_db as vacuum_job_db
 from ppt_system.jobs.db_maintenance_scheduler import JobDbMaintenanceScheduler
 from ppt_system.jobs.db_maintenance_scheduler import resolve_job_db_maintenance_config
 from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
+from ppt_system.jobs.job_interrupt_signal import clear_job_stop_request, has_job_stop_request, request_job_stop
 from ppt_system.jobs.job_targets import (
     JOB_TARGET_EDITABLE_PPT,
     TARGET_LABELS,
@@ -111,6 +112,9 @@ from ppt_system.web.services.job_state_runtime import (
     mark_job_stopping,
     mutate_job_state,
     normalize_job_state_labels,
+    prepare_state_for_resume,
+    reconcile_job_record,
+    reconcile_stale_stopping_job,
     reconcile_resume_state,
     remove_job_artifacts,
     save_job_state,
@@ -123,6 +127,27 @@ from ppt_system.web.services.job_state_runtime import (
 )
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
 from ppt_system.web.services.job_db_maintenance_service import execute_job_db_maintenance
+from ppt_system.web.services.plan_version_store import (
+    apply_plan_to_state,
+    build_plan_response,
+    get_active_plan_payload,
+    get_active_plan_version,
+    save_plan_version,
+)
+from ppt_system.web.services.workflow_policy import (
+    AWAITING_PLAN_CONFIRMATION_STATUS,
+    build_confirmation_policy,
+    ensure_workflow_metadata,
+    get_workflow_mode_label,
+    initial_plan_confirmation_state,
+    is_plan_confirmed,
+    mark_awaiting_plan_confirmation,
+    mark_plan_confirmed,
+    mark_plan_draft,
+    normalize_workflow_mode,
+    requires_plan_confirmation,
+    should_pause_after_planning,
+)
 
 
 sys.modules.setdefault("main", sys.modules[__name__])
@@ -140,7 +165,11 @@ JOB_DB_MAINTENANCE_SCHEDULER = JobDbMaintenanceScheduler(
     config_loader=read_config,
     maintenance_runner=execute_job_db_maintenance,
     stats_collector=collect_job_db_stats,
-    running_jobs_counter=lambda: sum(1 for job in list_job_records(JOBS_DB_PATH, limit=None) if str(job.get("status") or "").strip() in {"queued", "running", "stopping"}),
+    running_jobs_counter=lambda: sum(
+        1
+        for job in list_job_summaries(limit=None)
+        if str(job.get("status") or "").strip() in {"queued", "running", "stopping"}
+    ),
 )
 JOB_DB_MAINTENANCE_SCHEDULER.start()
 

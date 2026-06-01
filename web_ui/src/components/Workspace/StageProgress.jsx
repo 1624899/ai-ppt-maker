@@ -5,6 +5,7 @@ import {
   STAGE_DEFINITIONS,
   getCompletedStageCount,
   getProgressPercent,
+  getStageActivityText,
   getStageLabel,
   getStatusLabel,
 } from '../../utils/jobPresentation';
@@ -50,7 +51,7 @@ const StageProgress = ({ job, dense = false }) => {
           <span
             key={stage.key}
             className={clsx('stage-progress__step', `is-${stage.status || 'pending'}`)}
-            title={stage.summary || stage.label}
+            title={getStageActivityText(stage) || stage.label}
           >
             <StageIcon status={stage.status} />
             <span>{stage.label}</span>
@@ -62,7 +63,7 @@ const StageProgress = ({ job, dense = false }) => {
           {stages.map((stage) => (
             <div key={stage.key} className="stage-log">
               <strong>{stage.label}</strong>
-              <span>{stage.summary || getStatusLabel(stage.status)}</span>
+              <span title={getStageActivityText(stage)}>{getStageActivityText(stage)}</span>
             </div>
           ))}
         </div>

@@ -206,6 +206,56 @@ class JobApiPageRichnessTests(unittest.TestCase):
         self.assertTrue(status_file(job_dir).exists())
         self.assertEqual(len(self.executor.calls), 2)
 
+    def test_resume_reconciles_unmanaged_terminal_stage_record(self) -> None:
+        create_response = self.client.post(
+            "/api/jobs",
+            data={
+                "content": "第一页讲总览。",
+                "page_count": "1",
+                "image_preset": "landscape_2k",
+                "image_quality": "medium",
+                "style_notes": "蓝白科技风",
+            },
+        )
+        self.assertEqual(create_response.status_code, 202)
+        payload = create_response.get_json()
+        self.assertIsNotNone(payload)
+        job_id = str(payload["job_id"])
+        job_dir = self.output_dir / job_id
+
+        def mark_stage_interrupted(state: dict[str, object]) -> None:
+            state["status"] = "running"
+            state["current_stage"] = "ppt_export"
+            state["stop_requested"] = False
+            for stage in state.get("stages", []):
+                if isinstance(stage, dict) and stage.get("key") == "ppt_export":
+                    stage["status"] = "interrupted"
+                    stage["summary"] = "任务已暂停，可继续从当前进度恢复"
+
+        mutate_job_state(job_dir, job_id, mark_stage_interrupted)
+        update_job_record(
+            self.jobs_db_path,
+            job_id,
+            status="running",
+            current_stage="ppt_export",
+            stop_requested=False,
+        )
+        main.JOB_STATUS_CACHE.clear()
+
+        response = self.client.post(f"/api/jobs/{job_id}/resume")
+
+        self.assertEqual(response.status_code, 200)
+        saved_state = load_job_state(job_id, job_dir)
+        self.assertIsNotNone(saved_state)
+        self.assertEqual(saved_state["status"], "queued")
+        resumed_stage = next(stage for stage in saved_state["stages"] if stage["key"] == "ppt_export")
+        self.assertEqual(resumed_stage["status"], "pending")
+        self.assertEqual(resumed_stage["summary"], "等待继续执行")
+        saved_record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(saved_record)
+        self.assertEqual(saved_record["status"], "queued")
+        self.assertEqual(len(self.executor.calls), 2)
+
     def test_resume_completed_reference_only_job_upgrades_target_to_editable(self) -> None:
         job_id, job_dir = self._seed_completed_reference_job(job_target="reference_only")
 

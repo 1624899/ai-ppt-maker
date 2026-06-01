@@ -11,6 +11,7 @@ from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
 from ppt_system.export.export_step_checkpoint import STEP_CHECKPOINT_DIR_NAME
 from ppt_system.export.export_pipeline import export_project_to_pptx
 from ppt_system.export.text_script_runtime import execute_generated_text_script
+from ppt_system.export.export_asset_checkpoint import ASSET_CHECKPOINT_FILE_NAME
 
 
 class FakeChatProvider:
@@ -40,6 +41,25 @@ def _create_test_image(path: Path, *, alpha: bool) -> None:
         with Image.open(path).convert("RGBA") as image:
             image.paste((0, 82, 214, 255), (40, 40, 120, 100))
             image.save(path)
+
+
+def _build_single_page_project(visual_path: Path, reference_path: Path) -> dict[str, Any]:
+    return {
+        "slide_width_inch": 13.333333,
+        "image_width": 400,
+        "image_height": 240,
+        "default_font": {"font_name": "Microsoft YaHei", "font_size": 24, "color": "355C7D"},
+        "pages": [
+            {
+                "page_no": 1,
+                "title": "第一页",
+                "summary": "摘要1",
+                "visual_image": str(visual_path),
+                "reference_image": str(reference_path),
+                "texts": [],
+            },
+        ],
+    }
 
 
 def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> None:
@@ -142,6 +162,108 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
         assert "第一页成稿" in final_script
         assert "第二页成稿" in final_script
         assert (work_dir / "page_02" / CHECKPOINT_FILE_NAME).exists()
+
+
+def test_export_project_to_pptx_skips_asset_prepare_for_completed_page_checkpoint() -> None:
+    with TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        work_dir = root / "work"
+        output_pptx = root / "result.pptx"
+        visual_path = root / "visual_01.png"
+        reference_path = root / "reference_01.png"
+
+        _create_test_image(visual_path, alpha=True)
+        _create_test_image(reference_path, alpha=False)
+        project = _build_single_page_project(visual_path, reference_path)
+
+        first_run_provider = FakeChatProvider(
+            [
+                {"page_script": 'add_text(slide, "第一页成稿", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+            ]
+        )
+        second_run_provider = FakeChatProvider([])
+
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+            export_project_to_pptx(
+                project,
+                work_dir,
+                output_pptx,
+                chat_provider=first_run_provider,  # type: ignore[arg-type]
+            )
+
+        assert (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
+
+        with patch(
+            "ppt_system.export.direct_project_script.prepare_direct_page_assets",
+            side_effect=AssertionError("完成页不应重新准备资产"),
+        ):
+            result = export_project_to_pptx(
+                project,
+                work_dir,
+                output_pptx,
+                chat_provider=second_run_provider,  # type: ignore[arg-type]
+            )
+
+        assert len(second_run_provider.calls) == 0
+        assert result["logical_page_count"] == 1
+
+
+def test_export_project_to_pptx_reuses_asset_prepare_checkpoint_after_later_failure() -> None:
+    with TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        work_dir = root / "work"
+        output_pptx = root / "result.pptx"
+        visual_path = root / "visual_01.png"
+        reference_path = root / "reference_01.png"
+
+        _create_test_image(visual_path, alpha=True)
+        _create_test_image(reference_path, alpha=False)
+        project = _build_single_page_project(visual_path, reference_path)
+
+        first_run_provider = FakeChatProvider(
+            [
+                {"page_script": 'add_text(slide, "首轮文字", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+            ]
+        )
+        second_run_provider = FakeChatProvider([])
+        failed_after_asset_prepare = {"value": False}
+
+        def fail_after_asset_prepare(*args, **kwargs) -> None:
+            failed_after_asset_prepare["value"] = True
+            raise RuntimeError("模拟首轮预览脚本执行失败")
+
+        with patch("ppt_system.export.direct_project_script.execute_generated_text_script", side_effect=fail_after_asset_prepare):
+            try:
+                export_project_to_pptx(
+                    project,
+                    work_dir,
+                    output_pptx,
+                    chat_provider=first_run_provider,  # type: ignore[arg-type]
+                )
+            except RuntimeError as exc:
+                assert "模拟首轮预览脚本执行失败" in str(exc)
+            else:
+                raise AssertionError("预期首轮预览失败，但任务未失败")
+
+        assert failed_after_asset_prepare["value"] is True
+        assert (work_dir / "page_01" / ASSET_CHECKPOINT_FILE_NAME).exists()
+        assert not (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
+
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
+            with patch(
+                "ppt_system.export.direct_project_script.prepare_direct_page_assets",
+                side_effect=AssertionError("资产准备缓存命中后不应重新拟合或切分"),
+            ):
+                result = export_project_to_pptx(
+                    project,
+                    work_dir,
+                    output_pptx,
+                    chat_provider=second_run_provider,  # type: ignore[arg-type]
+                )
+
+        assert len(second_run_provider.calls) == 0
+        assert (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
+        assert result["logical_page_count"] == 1
 
 
 def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failure() -> None:

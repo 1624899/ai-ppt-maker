@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,16 +32,28 @@ class JobManageApiTests(unittest.TestCase):
         main.JOB_STATUS_CACHE.clear()
         self.client = main.app.test_client()
 
-    def _create_record(self, job_id: str, *, title: str, status: str = "completed") -> Path:
+    def _create_record(
+        self,
+        job_id: str,
+        *,
+        title: str,
+        status: str = "completed",
+        stop_requested: bool = False,
+        updated_at: str | None = None,
+    ) -> Path:
         job_dir = self.output_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         state = {
             "job_id": job_id,
             "status": status,
             "current_stage": "ppt_export",
+            "stop_requested": stop_requested,
             "pages": [],
-            "stages": [],
+            "stages": [
+                {"key": "ppt_export", "status": status, "summary": "", "logs": []},
+            ],
         }
+        (job_dir / "status.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         create_job_record(
             self.jobs_db_path,
             {
@@ -57,9 +70,11 @@ class JobManageApiTests(unittest.TestCase):
                 "request": {},
                 "state": state,
                 "result": {},
-                "stop_requested": False,
+                "stop_requested": stop_requested,
             },
         )
+        if updated_at:
+            update_job_record(self.jobs_db_path, job_id, touch_updated_at=False, updated_at=updated_at)
         return job_dir
 
     def test_rename_job_updates_history_summary_and_detail_title(self) -> None:
@@ -132,6 +147,21 @@ class JobManageApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIsNotNone(get_job_record(self.jobs_db_path, "job-running-demo"))
         self.assertTrue(job_dir.exists())
+
+    def test_delete_job_allows_stale_stopping_job_after_archiving(self) -> None:
+        job_dir = self._create_record(
+            "job-stale-stopping-demo",
+            title="陈旧暂停任务",
+            status="stopping",
+            stop_requested=True,
+            updated_at="2026-01-01 00:00:01.000",
+        )
+
+        response = self.client.delete("/api/jobs/job-stale-stopping-demo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(get_job_record(self.jobs_db_path, "job-stale-stopping-demo"))
+        self.assertFalse(job_dir.exists())
 
 
 if __name__ == "__main__":

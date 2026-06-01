@@ -16,3 +16,4 @@ output/
 
 # 临时审计脚本不纳入版本控制
 /ppt_system/scripts/ui_playwright_audit.js
+/图片转换

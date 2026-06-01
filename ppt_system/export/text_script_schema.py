@@ -29,6 +29,7 @@ class ScriptCallSchema:
     function_name: str
     positional_params: tuple[ScriptParamSpec, ...]
     keyword_params: tuple[ScriptParamSpec, ...]
+    content_params: tuple[str, ...] = ()
 
 
 def normalize_page_script(script: str) -> str:
@@ -44,7 +45,8 @@ def normalize_page_script(script: str) -> str:
             continue
         sanitized = _sanitize_script_line(stripped)
         sanitized = normalize_script_call_line(sanitized)
-        normalized_lines.append(sanitized)
+        if sanitized:
+            normalized_lines.append(sanitized)
     while normalized_lines and not normalized_lines[-1]:
         normalized_lines.pop()
     return "\n".join(normalized_lines)
@@ -65,6 +67,8 @@ def normalize_script_call_line(line: str) -> str:
 
     positional_values = _normalize_positional_args(expression, schema, line)
     keyword_values = _normalize_keyword_args(expression, schema, line)
+    if not _has_renderable_content(positional_values, keyword_values, schema):
+        return ""
     return _render_normalized_call(function_name, positional_values, keyword_values, schema)
 
 
@@ -188,8 +192,6 @@ def _normalize_value(value: Any, spec: ScriptParamSpec, *, line: str, param_labe
 def _normalize_runs(value: Any, spec: ScriptParamSpec, *, line: str, param_label: str) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise RuntimeError(f"{param_label} 必须是数组：{line}")
-    if not value:
-        raise RuntimeError(f"{param_label} 不能为空：{line}")
     item_schema = dict(spec.item_schema or {})
     if not item_schema:
         raise RuntimeError("runs 参数缺少 item_schema 定义")
@@ -203,9 +205,24 @@ def _normalize_runs(value: Any, spec: ScriptParamSpec, *, line: str, param_label
         if unknown_keys:
             joined = ", ".join(unknown_keys)
             raise RuntimeError(f"{param_label} 第 {index} 项包含未知字段：{joined}")
+        text_spec = item_schema.get("text")
+        if text_spec is None:
+            raise RuntimeError("runs 参数缺少 text 字段约束")
+        if "text" not in item:
+            raise RuntimeError(f"{param_label} 第 {index} 项缺少字段：text")
+        normalized_text = _normalize_value(
+            item.get("text"),
+            text_spec,
+            line=line,
+            param_label=f"{param_label}.text",
+        )
+        if not _value_has_renderable_text(normalized_text):
+            continue
 
-        normalized_item: dict[str, Any] = {}
+        normalized_item: dict[str, Any] = {"text": normalized_text}
         for field_name, field_spec in item_schema.items():
+            if field_name == "text":
+                continue
             if field_name not in item:
                 if field_spec.required:
                     raise RuntimeError(f"{param_label} 第 {index} 项缺少字段：{field_name}")
@@ -218,6 +235,32 @@ def _normalize_runs(value: Any, spec: ScriptParamSpec, *, line: str, param_label
             )
         normalized_runs.append(normalized_item)
     return normalized_runs
+
+
+def _has_renderable_content(
+    positional_values: list[Any],
+    keyword_values: dict[str, Any],
+    schema: ScriptCallSchema,
+) -> bool:
+    if not schema.content_params:
+        return True
+
+    values_by_name = {
+        spec.name: value
+        for spec, value in zip(schema.positional_params, positional_values, strict=True)
+    }
+    values_by_name.update(keyword_values)
+    return any(_value_has_renderable_text(values_by_name.get(name)) for name in schema.content_params)
+
+
+def _value_has_renderable_text(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, list):
+        return any(_value_has_renderable_text(item) for item in value)
+    if isinstance(value, dict):
+        return _value_has_renderable_text(value.get("text"))
+    return bool(str(value).strip())
 
 
 def _coerce_number(value: Any, *, line: str, param_label: str) -> int | float:
@@ -364,7 +407,7 @@ def _build_enum_param(
 
 
 RUN_ITEM_SCHEMA: dict[str, ScriptParamSpec] = {
-    "text": ScriptParamSpec(name="text", value_kind="string", min_length=1),
+    "text": ScriptParamSpec(name="text", value_kind="string", allow_none=True),
     "size": ScriptParamSpec(name="size", value_kind="number", min_value=1, max_value=400),
     "color": ScriptParamSpec(name="color", value_kind="string", min_length=1, required=False),
     "bold": ScriptParamSpec(name="bold", value_kind="bool", required=False),
@@ -399,19 +442,20 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
         function_name="add_text",
         positional_params=(
             ScriptParamSpec(name="slide", value_kind="slide"),
-            ScriptParamSpec(name="text", value_kind="string", min_length=1),
+            ScriptParamSpec(name="text", value_kind="string", allow_none=True),
             _build_numeric_param("x", min_value=0),
             _build_numeric_param("y", min_value=0),
             _build_numeric_param("w", min_value=1),
             _build_numeric_param("h", min_value=1),
         ),
         keyword_params=TEXT_KWARGS,
+        content_params=("text",),
     ),
     "add_center_text": ScriptCallSchema(
         function_name="add_center_text",
         positional_params=(
             ScriptParamSpec(name="slide", value_kind="slide"),
-            ScriptParamSpec(name="text", value_kind="string", min_length=1),
+            ScriptParamSpec(name="text", value_kind="string", allow_none=True),
             _build_numeric_param("x", min_value=0),
             _build_numeric_param("y", min_value=0),
             _build_numeric_param("w", min_value=1),
@@ -430,6 +474,7 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
             ),
             ScriptParamSpec(name="italic", value_kind="bool", required=False),
         ),
+        content_params=("text",),
     ),
     "add_runs": ScriptCallSchema(
         function_name="add_runs",
@@ -456,6 +501,7 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
                 required=False,
             ),
         ),
+        content_params=("runs",),
     ),
     "add_text_ref": ScriptCallSchema(
         function_name="add_text_ref",

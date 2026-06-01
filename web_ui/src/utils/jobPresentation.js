@@ -26,6 +26,25 @@ export function getStageLabel(stageKey, stages = []) {
   return stage?.label || definition?.label || '准备任务';
 }
 
+function getLatestStageLog(stage) {
+  const logs = Array.isArray(stage?.logs) ? stage.logs : [];
+  for (let index = logs.length - 1; index >= 0; index -= 1) {
+    const text = String(logs[index] || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+export function getStageActivityText(stage) {
+  const status = String(stage?.status || '').trim();
+  const latestLog = getLatestStageLog(stage);
+  const summary = String(stage?.summary || '').trim();
+  if (['running', 'stopping', 'error', 'interrupted'].includes(status) && latestLog) {
+    return latestLog;
+  }
+  return summary || latestLog || getStatusLabel(status);
+}
+
 export function getJobTitle(job) {
   const title = String(job?.title || '').trim();
   if (title) return title;

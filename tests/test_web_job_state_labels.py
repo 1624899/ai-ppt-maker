@@ -130,6 +130,47 @@ class WebJobStateLabelTests(unittest.TestCase):
             [{"name": "style-a.png", "url": "/runs/demo/style_refs/style-a.png", "size": 12}],
         )
 
+    def test_job_summary_exposes_stage_progress(self) -> None:
+        record = {
+            "job_id": "demo",
+            "title": "演示任务",
+            "status": "stopping",
+            "current_stage": "reference_generation",
+            "page_count": 1,
+            "image_preset": "wide",
+            "image_quality": "medium",
+            "style_notes": "",
+            "created_at": "2026-05-30 10:00:00",
+            "updated_at": "2026-05-30 10:01:00",
+            "state": {
+                "stages": [
+                    {"key": "planning", "label": "模型规划", "status": "completed", "summary": "已完成", "logs": ["细节"]},
+                    {
+                        "key": "reference_generation",
+                        "label": "原稿图生成",
+                        "status": "stopping",
+                        "summary": "暂停请求已发送",
+                        "data": {"large": "payload"},
+                    },
+                ],
+            },
+        }
+
+        result = job_summary(record)
+
+        self.assertEqual(
+            result["stages"],
+            [
+                {"key": "planning", "label": "模型规划", "status": "completed", "summary": "已完成"},
+                {
+                    "key": "reference_generation",
+                    "label": "原稿图生成",
+                    "status": "stopping",
+                    "summary": "暂停请求已发送",
+                },
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

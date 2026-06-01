@@ -47,6 +47,10 @@ def test_model_connectivity(
     raise ValueError("模型类型只能是 chat 或 image。")
 
 
+# 这是业务探测函数，不是 pytest 测试用例；避免被测试收集误判为需要 fixture 的测试函数。
+test_model_connectivity.__test__ = False
+
+
 def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
     item = dict(profile or {})
     item["base_url"] = normalize_api_base_url(str(item.get("base_url", "")))

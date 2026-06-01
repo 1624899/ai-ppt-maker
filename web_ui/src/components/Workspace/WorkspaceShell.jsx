@@ -7,6 +7,7 @@ import TaskCenter from './TaskCenter';
 import { useJobDetail } from '../../hooks/useJobDetail';
 import { useJobs } from '../../hooks/useJobs';
 import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from '../../utils/jobPresentation';
+import { mergeJobState } from '../../utils/jobStateMerge';
 
 const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
   jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}` : ''
@@ -20,6 +21,12 @@ const WorkspaceShell = () => {
   const [imageMarkupOpen, setImageMarkupOpen] = useState(false);
   const [annotationsByScope, setAnnotationsByScope] = useState({});
   const { job: currentJob, loading: jobLoading, setJob: setCurrentJob } = useJobDetail(currentJobId);
+  const mergeCurrentJob = (jobOrUpdater) => {
+    setCurrentJob((current) => {
+      const incoming = typeof jobOrUpdater === 'function' ? jobOrUpdater(current) : jobOrUpdater;
+      return mergeJobState(current, incoming);
+    });
+  };
   const autoSelectedRef = useRef(false);
   const pages = getJobPages(currentJob);
   const safeSelectedPageIndex = pages.length > 0 ? Math.min(selectedPageIndex, pages.length - 1) : 0;
@@ -46,14 +53,11 @@ const WorkspaceShell = () => {
     if (!summary) return;
     setCurrentJob((current) => {
       if (!current || current.job_id !== currentJobId) return current;
-      return {
-        ...current,
-        status: summary.status,
-        current_stage: summary.current_stage,
-        stop_requested: summary.stop_requested,
+      return mergeJobState(current, {
+        ...summary,
         title: summary.title || current.title,
         pinned_at: summary.pinned_at || current.pinned_at || '',
-      };
+      });
     });
   }, [currentJobId, jobs, setCurrentJob]);
 
@@ -93,7 +97,7 @@ const WorkspaceShell = () => {
   const handleJobChanged = (job) => {
     setJobs((current) => current.map((item) => (item.job_id === job.job_id ? { ...item, ...job } : item)));
     if (currentJobId === job.job_id) {
-      setCurrentJob((current) => (current ? { ...current, ...job } : current));
+      mergeCurrentJob(job);
     }
     refreshJobs().catch(console.error);
   };
@@ -126,7 +130,7 @@ const WorkspaceShell = () => {
       <Header
         currentJob={currentJob}
         onCreateTask={createTask}
-        onJobUpdated={setCurrentJob}
+        onJobUpdated={mergeCurrentJob}
         onJobsRefresh={refreshJobs}
       />
       <div className="workspace-shell">
@@ -147,7 +151,7 @@ const WorkspaceShell = () => {
           imageAnnotations={imageAnnotations}
           onSelectPage={setSelectedPageIndex}
           onJobCreated={handleJobCreated}
-          onJobUpdated={setCurrentJob}
+          onJobUpdated={mergeCurrentJob}
           onOpenImageMarkup={() => setImageMarkupOpen(true)}
         />
         <PPTStudio
@@ -158,7 +162,7 @@ const WorkspaceShell = () => {
           imageAnnotations={imageAnnotations}
           onSelectPage={setSelectedPageIndex}
           onPreviewTypeChange={setSelectedPreviewType}
-          onJobUpdated={setCurrentJob}
+          onJobUpdated={mergeCurrentJob}
           onOpenImageMarkup={() => setImageMarkupOpen(true)}
         />
       </div>

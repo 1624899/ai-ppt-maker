@@ -1634,9 +1634,19 @@ a {
 .stage-log {
   display: grid;
   gap: 2px;
+  min-height: 68px;
   padding: 9px;
   background: var(--bg-soft);
-  border-radius: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stage-log strong,
+.stage-log span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .studio-card {

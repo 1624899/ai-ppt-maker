@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -30,6 +31,11 @@ from ppt_system.export.export_step_checkpoint import (
     stable_hash_payload,
 )
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.export_asset_checkpoint import (
+    build_export_asset_prepare_signature,
+    load_export_asset_prepare_checkpoint,
+    save_export_asset_prepare_checkpoint,
+)
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
@@ -127,6 +133,77 @@ def _summarize_prepared_page_assets(
     }
 
 
+def _build_prepared_assets_from_payload(
+    payload: dict[str, Any],
+    *,
+    page_no: int,
+    image_width: int,
+    image_height: int,
+) -> PreparedProjectPageAssets | None:
+    manifest_path = Path(str(payload.get("assets_manifest", "")).strip())
+    text_placeholders_path = Path(str(payload.get("text_placeholders", "")).strip())
+    if not manifest_path.exists() or not text_placeholders_path.exists():
+        return None
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(manifest, dict) or int(manifest.get("count", 0)) <= 0:
+        return None
+
+    return PreparedProjectPageAssets(
+        page_no=int(page_no),
+        assets_manifest=str(manifest_path),
+        text_placeholders_path=str(text_placeholders_path),
+        split_source_image=str(payload.get("split_source_image", "")),
+        transparent_preview_image=str(payload.get("transparent_preview_image") or "") or None,
+        asset_count=int(manifest.get("count", 0)),
+        global_alignment=payload.get("global_alignment") if isinstance(payload.get("global_alignment"), dict) else None,
+        asset_adjustments=normalize_asset_adjustments(payload.get("asset_adjustments")),
+        image_width=int(image_width),
+        image_height=int(image_height),
+    )
+
+
+def _build_prepared_assets_from_completed_page_checkpoint(
+    *,
+    page_dir: Path,
+    page: dict[str, Any],
+    page_no: int,
+    reference_image: Path,
+    visual_image: Path,
+    image_width: int,
+    image_height: int,
+    slide_width_inch: float,
+    refine_rounds: int,
+    asset_options: dict[str, Any],
+) -> PreparedProjectPageAssets | None:
+    page_signature = build_export_page_signature(
+        page=page,
+        page_no=page_no,
+        reference_image=reference_image,
+        visual_image=visual_image,
+        image_width=image_width,
+        image_height=image_height,
+        slide_width_inch=slide_width_inch,
+        refine_rounds=int(refine_rounds),
+        asset_options=asset_options,
+    )
+    checkpoint = load_export_page_checkpoint(page_dir, expected_signature=page_signature)
+    if checkpoint is None:
+        return None
+
+    payload = dict(checkpoint.page_result)
+    payload["asset_adjustments"] = dict(checkpoint.asset_adjustments)
+    return _build_prepared_assets_from_payload(
+        payload,
+        page_no=page_no,
+        image_width=image_width,
+        image_height=image_height,
+    )
+
+
 def _log_page_alignment_result(
     page_logger: PageLogger | None,
     page_no: int,
@@ -201,6 +278,7 @@ def _generate_initial_page_script_with_checkpoint(
     text_placeholders: dict[str, Any] | None,
     page_logger: PageLogger | None,
     page_no: int,
+    stop_checker: StopChecker | None = None,
 ) -> str:
     step_inputs = _build_initial_script_step_inputs(
         reference_image=reference_image,
@@ -228,6 +306,7 @@ def _generate_initial_page_script_with_checkpoint(
         image_width=image_width,
         image_height=image_height,
         text_placeholders=text_placeholders,
+        stop_checker=stop_checker,
     )
     save_export_step_checkpoint(
         page_dir,
@@ -291,6 +370,7 @@ def _revise_page_script_with_checkpoint(
     round_index: int,
     page_logger: PageLogger | None,
     page_no: int,
+    stop_checker: StopChecker | None = None,
 ) -> tuple[str, dict[str, Any]]:
     step_name = f"refine_round_{int(round_index) + 1:02d}"
     step_inputs = _build_refine_script_step_inputs(
@@ -328,6 +408,7 @@ def _revise_page_script_with_checkpoint(
         page_script=page_script,
         asset_adjustments=asset_adjustments,
         round_index=round_index,
+        stop_checker=stop_checker,
     )
     payload = {
         "page_script": refine_result.page_script,
@@ -353,6 +434,7 @@ def prepare_direct_project_assets(
     merge_distance: int = 6,
     skip_enhance: bool = False,
     skip_transparent: bool = False,
+    refine_rounds: int = 1,
     stage_logger: StageLogger | None = None,
     page_logger: PageLogger | None = None,
     stop_checker: StopChecker | None = None,
@@ -361,6 +443,17 @@ def prepare_direct_project_assets(
     work_dir.mkdir(parents=True, exist_ok=True)
     page_summaries: list[dict[str, Any]] = []
     prepared_assets_by_page: dict[int, PreparedProjectPageAssets] = {}
+    asset_option_signature_payload = _build_asset_option_signature_payload(
+        alpha_threshold=alpha_threshold,
+        min_area=min_area,
+        min_width=min_width,
+        min_height=min_height,
+        padding=padding,
+        merge_distance=merge_distance,
+        skip_enhance=skip_enhance,
+        skip_transparent=skip_transparent,
+    )
+    slide_width_inch = float(project.get("slide_width_inch", 13.333333))
     for page in _iter_exportable_project_pages(project):
         _ensure_not_stopped(stop_checker)
         page_no = int(page.get("page_no", 0))
@@ -374,12 +467,69 @@ def prepare_direct_project_assets(
         image_width, image_height = resolve_canvas_size(reference_image, visual_image)
         page_dir = work_dir / f"page_{page_no:02d}"
         text_placeholders_path = page_dir / "text_placeholders.json"
+        completed_prepared_assets = _build_prepared_assets_from_completed_page_checkpoint(
+            page_dir=page_dir,
+            page=page,
+            page_no=page_no,
+            reference_image=reference_image,
+            visual_image=visual_image,
+            image_width=image_width,
+            image_height=image_height,
+            slide_width_inch=slide_width_inch,
+            refine_rounds=refine_rounds,
+            asset_options=asset_option_signature_payload,
+        )
+        if completed_prepared_assets is not None:
+            prepared_assets_by_page[page_no] = completed_prepared_assets
+            _log_page(page_logger, page_no, "检测到已完成页级导出结果，复用已保存元素资产")
+            page_summaries.append(
+                _summarize_prepared_page_assets(
+                    completed_prepared_assets,
+                    source_image=visual_image,
+                    merge_distance=merge_distance,
+                )
+            )
+            continue
+
         text_placeholders = save_text_placeholders(
             reference_image,
             visual_image,
             text_placeholders_path,
-            slide_width_inch=float(project.get("slide_width_inch", 13.333333)),
+            slide_width_inch=slide_width_inch,
         )
+        asset_signature = build_export_asset_prepare_signature(
+            page_no=page_no,
+            reference_image=reference_image,
+            visual_image=visual_image,
+            image_width=image_width,
+            image_height=image_height,
+            slide_width_inch=slide_width_inch,
+            text_placeholders=text_placeholders,
+            asset_options=asset_option_signature_payload,
+        )
+        cached_asset = load_export_asset_prepare_checkpoint(page_dir, expected_signature=asset_signature)
+        cached_prepared_assets = (
+            _build_prepared_assets_from_payload(
+                cached_asset.payload,
+                page_no=page_no,
+                image_width=image_width,
+                image_height=image_height,
+            )
+            if cached_asset is not None
+            else None
+        )
+        if cached_prepared_assets is not None:
+            prepared_assets_by_page[page_no] = cached_prepared_assets
+            _log_page(page_logger, page_no, "命中元素资产准备缓存，跳过整页拟合与切分")
+            page_summaries.append(
+                _summarize_prepared_page_assets(
+                    cached_prepared_assets,
+                    source_image=visual_image,
+                    merge_distance=merge_distance,
+                )
+            )
+            continue
+
         asset_result = prepare_direct_page_assets(
             work_dir=work_dir,
             page_no=page_no,
@@ -396,6 +546,7 @@ def prepare_direct_project_assets(
             merge_distance=merge_distance,
             skip_enhance=skip_enhance,
             skip_transparent=skip_transparent,
+            stop_checker=stop_checker,
         )
         manifest = dict(asset_result.manifest)
         prepared_record = PreparedProjectPageAssets(
@@ -409,6 +560,15 @@ def prepare_direct_project_assets(
             asset_adjustments=dict(asset_result.asset_adjustments),
             image_width=int(image_width),
             image_height=int(image_height),
+        )
+        save_export_asset_prepare_checkpoint(
+            page_dir,
+            signature=asset_signature,
+            payload=_summarize_prepared_page_assets(
+                prepared_record,
+                source_image=visual_image,
+                merge_distance=merge_distance,
+            ),
         )
         prepared_assets_by_page[page_no] = prepared_record
         _log_page(page_logger, page_no, f"已准备分割元素资产，共 {int(prepared_record.asset_count)} 个元素")
@@ -509,6 +669,7 @@ def _generate_direct_project_page_script(
         text_placeholders=text_placeholders,
         page_logger=page_logger,
         page_no=page_no,
+        stop_checker=stop_checker,
     )
     _ensure_not_stopped(stop_checker)
     _log_page(page_logger, page_no, f"首轮文字脚本生成完成，耗时 {time.perf_counter() - request_started_at:.1f}s")
@@ -548,6 +709,7 @@ def _generate_direct_project_page_script(
             preview_image_path,
             image_width=image_width,
             image_height=image_height,
+            stop_checker=stop_checker,
         )
         _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
@@ -579,6 +741,7 @@ def _generate_direct_project_page_script(
             round_index=round_index,
             page_logger=page_logger,
             page_no=page_no,
+            stop_checker=stop_checker,
         )
         _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
@@ -646,6 +809,7 @@ def generate_direct_project_text_script(
         merge_distance=merge_distance,
         skip_enhance=skip_enhance,
         skip_transparent=skip_transparent,
+        refine_rounds=refine_rounds,
         stage_logger=stage_logger,
         page_logger=page_logger,
         stop_checker=stop_checker,
@@ -686,6 +850,7 @@ def generate_direct_project_text_script(
 
     if concurrency <= 1:
         for page in pages:
+            _ensure_not_stopped(stop_checker)
             page_script, page_result = run_single_page(page)
             page_scripts.append(page_script)
             page_results.append(page_result)

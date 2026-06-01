@@ -3,12 +3,12 @@
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, Callable
 
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, build_slide_layer_specs, normalize_layer_mode
 from ppt_system.export.text_script_schema import normalize_page_script
+from ppt_system.runtime.interruptible_execution import run_interruptible_process
 
 
 ASSET_RELATIVE_FIELDS = ("dx", "dy", "dw", "dh")
@@ -90,72 +90,16 @@ def _run_interruptible_subprocess(
     timeout_seconds: int,
     stop_checker: StopChecker | None,
 ) -> subprocess.CompletedProcess[bytes]:
-    if stop_checker is None:
-        return subprocess.run(
-            command,
-            capture_output=True,
-            text=False,
-            timeout=timeout_seconds,
-            check=False,
-        )
-
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        return _wait_interruptible_process(
-            process,
-            script_path=script_path,
-            timeout_seconds=timeout_seconds,
-            stop_checker=stop_checker,
-        )
-    except BaseException:
-        _terminate_process(process)
-        raise
-
-
-def _wait_interruptible_process(
-    process: subprocess.Popen[bytes],
-    *,
-    script_path: Path,
-    timeout_seconds: int,
-    stop_checker: StopChecker,
-) -> subprocess.CompletedProcess[bytes]:
-    started_at = time.monotonic()
-    while True:
-        try:
-            stdout, stderr = process.communicate(timeout=0.4)
-            return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
-        except subprocess.TimeoutExpired:
-            if stop_checker():
-                _terminate_process(process)
-                raise InterruptedError(f"生成脚本执行已被中断：{script_path}")
-            if time.monotonic() - started_at >= timeout_seconds:
-                _terminate_process(process)
-                raise subprocess.TimeoutExpired(
-                    process.args,
-                    timeout_seconds,
-                    output=_read_pipe_bytes(process.stdout),
-                    stderr=_read_pipe_bytes(process.stderr),
-                )
-
-
-def _terminate_process(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.communicate(timeout=3)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.communicate()
-
-
-def _read_pipe_bytes(pipe: Any) -> bytes:
-    if pipe is None:
-        return b""
-    try:
-        return pipe.read() or b""
-    except OSError:
-        return b""
+    return run_interruptible_process(
+        command,
+        timeout_seconds=timeout_seconds,
+        stop_checker=stop_checker,
+        interruption_message=f"生成脚本执行已被中断：{script_path}",
+        popen_kwargs={
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+        },
+    )
 
 
 def _decode_subprocess_output(raw_output: Any) -> str:

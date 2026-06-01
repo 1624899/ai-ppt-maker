@@ -207,6 +207,7 @@ def api_job_history():
 def api_delete_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = runtime.reconcile_job_record(record)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
     if record["status"] in {"queued", "running", "stopping"}:
@@ -221,6 +222,7 @@ def api_delete_job(job_id: str):
 def api_update_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = runtime.reconcile_job_record(record)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
 
@@ -288,34 +290,23 @@ def api_job_history_stream():
 def api_interrupt_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = runtime.reconcile_job_record(record)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
     if record["status"] not in {"queued", "running"}:
         return jsonify({"error": "只有运行中任务可以中断。"}), 400
     current_stage = str(record.get("current_stage") or "queued")
+    job_dir = Path(record["job_dir"])
+    runtime.request_job_stop(job_dir, job_id)
+    updated_state = runtime.finalize_job_interrupted(job_dir, job_id, current_stage, runtime.INTERRUPTED_MESSAGE)
     runtime.update_job_record(
         runtime.JOBS_DB_PATH,
         job_id,
-        stop_requested=True,
-        status="stopping",
+        stop_requested=False,
+        status="interrupted",
         current_stage=current_stage,
+        state=updated_state,
     )
-    job_dir = Path(record["job_dir"])
-
-    def updater(state: dict[str, Any]) -> None:
-        state["stop_requested"] = True
-        state["status"] = "stopping"
-        state["current_stage"] = str(state.get("current_stage") or current_stage)
-        for stage in state.get("stages", []):
-            if stage.get("key") == state["current_stage"]:
-                stage["status"] = "stopping"
-                stage["summary"] = runtime.STOPPING_MESSAGE
-                logs = stage.setdefault("logs", [])
-                if runtime.STOPPING_MESSAGE not in logs:
-                    logs.append(runtime.STOPPING_MESSAGE)
-                break
-
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
     refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
     response_state = runtime.enrich_job_state_with_record(updated_state, refreshed_record)
     return jsonify(runtime.attach_delivery_actions(response_state, job_dir))
@@ -324,6 +315,7 @@ def api_interrupt_job(job_id: str):
 def api_resume_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = runtime.reconcile_job_record(record)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
     current_state = record.get("state", {})
@@ -334,6 +326,8 @@ def api_resume_job(job_id: str):
     next_job_target = runtime.JOB_TARGET_EDITABLE_PPT
     request_payload["job_target"] = next_job_target
     job_dir = Path(record["job_dir"])
+    if runtime.is_job_managed(job_id) and runtime.has_job_stop_request(job_dir, job_id):
+        return jsonify({"error": "任务后台正在停止，请稍后再继续。"}), 400
     runtime.update_job_record(
         runtime.JOBS_DB_PATH,
         job_id,
@@ -341,19 +335,13 @@ def api_resume_job(job_id: str):
         status="queued",
         request=request_payload,
     )
+    runtime.clear_job_stop_request(job_dir, job_id)
 
-    def updater(state: dict[str, Any]) -> None:
-        state["stop_requested"] = False
-        state["status"] = "queued"
-        state["error"] = ""
-        state.setdefault("job_meta", {})["job_target"] = next_job_target
-        state["job_meta"]["job_target_label"] = runtime.TARGET_LABELS[next_job_target]
-        for stage in state.get("stages", []):
-            if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "skipped":
-                stage["status"] = "pending"
-                stage["summary"] = "等待继续执行"
-
-    runtime.mutate_job_state(job_dir, job_id, updater)
+    runtime.mutate_job_state(
+        job_dir,
+        job_id,
+        lambda state: runtime.prepare_state_for_resume(state, next_job_target),
+    )
     runtime.reconcile_resume_state(job_dir, job_id)
     try:
         submit_existing_job_pipeline(record, request_payload=request_payload)
@@ -366,6 +354,7 @@ def api_resume_job(job_id: str):
 def api_deliver_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = runtime.reconcile_job_record(record)
     if not record:
         return jsonify({"error": "任务不存在"}), 404
     job_dir = Path(record["job_dir"])
