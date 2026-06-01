@@ -916,7 +916,11 @@ a {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  max-height: clamp(106px, 19vh, 154px);
   margin-top: 14px;
+  padding-right: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
 }
 

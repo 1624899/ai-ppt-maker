@@ -127,8 +127,8 @@ const AgentWorkspace = ({
             <h3>{agentSummary.title}</h3>
             <p>{agentSummary.body}</p>
             {pages.length > 0 && (
-              <StaggerContainer className="page-outline" itemCount={Math.min(pages.length, 6)}>
-                {pages.slice(0, 6).map((page, index) => {
+              <StaggerContainer className="page-outline" itemCount={pages.length}>
+                {pages.map((page, index) => {
                   const selected = index === selectedPageIndex;
                   return (
                     <StaggerItem key={page.page_no}>
