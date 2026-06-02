@@ -18,7 +18,8 @@ import SlideImage from './SlideImage';
 import StyleReferenceViewer from './StyleReferenceViewer';
 import TaskActionMenu from './TaskActionMenu';
 import TaskSkeletonList from './TaskSkeletonList';
-import { formatTaskTime, getPageCount, getStatusLabel, getStyleReferenceImages } from '../../utils/jobPresentation';
+import TaskMetaInfo from './TaskMetaInfo';
+import { getStyleReferenceImages } from '../../utils/jobPresentation';
 
 const RESOURCE_LINKS = [
   { key: 'materials', label: '素材库', description: '原稿图、无文字元素图', icon: FileImage, disabled: true },
@@ -222,9 +223,7 @@ const TaskCenter = ({
               <strong>{job.title || '未命名任务'}</strong>
             )}
             <span className="task-card__meta">
-              <span className="task-card__meta-text">
-                {getStatusLabel(job.status)} · {getPageCount(job) || '-'} 页 · {formatTaskTime(job.updated_at)}
-              </span>
+              <TaskMetaInfo job={job} />
               {hasStyleReferenceImages && (
                 <span className="task-card__reference-hint" title={`有 ${styleReferenceImages.length} 张参考风格图`}>
                   <Images size={13} />
@@ -326,7 +325,7 @@ const TaskCenter = ({
             <Archive size={15} />
             <span>历史任务</span>
           </div>
-          <StaggerContainer className="task-list" itemCount={historyJobs.length}>
+          <StaggerContainer className="task-list task-list--history" itemCount={historyJobs.length}>
             {loading ? (
               <TaskSkeletonList />
             ) : jobs.length === 0 ? (

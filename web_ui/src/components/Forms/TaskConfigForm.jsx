@@ -441,7 +441,7 @@ const TaskConfigForm = ({ currentJob }) => {
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.98 }}
       >
-        {submitting ? '提交中...' : (currentJob ? '按当前参数重新生成' : '创建并生成任务')}
+        {submitting ? '提交中...' : (currentJob ? '基于当前参数新建任务' : '创建并生成任务')}
       </motion.button>
     </form>
   );

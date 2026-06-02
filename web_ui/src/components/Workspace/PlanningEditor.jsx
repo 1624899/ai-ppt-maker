@@ -14,26 +14,18 @@ const buildPlanFromJob = (job) => normalizePlan({
   pages: Array.isArray(job?.pages) ? job.pages : [],
 });
 
-const PlanningEditor = ({ currentJob, onJobUpdated }) => {
+const PlanningEditorSession = ({ currentJob, onJobUpdated }) => {
+  const jobId = currentJob.job_id;
   const [plan, setPlan] = useState(() => buildPlanFromJob(currentJob));
-  const [versions, setVersions] = useState([]);
-  const [confirmation, setConfirmation] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [versions, setVersions] = useState(() => (Array.isArray(currentJob?.plan_versions) ? currentJob.plan_versions : []));
+  const [confirmation, setConfirmation] = useState(() => getJobMeta(currentJob).plan_confirmation || {});
+  const [loading, setLoading] = useState(Boolean(jobId));
   const [pending, setPending] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const jobId = currentJob?.job_id;
 
   useEffect(() => {
-    setPlan(buildPlanFromJob(currentJob));
-    setVersions(Array.isArray(currentJob?.plan_versions) ? currentJob.plan_versions : []);
-    setConfirmation(getJobMeta(currentJob).plan_confirmation || {});
-  }, [currentJob?.job_id, currentJob?.updated_at, currentJob?.status]);
-
-  useEffect(() => {
-    if (!jobId) return;
     let alive = true;
-    setLoading(true);
     getJobPlan(jobId)
       .then((payload) => {
         if (!alive) return;
@@ -140,10 +132,6 @@ const PlanningEditor = ({ currentJob, onJobUpdated }) => {
     }
   };
 
-  if (!currentJob) {
-    return <div className="empty-state">创建任务后，这里会显示可编辑规划。</div>;
-  }
-
   return (
     <section className="planning-editor">
       <div className="planning-editor__toolbar">
@@ -222,6 +210,20 @@ const PlanningEditor = ({ currentJob, onJobUpdated }) => {
       )}
     </section>
   );
+};
+
+const PlanningEditor = ({ currentJob, onJobUpdated }) => {
+  if (!currentJob?.job_id) {
+    return <div className="empty-state">创建任务后，这里会显示可编辑规划。</div>;
+  }
+
+  const sessionKey = [
+    currentJob.job_id,
+    currentJob.updated_at || '',
+    currentJob.status || '',
+  ].join(':');
+
+  return <PlanningEditorSession key={sessionKey} currentJob={currentJob} onJobUpdated={onJobUpdated} />;
 };
 
 export default PlanningEditor;

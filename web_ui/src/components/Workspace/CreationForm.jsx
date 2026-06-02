@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { FileUp, WandSparkles } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
 import { resolveIncludeCoverPage } from '../../utils/generationOptions';
@@ -60,11 +60,23 @@ const createInitialValues = (config, currentJob, workflowMode) => {
   };
 };
 
-const CreationFormFields = ({ config, currentJob, compact, workflowMode, onWorkflowModeChange, onCreated }) => {
+const CreationFormFields = ({
+  config,
+  currentJob,
+  compact,
+  workflowMode,
+  submitLabel,
+  onWorkflowModeChange,
+  onCreated,
+  onParamsChange,
+}) => {
   const [form, setForm] = useState(() => createInitialValues(config, currentJob, workflowMode));
   const [styleFiles, setStyleFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const emitParamsChange = useEffectEvent((nextForm) => {
+    onParamsChange?.(nextForm);
+  });
 
   const updateForm = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -74,10 +86,8 @@ const CreationFormFields = ({ config, currentJob, compact, workflowMode, onWorkf
   };
 
   useEffect(() => {
-    if (workflowMode == null) return;
-    const normalized = normalizeWorkflowMode(workflowMode);
-    setForm((prev) => (prev.workflowMode === normalized ? prev : { ...prev, workflowMode: normalized }));
-  }, [workflowMode]);
+    emitParamsChange(form);
+  }, [form]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -277,13 +287,21 @@ const CreationFormFields = ({ config, currentJob, compact, workflowMode, onWorkf
 
       <button type="submit" className="btn btn-primary creation-form__submit" disabled={submitting}>
         <WandSparkles size={18} />
-        <span>{submitting ? '正在提交...' : currentJob ? `基于当前任务${getWorkflowSubmitLabel(form.workflowMode)}` : getWorkflowSubmitLabel(form.workflowMode)}</span>
+        <span>{submitting ? '正在提交...' : submitLabel || (currentJob ? `基于当前任务${getWorkflowSubmitLabel(form.workflowMode)}` : getWorkflowSubmitLabel(form.workflowMode))}</span>
       </button>
     </form>
   );
 };
 
-const CreationForm = ({ currentJob, compact = false, workflowMode, onWorkflowModeChange, onCreated }) => {
+const CreationForm = ({
+  currentJob,
+  compact = false,
+  workflowMode,
+  submitLabel,
+  onWorkflowModeChange,
+  onCreated,
+  onParamsChange,
+}) => {
   const { config, loading } = useConfig();
 
   if (loading || !config) {
@@ -298,8 +316,10 @@ const CreationForm = ({ currentJob, compact = false, workflowMode, onWorkflowMod
       currentJob={currentJob}
       compact={compact}
       workflowMode={workflowMode}
+      submitLabel={submitLabel}
       onWorkflowModeChange={onWorkflowModeChange}
       onCreated={onCreated}
+      onParamsChange={onParamsChange}
     />
   );
 };

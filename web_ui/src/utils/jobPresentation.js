@@ -277,7 +277,7 @@ export function buildAgentSummary(job) {
   if (status === 'error') {
     return {
       title: '生成过程中遇到错误',
-      body: String(job.error || '可以查看阶段日志，修复后继续生成或基于当前参数重试。'),
+      body: String(job.error || '可以查看阶段日志，修复后继续生成或基于当前参数新建任务。'),
     };
   }
   if (status === 'interrupted') {

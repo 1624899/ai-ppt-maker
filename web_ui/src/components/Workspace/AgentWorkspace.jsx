@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, History, Layers3, LoaderCircle, MessageSquareText, MousePointer2, SlidersHorizontal, Sparkles, WandSparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { ScaleButton } from '../Motion/MotionUI';
 import AgentChatPanel from './AgentChatPanel';
 import AgentFeedbackCard from './AgentFeedbackCard';
-import CreationForm from './CreationForm';
 import PlanningEditor from './PlanningEditor';
 import SlideImage from './SlideImage';
 import StageProgress from './StageProgress';
@@ -13,7 +12,6 @@ import { applyImageEditCandidate, postImageEditCandidate } from '../../utils/job
 import { getLatestImageEditCandidate, isImageEditCandidateApplied } from '../../utils/imageEditCandidates';
 import {
   buildAgentSummary,
-  getJobMeta,
   getOperationExecutionLabel,
   getJobPages,
   getJobTitle,
@@ -23,6 +21,7 @@ import {
   getRecentJobOperations,
   getStatusLabel,
 } from '../../utils/jobPresentation';
+import { getTaskLaunchSummaryText } from '../../utils/taskLaunchSummary';
 
 const AgentWorkspace = ({
   currentJob,
@@ -30,10 +29,8 @@ const AgentWorkspace = ({
   selectedPreviewType,
   imageAnnotations,
   onSelectPage,
-  onJobCreated,
   onJobUpdated,
-  workflowMode,
-  onWorkflowModeChange,
+  onCreateTask,
   onOpenImageMarkup,
 }) => {
   const [mode, setMode] = useState('chat');
@@ -41,7 +38,6 @@ const AgentWorkspace = ({
   const [agentDraft, setAgentDraft] = useState(null);
   const pages = getJobPages(currentJob);
   const activePage = pages[selectedPageIndex] || pages[0];
-  const meta = getJobMeta(currentJob);
   const agentSummary = buildAgentSummary(currentJob);
   const recentOperations = getRecentJobOperations(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
@@ -51,12 +47,8 @@ const AgentWorkspace = ({
     ? getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType)
     : null;
   const activePreviewLabel = selectedPreviewType === 'element' ? '元素图' : selectedPreviewType === 'preview' ? '预览图' : '原稿图';
-
-  useEffect(() => {
-    if (String(currentJob?.status || '') === 'awaiting_plan_confirmation') {
-      setMode('planning');
-    }
-  }, [currentJob?.job_id, currentJob?.status]);
+  const forcedPlanningMode = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
+  const activeMode = forcedPlanningMode ? 'planning' : mode;
 
   const confirmAgentDraft = (draft) => {
     setAgentDraft(draft);
@@ -111,18 +103,18 @@ const AgentWorkspace = ({
         <div>
           <span className="eyebrow">创作工作区</span>
           <h2>{currentJob ? getJobTitle(currentJob) : '创建你的下一份 PPT'}</h2>
-          <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.workflow_mode_label || '一键生成'} · ${meta.job_target_label || '可编辑 PPT'}` : '先描述目标，Agent 会生成初稿并持续接受修改。'}</p>
+          <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${getTaskLaunchSummaryText(currentJob)}` : '先配置任务边界，再进入对话、规划和单页编辑。'}</p>
         </div>
         <div className="mode-switch" role="tablist" aria-label="工作模式">
-          <ScaleButton className={clsx(mode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
+          <ScaleButton className={clsx(activeMode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
             <MessageSquareText size={16} />
             对话
           </ScaleButton>
-          <ScaleButton className={clsx(mode === 'planning' && 'is-active')} onClick={() => setMode('planning')} disabled={!currentJob}>
+          <ScaleButton className={clsx(activeMode === 'planning' && 'is-active')} onClick={() => setMode('planning')} disabled={!currentJob}>
             <Layers3 size={16} />
             规划
           </ScaleButton>
-          <ScaleButton className={clsx(mode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
+          <ScaleButton className={clsx(activeMode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
             <SlidersHorizontal size={16} />
             编辑
           </ScaleButton>
@@ -140,7 +132,7 @@ const AgentWorkspace = ({
         />
 
         <AnimatePresence mode="wait">
-          {mode === 'chat' ? (
+          {activeMode === 'chat' ? (
             <motion.section 
               key="chat"
               initial={{ opacity: 0, y: 15 }}
@@ -150,12 +142,16 @@ const AgentWorkspace = ({
               className="chat-stage"
             >
             {!currentJob && (
-              <div className="agent-card">
+              <div className="agent-card agent-card--launch-empty">
                 <div className="agent-card__title-row">
                   <Sparkles size={18} />
-                  <h3>生成初稿</h3>
+                  <h3>先创建任务 Brief</h3>
                 </div>
-                <CreationForm compact workflowMode={workflowMode} onWorkflowModeChange={onWorkflowModeChange} onCreated={onJobCreated} />
+                <p>生成参数已经从对话区独立出来。先在启动配置里确定内容、页数、风格和生成工作流，提交后这里会进入 Agent 对话与后续编辑。</p>
+                <ScaleButton className="btn btn-primary ai-glow-button" onClick={onCreateTask}>
+                  <Sparkles size={16} />
+                  创建 PPT 任务
+                </ScaleButton>
               </div>
             )}
 
@@ -194,14 +190,10 @@ const AgentWorkspace = ({
                     ))}
                   </section>
                 )}
-                <details className="agent-card advanced-config">
-                  <summary>需要重新生成整套 PPT？展开参数</summary>
-                  <CreationForm compact currentJob={currentJob} workflowMode={workflowMode} onWorkflowModeChange={onWorkflowModeChange} onCreated={onJobCreated} />
-                </details>
               </>
             )}
             </motion.section>
-          ) : mode === 'planning' ? (
+          ) : activeMode === 'planning' ? (
             <motion.section
               key="planning"
               initial={{ opacity: 0, y: 15 }}
