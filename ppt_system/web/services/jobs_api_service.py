@@ -36,6 +36,7 @@ def api_create_job():
         request.form.get("job_target", runtime.JOB_TARGET_EDITABLE_PPT),
         runtime.JOB_TARGET_EDITABLE_PPT,
     )
+    workflow_mode = runtime.normalize_workflow_mode(request.form.get("workflow_mode", "auto"))
     style_notes = request.form.get("style_notes", "").strip()
     reuse_style_refs_from_job_id = request.form.get("reuse_style_refs_from_job_id", "").strip()
     generation_payload = dict(request.form)
@@ -93,6 +94,7 @@ def api_create_job():
         generation_options,
         style_reference_images,
         job_target,
+        workflow_mode,
     )
     request_payload = {
         "content": content,
@@ -101,6 +103,7 @@ def api_create_job():
         "image_quality": image_quality,
         "style_notes": style_notes,
         "job_target": job_target,
+        "workflow_mode": workflow_mode,
         "generation_options": generation_options,
         "include_cover_page": generation_options["include_cover_page"],
         "page_richness_default": generation_options["page_richness_default"],
@@ -355,6 +358,129 @@ def api_resume_job(job_id: str):
     return jsonify(state or {"ok": True})
 
 
+def api_get_job_plan(job_id: str):
+    runtime = get_runtime_module()
+    record = _get_existing_job_record(runtime, job_id)
+    if not record:
+        return jsonify({"error": "任务不存在"}), 404
+    job_dir = Path(record["job_dir"])
+    state = _load_editable_job_state(runtime, record, job_dir)
+    if not state:
+        return jsonify({"error": "任务状态不存在"}), 404
+    runtime.ensure_workflow_metadata(state, record.get("request", {}))
+    return jsonify(runtime.build_plan_response(state))
+
+
+def api_update_job_plan(job_id: str):
+    runtime = get_runtime_module()
+    record = _get_existing_job_record(runtime, job_id)
+    if not record:
+        return jsonify({"error": "任务不存在"}), 404
+    if str(record.get("status") or "").strip() in {"queued", "running", "stopping"}:
+        return jsonify({"error": "任务正在执行中，请先暂停或等待当前阶段完成。"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    raw_plan = payload.get("plan", payload)
+    if not isinstance(raw_plan, dict):
+        return jsonify({"error": "规划内容必须是对象。"}), 400
+
+    job_dir = Path(record["job_dir"])
+
+    def updater(state: dict[str, Any]) -> None:
+        runtime.ensure_workflow_metadata(state, record.get("request", {}))
+        normalized_plan = runtime.apply_plan_to_state(state, raw_plan)
+        runtime.save_plan_version(
+            state,
+            source="user_draft",
+            summary=str(payload.get("summary") or "用户保存规划草案"),
+            plan=normalized_plan,
+        )
+        runtime.mark_plan_draft(state)
+        state["status"] = runtime.AWAITING_PLAN_CONFIRMATION_STATUS
+        state["current_stage"] = "planning"
+        state["error"] = ""
+        state["stop_requested"] = False
+        _set_stage_status(
+            state,
+            "planning",
+            status="completed",
+            summary="规划草案已保存，等待确认后继续生成",
+        )
+
+    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    return jsonify(runtime.build_plan_response(updated_state))
+
+
+def api_confirm_job_plan(job_id: str):
+    runtime = get_runtime_module()
+    record = _get_existing_job_record(runtime, job_id)
+    if not record:
+        return jsonify({"error": "任务不存在"}), 404
+    if str(record.get("status") or "").strip() in {"queued", "running", "stopping"}:
+        return jsonify({"error": "任务正在执行中，不能重复确认规划。"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    raw_plan = payload.get("plan")
+    if raw_plan is not None and not isinstance(raw_plan, dict):
+        return jsonify({"error": "规划内容必须是对象。"}), 400
+
+    job_dir = Path(record["job_dir"])
+    request_payload = dict(record.get("request", {}) if isinstance(record.get("request"), dict) else {})
+
+    def updater(state: dict[str, Any]) -> None:
+        runtime.ensure_workflow_metadata(state, request_payload)
+        if isinstance(raw_plan, dict):
+            normalized_plan = runtime.apply_plan_to_state(state, raw_plan)
+        else:
+            normalized_plan = runtime.get_active_plan_payload(state)
+        if not runtime.has_complete_planning_state(state):
+            raise ValueError("当前规划缺少页面标题或原稿图提示词，暂时不能继续生成。")
+        runtime.save_plan_version(
+            state,
+            source="user_confirmed",
+            summary=str(payload.get("summary") or "用户确认规划"),
+            plan=normalized_plan,
+        )
+        runtime.mark_plan_confirmed(state)
+        state["status"] = "queued"
+        state["current_stage"] = "planning"
+        state["error"] = ""
+        state["stop_requested"] = False
+        _set_stage_status(
+            state,
+            "planning",
+            status="completed",
+            summary=f"规划已确认，共 {len(state.get('pages', []))} 页",
+        )
+
+    try:
+        updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    request_payload["workflow_mode"] = runtime.normalize_workflow_mode(
+        request_payload.get("workflow_mode") or updated_state.get("job_meta", {}).get("workflow_mode")
+    )
+    runtime.update_job_record(
+        runtime.JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="queued",
+        current_stage="planning",
+        request=request_payload,
+    )
+    runtime.clear_job_stop_request(job_dir, job_id)
+
+    refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+    try:
+        submit_existing_job_pipeline(refreshed_record, request_payload=request_payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    state = runtime.load_job_state(job_id, job_dir) or updated_state
+    return jsonify(state)
+
+
 def api_deliver_job(job_id: str):
     runtime = get_runtime_module()
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
@@ -467,3 +593,33 @@ def serve_run_file(job_id: str, filename: str):
     config = runtime.read_config()
     directory = _resolve_job_dir(config, job_id)
     return send_from_directory(directory, filename)
+
+
+def _get_existing_job_record(runtime: Any, job_id: str) -> dict[str, Any] | None:
+    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    return runtime.reconcile_job_record(record)
+
+
+def _load_editable_job_state(runtime: Any, record: dict[str, Any], job_dir: Path) -> dict[str, Any]:
+    state = runtime.load_job_state(str(record["job_id"]), job_dir)
+    if isinstance(state, dict) and state:
+        return state
+    record_state = record.get("state", {})
+    return record_state if isinstance(record_state, dict) else {}
+
+
+def _set_stage_status(
+    state: dict[str, Any],
+    stage_key: str,
+    *,
+    status: str,
+    summary: str,
+) -> None:
+    stages = state.get("stages", [])
+    if not isinstance(stages, list):
+        return
+    for stage in stages:
+        if isinstance(stage, dict) and str(stage.get("key") or "") == stage_key:
+            stage["status"] = status
+            stage["summary"] = summary
+            return

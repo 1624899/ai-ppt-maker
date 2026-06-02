@@ -33,6 +33,7 @@ from ppt_system.generation.reference_style_adherence import (
 )
 from ppt_system.generation.style_runtime import apply_text_theme
 from ppt_system.generation.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
+from ppt_system.generation.title_extraction import resolve_plan_title
 
 
 def build_content_plan(
@@ -577,6 +578,7 @@ def normalize_content_plan(
         pages.append(page)
 
     return {
+        "title": resolve_plan_title(result.get("title"), fallback_content=content),
         "style_type": style_type,
         "audience": str(result.get("audience", "")).strip(),
         "narrative": str(result.get("narrative", "")).strip(),

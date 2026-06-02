@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pause, Play, Plus, Settings } from 'lucide-react';
+import { CheckCircle2, Pause, Play, Plus, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import SettingsModal from './SettingsModal';
+import WorkflowModeSwitch from '../Workspace/WorkflowModeSwitch';
 import pptStudioIcon from '../../assets/ppt-studio-icon.png';
 import { getJobTitle, getStatusLabel } from '../../utils/jobPresentation';
 import { getTopbarTaskAction } from '../../utils/topbarTaskAction';
@@ -11,9 +12,10 @@ const ACTION_ICONS = {
   pause: Pause,
   play: Play,
   plus: Plus,
+  check: CheckCircle2,
 };
 
-const Header = ({ currentJob, onCreateTask, onJobUpdated, onJobsRefresh }) => {
+const Header = ({ currentJob, workflowMode, onWorkflowModeChange, onCreateTask, onJobUpdated, onJobsRefresh }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { pendingKey, runAction } = useJobActions({
     currentJob,
@@ -29,7 +31,7 @@ const Header = ({ currentJob, onCreateTask, onJobUpdated, onJobsRefresh }) => {
       return;
     }
 
-    const data = await runAction(taskAction.action, undefined, { key: taskAction.action });
+    const data = await runAction(taskAction.action, undefined, { key: taskAction.type || taskAction.action });
     if (data) {
       onJobsRefresh?.();
     }
@@ -55,6 +57,7 @@ const Header = ({ currentJob, onCreateTask, onJobUpdated, onJobsRefresh }) => {
         </div>
 
         <div className="topbar-actions">
+          <WorkflowModeSwitch value={workflowMode} onChange={onWorkflowModeChange} />
           <button className="btn btn-secondary" onClick={() => setIsSettingsOpen(true)}>
             <Settings size={18} />
             <span>设置</span>

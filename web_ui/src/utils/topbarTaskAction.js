@@ -6,6 +6,18 @@ const normalizeStatus = (status) => String(status || '').trim();
 export function getTopbarTaskAction(job, pendingKey = '') {
   const status = normalizeStatus(job?.status);
 
+  if (status === 'awaiting_plan_confirmation') {
+    const pending = pendingKey === 'confirm-plan';
+    return {
+      type: 'confirm-plan',
+      action: 'plan/confirm',
+      icon: 'check',
+      label: pending ? '确认中...' : '确认规划',
+      className: 'btn-task-resume',
+      disabled: pending,
+    };
+  }
+
   if (RESUMABLE_TASK_STATUSES.has(status)) {
     const pending = pendingKey === 'resume';
     return {

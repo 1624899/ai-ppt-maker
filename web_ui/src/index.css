@@ -161,8 +161,9 @@ a {
 }
 
 .app-topbar {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(220px, auto) minmax(180px, 1fr) max-content;
+  grid-template-columns: minmax(220px, 1fr) minmax(520px, auto);
   gap: 14px;
   align-items: center;
   min-height: 68px;
@@ -226,10 +227,16 @@ a {
 }
 
 .topbar-task {
+  position: absolute;
+  top: 50%;
+  left: calc(50% - 34px);
+  z-index: 1;
   display: grid;
+  width: min(200px, 18vw);
   min-width: 0;
-  justify-self: center;
   text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .topbar-task strong {
@@ -247,6 +254,23 @@ a {
   gap: 10px;
   justify-content: flex-end;
   min-width: 0;
+  justify-self: end;
+  position: relative;
+  z-index: 2;
+}
+
+.topbar-actions .workflow-mode-switch {
+  width: 306px;
+  flex: 0 0 306px;
+}
+
+.topbar-actions .workflow-mode-switch button {
+  min-height: 44px;
+  padding: 7px 13px;
+}
+
+.topbar-actions .workflow-mode-switch small {
+  display: none;
 }
 
 .workspace-shell {
@@ -412,6 +436,7 @@ a {
 .task-center__body,
 .ppt-studio__body,
 .chat-stage,
+.planning-stage,
 .edit-stage,
 .creation-form,
 .form-grid,
@@ -822,6 +847,116 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.workflow-mode-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  overflow: hidden;
+  background: rgba(238, 243, 248, 0.92);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  isolation: isolate;
+}
+
+.workflow-mode-switch button {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 12px;
+  color: var(--text-main);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: color 0.2s ease, transform 0.22s ease;
+}
+
+.workflow-mode-switch::before {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  z-index: 1;
+  width: calc((100% - 16px) / 2);
+  content: "";
+  background: linear-gradient(135deg, #ffffff, #edf4ff);
+  border: 1px solid rgba(31, 94, 255, 0.38);
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(31, 94, 255, 0.14);
+  transform: translateX(0) scaleX(1);
+  transform-origin: center;
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.22, 1), box-shadow 0.24s ease;
+}
+
+.workflow-mode-switch--guided::before {
+  background: linear-gradient(135deg, #e7fbf8, #ffffff);
+  border-color: rgba(15, 159, 143, 0.4);
+  box-shadow: 0 10px 22px rgba(15, 159, 143, 0.14);
+  transform: translateX(calc(100% + 6px)) scaleX(1);
+}
+
+.workflow-mode-switch.is-switching::before {
+  animation: workflow-switch-squeeze 0.32s cubic-bezier(0.2, 0.9, 0.22, 1);
+}
+
+.workflow-mode-switch.is-switching button.is-active {
+  transform: scaleX(0.97);
+}
+
+.workflow-mode-switch button.is-active {
+  color: var(--primary-strong);
+}
+
+.workflow-mode-switch__option--guided.is-active {
+  color: #08796f;
+}
+
+.workflow-mode-switch__option--auto svg {
+  color: var(--primary);
+}
+
+.workflow-mode-switch__option--guided svg {
+  color: var(--teal);
+}
+
+.workflow-mode-switch span {
+  display: grid;
+  min-width: 0;
+}
+
+.workflow-mode-switch strong {
+  font-size: 13px;
+}
+
+.workflow-mode-switch small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes workflow-switch-squeeze {
+  0% {
+    scale: 1 1;
+  }
+  45% {
+    scale: 0.9 1;
+  }
+  72% {
+    scale: 1.04 1;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+
 .image-preview-switch {
   display: inline-flex;
   flex: 0 0 auto;
@@ -863,6 +998,8 @@ a {
 .studio-card,
 .conversation-card,
 .edit-block,
+.planning-editor__deck,
+.page-plan-editor,
 .stage-progress {
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid var(--border-light);
@@ -882,6 +1019,53 @@ a {
   background:
     linear-gradient(135deg, rgba(31, 94, 255, 0.08), rgba(15, 159, 143, 0.06)),
     rgba(255, 255, 255, 0.8);
+}
+
+.agent-feedback-card__main,
+.agent-feedback-card__content {
+  min-width: 0;
+}
+
+.agent-feedback-card__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.agent-feedback-card__head > div {
+  min-width: 0;
+}
+
+.agent-feedback-card__toggle {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(198, 211, 231, 0.72);
+  border-radius: 999px;
+  box-shadow: var(--shadow-xs);
+}
+
+.agent-feedback-card__toggle:hover {
+  color: var(--primary);
+  background: #ffffff;
+}
+
+.agent-feedback-card__toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.agent-feedback-card.is-collapsed .agent-feedback-card__toggle svg {
+  transform: rotate(-90deg);
+}
+
+.agent-feedback-card__content {
+  overflow: hidden;
 }
 
 .agent-avatar {
@@ -910,6 +1094,120 @@ a {
 .agent-card__title-row {
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.planning-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.planning-editor__toolbar,
+.page-plan-editor__head,
+.planning-editor__actions,
+.page-plan-editor__actions,
+.planning-editor__versions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.planning-editor__toolbar {
+  justify-content: space-between;
+  padding: 14px;
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.08), rgba(15, 159, 143, 0.05)),
+    rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.planning-editor__toolbar > div:first-child,
+.planning-editor__versions {
+  display: grid;
+  min-width: 0;
+}
+
+.planning-editor__toolbar span,
+.planning-editor__versions span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.planning-editor__toolbar strong {
+  font-size: 17px;
+}
+
+.planning-editor__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.planning-editor__deck,
+.page-plan-editor {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.planning-editor__deck,
+.page-plan-editor__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.page-plan-editor__head {
+  justify-content: space-between;
+}
+
+.page-plan-editor__head > span {
+  color: var(--primary-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.page-plan-editor__actions button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--text-muted);
+  background: rgba(245, 248, 252, 0.82);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+}
+
+.page-plan-editor__actions button:hover:not(:disabled) {
+  color: var(--primary);
+  background: #fff;
+}
+
+.page-plan-editor__grid,
+.planning-editor__pages {
+  display: grid;
+  gap: 12px;
+}
+
+.planning-editor__versions {
+  align-items: start;
+  padding: 12px 14px;
+  background: rgba(245, 248, 252, 0.72);
+  border: 1px solid rgba(198, 211, 231, 0.52);
+  border-radius: var(--radius-md);
+}
+
+.planning-editor__versions strong {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.form-success {
+  padding: 10px 12px;
+  color: var(--success);
+  font-size: 13px;
+  background: var(--success-soft);
+  border: 1px solid rgba(35, 139, 87, 0.16);
+  border-radius: var(--radius-md);
 }
 
 .page-outline {
@@ -2644,10 +2942,14 @@ a {
   }
 
   .topbar-task {
+    position: static;
+    width: auto;
     grid-column: 1 / -1;
     grid-row: 2;
     justify-self: stretch;
     text-align: left;
+    transform: none;
+    pointer-events: auto;
   }
 
   .topbar-actions {
@@ -2690,10 +2992,16 @@ a {
 
   .topbar-actions {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .topbar-actions .btn {
     flex: 1;
+  }
+
+  .topbar-actions .workflow-mode-switch {
+    order: -1;
+    width: 100%;
   }
 
   .workspace-shell {
@@ -2710,6 +3018,14 @@ a {
 
   .agent-workspace__header {
     display: grid;
+  }
+
+  .agent-feedback-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-feedback-card .agent-avatar {
+    display: none;
   }
 
   .mode-switch {
@@ -2733,6 +3049,9 @@ a {
 
   .form-grid,
   .page-outline,
+  .workflow-mode-switch,
+  .planning-editor__deck,
+  .page-plan-editor__grid,
   .stage-progress__steps,
   .settings-body,
   .model-form__grid {

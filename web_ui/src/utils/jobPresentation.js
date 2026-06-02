@@ -1,3 +1,5 @@
+import { deriveTitleFromContent } from './titleExtraction';
+
 export const STAGE_DEFINITIONS = [
   { key: 'planning', label: '模型规划' },
   { key: 'reference_generation', label: '原稿图生成' },
@@ -10,6 +12,7 @@ const STATUS_LABELS = {
   pending: '等待中',
   running: '生成中',
   stopping: '停止中',
+  awaiting_plan_confirmation: '等待确认规划',
   interrupted: '已中断',
   completed: '已完成',
   error: '生成失败',
@@ -49,7 +52,7 @@ export function getJobTitle(job) {
   const title = String(job?.title || '').trim();
   if (title) return title;
   const content = String(job?.job_meta?.content || job?.content || '').trim();
-  return content ? content.slice(0, 36) : '未命名 PPT 任务';
+  return deriveTitleFromContent(content);
 }
 
 export function getJobMeta(job) {
@@ -281,6 +284,12 @@ export function buildAgentSummary(job) {
     return {
       title: '任务已中断',
       body: '当前结果已保留，可以继续生成，也可以基于现有内容重新创建任务。',
+    };
+  }
+  if (status === 'awaiting_plan_confirmation') {
+    return {
+      title: `规划草案已生成，共 ${getPageCount(job)} 页`,
+      body: '可以在规划页调整标题、摘要、页面结构和提示词，确认后继续生成后续产物。',
     };
   }
   if (pages.length > 0) {

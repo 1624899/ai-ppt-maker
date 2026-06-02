@@ -8,6 +8,7 @@ import { useJobDetail } from '../../hooks/useJobDetail';
 import { useJobs } from '../../hooks/useJobs';
 import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from '../../utils/jobPresentation';
 import { mergeJobState } from '../../utils/jobStateMerge';
+import { getWorkflowModeFromJob, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
 
 const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
   jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}` : ''
@@ -18,6 +19,7 @@ const WorkspaceShell = () => {
   const [currentJobId, setCurrentJobId] = useState(null);
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [selectedPreviewType, setSelectedPreviewType] = useState('reference');
+  const [workflowMode, setWorkflowMode] = useState(WORKFLOW_MODE_AUTO);
   const [imageMarkupOpen, setImageMarkupOpen] = useState(false);
   const [annotationsByScope, setAnnotationsByScope] = useState({});
   const { job: currentJob, loading: jobLoading, setJob: setCurrentJob } = useJobDetail(currentJobId);
@@ -60,6 +62,15 @@ const WorkspaceShell = () => {
       });
     });
   }, [currentJobId, jobs, setCurrentJob]);
+
+  useEffect(() => {
+    if (!currentJob) return;
+    setWorkflowMode(getWorkflowModeFromJob(currentJob));
+  }, [currentJob?.job_id]);
+
+  const updateWorkflowMode = (value) => {
+    setWorkflowMode(normalizeWorkflowMode(value));
+  };
 
   const handleJobCreated = (job) => {
     setCurrentJob(job);
@@ -129,6 +140,8 @@ const WorkspaceShell = () => {
     <>
       <Header
         currentJob={currentJob}
+        workflowMode={workflowMode}
+        onWorkflowModeChange={updateWorkflowMode}
         onCreateTask={createTask}
         onJobUpdated={mergeCurrentJob}
         onJobsRefresh={refreshJobs}
@@ -152,6 +165,8 @@ const WorkspaceShell = () => {
           onSelectPage={setSelectedPageIndex}
           onJobCreated={handleJobCreated}
           onJobUpdated={mergeCurrentJob}
+          workflowMode={workflowMode}
+          onWorkflowModeChange={updateWorkflowMode}
           onOpenImageMarkup={() => setImageMarkupOpen(true)}
         />
         <PPTStudio

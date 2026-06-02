@@ -15,6 +15,29 @@ export const postJobAction = async (jobId, action, payload) => {
   return parseJsonResponse(response);
 };
 
+export const getJobPlan = async (jobId) => {
+  const response = await fetch(`/api/jobs/${jobId}/plan`);
+  return parseJsonResponse(response);
+};
+
+export const putJobPlan = async (jobId, payload) => {
+  const response = await fetch(`/api/jobs/${jobId}/plan`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+};
+
+export const confirmJobPlan = async (jobId, payload = {}) => {
+  const response = await fetch(`/api/jobs/${jobId}/plan/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+};
+
 export const postJobOperation = async (jobId, operation) => {
   const response = await fetch(`/api/jobs/${jobId}/operations`, {
     method: 'POST',

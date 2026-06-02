@@ -4,6 +4,8 @@ import copy
 from datetime import datetime
 from typing import Any, Mapping
 
+from ppt_system.generation.title_extraction import resolve_plan_title
+
 
 def get_active_plan_payload(state: Mapping[str, Any]) -> dict[str, Any]:
     """从任务状态中提取可编辑规划快照。"""
@@ -17,7 +19,7 @@ def get_active_plan_payload(state: Mapping[str, Any]) -> dict[str, Any]:
     job_meta = state.get("job_meta", {})
     if isinstance(job_meta, Mapping):
         plan["page_count"] = int(job_meta.get("page_count") or plan.get("page_count") or len(plan["pages"]))
-        plan["title"] = str(plan.get("title") or job_meta.get("content") or "").strip()
+        plan["title"] = resolve_plan_title(plan.get("title"), job_meta.get("title"), fallback_content=job_meta.get("content"))
     else:
         plan["page_count"] = int(plan.get("page_count") or len(plan["pages"]))
     return normalize_plan_payload(plan)
@@ -57,7 +59,7 @@ def normalize_plan_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
     normalized_pages = renumber_pages(normalized_pages)
 
     return {
-        "title": str(plan.get("title") or "").strip(),
+        "title": resolve_plan_title(plan.get("title"), fallback_content=plan.get("summary") or plan.get("narrative")),
         "summary": str(plan.get("summary") or plan.get("narrative") or "").strip(),
         "audience": str(plan.get("audience") or "").strip(),
         "style_type": str(plan.get("style_type") or "").strip(),
@@ -108,6 +110,7 @@ def save_plan_version(
 def apply_plan_to_state(state: dict[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
     """把编辑后的规划写回运行态，保留已有产物字段用于后续恢复。"""
     normalized_plan = normalize_plan_payload(plan)
+    explicit_fields_by_page = collect_explicit_page_fields(plan)
     old_pages = {
         int(page.get("page_no", 0) or 0): page
         for page in state.get("pages", [])
@@ -133,7 +136,14 @@ def apply_plan_to_state(state: dict[str, Any], plan: Mapping[str, Any]) -> dict[
         ],
     }
 
-    state["pages"] = [_merge_runtime_page_fields(page, old_pages.get(int(page["page_no"]))) for page in normalized_plan["pages"]]
+    state["pages"] = [
+        _merge_runtime_page_fields(
+            page,
+            old_pages.get(int(page["page_no"])),
+            explicit_fields_by_page.get(int(page["page_no"]), set()),
+        )
+        for page in normalized_plan["pages"]
+    ]
     state["reference_pages"] = _filter_artifacts_by_pages(state.get("reference_pages"), normalized_plan["pages"])
     state["element_pages"] = _filter_artifacts_by_pages(state.get("element_pages"), normalized_plan["pages"])
     job_meta = state.setdefault("job_meta", {})
@@ -183,15 +193,51 @@ def renumber_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted_pages
 
 
-def _merge_runtime_page_fields(page: dict[str, Any], old_page: Mapping[str, Any] | None) -> dict[str, Any]:
+def collect_explicit_page_fields(plan: Mapping[str, Any]) -> dict[int, set[str]]:
+    """记录用户明确提交过的页面字段，避免空值被旧运行态悄悄覆盖。"""
+    pages = plan.get("pages", [])
+    if not isinstance(pages, list):
+        return {}
+    sortable_items: list[tuple[int, int, set[str]]] = []
+    for index, page in enumerate(pages):
+        if not isinstance(page, Mapping):
+            continue
+        try:
+            page_no = int(page.get("page_no") or index + 1)
+        except (TypeError, ValueError):
+            page_no = index + 1
+        fields: set[str] = set()
+        if "reference_prompt" in page or "image_prompt" in page:
+            fields.add("reference_prompt")
+        if "elements_prompt" in page:
+            fields.add("elements_prompt")
+        sortable_items.append((page_no if page_no > 0 else index + 1, index, fields))
+    sortable_items.sort(key=lambda item: item[0])
+    return {normalized_page_no: fields for normalized_page_no, (_, _, fields) in enumerate(sortable_items, start=1)}
+
+
+def _merge_runtime_page_fields(
+    page: dict[str, Any],
+    old_page: Mapping[str, Any] | None,
+    explicit_fields: set[str] | None = None,
+) -> dict[str, Any]:
     old_page = old_page or {}
+    explicit_fields = explicit_fields or set()
+    if "reference_prompt" in explicit_fields:
+        reference_prompt = str(page.get("reference_prompt") or "")
+    else:
+        reference_prompt = str(page.get("reference_prompt") or old_page.get("reference_prompt") or "")
+    if "elements_prompt" in explicit_fields:
+        elements_prompt = str(page.get("elements_prompt") or "")
+    else:
+        elements_prompt = str(page.get("elements_prompt") or old_page.get("elements_prompt") or "")
     return {
         **page,
         "status": str(old_page.get("status") or "planned"),
         "reference_image": str(old_page.get("reference_image") or ""),
         "element_image": str(old_page.get("element_image") or ""),
-        "reference_prompt": str(page.get("reference_prompt") or old_page.get("reference_prompt") or ""),
-        "elements_prompt": str(page.get("elements_prompt") or old_page.get("elements_prompt") or ""),
+        "reference_prompt": reference_prompt,
+        "elements_prompt": elements_prompt,
     }
 
 

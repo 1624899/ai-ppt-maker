@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { Bot, CheckCircle2, History, LoaderCircle, MessageSquareText, MousePointer2, SlidersHorizontal, Sparkles, WandSparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, History, Layers3, LoaderCircle, MessageSquareText, MousePointer2, SlidersHorizontal, Sparkles, WandSparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { StaggerContainer, StaggerItem, ScaleButton } from '../Motion/MotionUI';
+import { ScaleButton } from '../Motion/MotionUI';
 import AgentChatPanel from './AgentChatPanel';
+import AgentFeedbackCard from './AgentFeedbackCard';
 import CreationForm from './CreationForm';
+import PlanningEditor from './PlanningEditor';
 import SlideImage from './SlideImage';
 import StageProgress from './StageProgress';
 import { applyImageEditCandidate, postImageEditCandidate } from '../../utils/jobActions';
@@ -30,6 +32,8 @@ const AgentWorkspace = ({
   onSelectPage,
   onJobCreated,
   onJobUpdated,
+  workflowMode,
+  onWorkflowModeChange,
   onOpenImageMarkup,
 }) => {
   const [mode, setMode] = useState('chat');
@@ -47,6 +51,12 @@ const AgentWorkspace = ({
     ? getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType)
     : null;
   const activePreviewLabel = selectedPreviewType === 'element' ? '元素图' : selectedPreviewType === 'preview' ? '预览图' : '原稿图';
+
+  useEffect(() => {
+    if (String(currentJob?.status || '') === 'awaiting_plan_confirmation') {
+      setMode('planning');
+    }
+  }, [currentJob?.job_id, currentJob?.status]);
 
   const confirmAgentDraft = (draft) => {
     setAgentDraft(draft);
@@ -101,12 +111,16 @@ const AgentWorkspace = ({
         <div>
           <span className="eyebrow">创作工作区</span>
           <h2>{currentJob ? getJobTitle(currentJob) : '创建你的下一份 PPT'}</h2>
-          <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.job_target_label || '可编辑 PPT'}` : '先描述目标，Agent 会生成初稿并持续接受修改。'}</p>
+          <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${meta.workflow_mode_label || '一键生成'} · ${meta.job_target_label || '可编辑 PPT'}` : '先描述目标，Agent 会生成初稿并持续接受修改。'}</p>
         </div>
         <div className="mode-switch" role="tablist" aria-label="工作模式">
           <ScaleButton className={clsx(mode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
             <MessageSquareText size={16} />
             对话
+          </ScaleButton>
+          <ScaleButton className={clsx(mode === 'planning' && 'is-active')} onClick={() => setMode('planning')} disabled={!currentJob}>
+            <Layers3 size={16} />
+            规划
           </ScaleButton>
           <ScaleButton className={clsx(mode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
             <SlidersHorizontal size={16} />
@@ -118,35 +132,12 @@ const AgentWorkspace = ({
       <div className="agent-workspace__body">
         {currentJob && <StageProgress job={currentJob} dense />}
 
-        <section className="agent-card agent-card--hero">
-          <div className="agent-avatar">
-            <Bot size={22} />
-          </div>
-          <div>
-            <span className="agent-card__label">Agent 反馈</span>
-            <h3>{agentSummary.title}</h3>
-            <p>{agentSummary.body}</p>
-            {pages.length > 0 && (
-              <StaggerContainer className="page-outline" itemCount={pages.length}>
-                {pages.map((page, index) => {
-                  const selected = index === selectedPageIndex;
-                  return (
-                    <StaggerItem key={page.page_no}>
-                      <ScaleButton
-                        className={clsx(selected && 'is-active')}
-                        aria-pressed={selected}
-                        onClick={() => onSelectPage(index)}
-                      >
-                        <span>{page.page_no}</span>
-                        {getPageTitle(page)}
-                      </ScaleButton>
-                    </StaggerItem>
-                  );
-                })}
-              </StaggerContainer>
-            )}
-          </div>
-        </section>
+        <AgentFeedbackCard
+          summary={agentSummary}
+          pages={pages}
+          selectedPageIndex={selectedPageIndex}
+          onSelectPage={onSelectPage}
+        />
 
         <AnimatePresence mode="wait">
           {mode === 'chat' ? (
@@ -164,7 +155,7 @@ const AgentWorkspace = ({
                   <Sparkles size={18} />
                   <h3>生成初稿</h3>
                 </div>
-                <CreationForm compact onCreated={onJobCreated} />
+                <CreationForm compact workflowMode={workflowMode} onWorkflowModeChange={onWorkflowModeChange} onCreated={onJobCreated} />
               </div>
             )}
 
@@ -205,10 +196,21 @@ const AgentWorkspace = ({
                 )}
                 <details className="agent-card advanced-config">
                   <summary>需要重新生成整套 PPT？展开参数</summary>
-                  <CreationForm compact currentJob={currentJob} onCreated={onJobCreated} />
+                  <CreationForm compact currentJob={currentJob} workflowMode={workflowMode} onWorkflowModeChange={onWorkflowModeChange} onCreated={onJobCreated} />
                 </details>
               </>
             )}
+            </motion.section>
+          ) : mode === 'planning' ? (
+            <motion.section
+              key="planning"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="planning-stage"
+            >
+              <PlanningEditor currentJob={currentJob} onJobUpdated={onJobUpdated} />
             </motion.section>
           ) : (
             <motion.section 

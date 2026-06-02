@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileUp, WandSparkles } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
 import { resolveIncludeCoverPage } from '../../utils/generationOptions';
 import { getJobMeta } from '../../utils/jobPresentation';
+import { getWorkflowSubmitLabel, getWorkflowModeFromJob, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
+import WorkflowModeSwitch from './WorkflowModeSwitch';
 
 const RICHNESS_LEVELS = [
   { value: 'low', label: '低' },
@@ -35,7 +37,7 @@ const clampPageCount = (value, maxPages) => {
   return Math.min(Math.max(parsed, 1), maxPages);
 };
 
-const createInitialValues = (config, currentJob) => {
+const createInitialValues = (config, currentJob, workflowMode) => {
   const meta = getJobMeta(currentJob);
   const generationOptions = meta.generation_options || {};
   const richnessMap = generationOptions.page_richness_map || {};
@@ -47,6 +49,7 @@ const createInitialValues = (config, currentJob) => {
     imagePreset: String(meta.image_preset?.name || currentJob?.image_preset || config.default_image_preset || ''),
     styleNotes: String(meta.style_notes || currentJob?.style_notes || ''),
     jobTarget: String(meta.job_target || 'editable_ppt'),
+    workflowMode: normalizeWorkflowMode(workflowMode || getWorkflowModeFromJob(currentJob) || WORKFLOW_MODE_AUTO),
     imageQuality: String(meta.image_quality || currentJob?.image_quality || 'medium'),
     includeCoverPage: resolveIncludeCoverPage(config, currentJob),
     pageRichnessDefault: String(generationOptions.page_richness_default || 'medium'),
@@ -57,15 +60,24 @@ const createInitialValues = (config, currentJob) => {
   };
 };
 
-const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
-  const [form, setForm] = useState(() => createInitialValues(config, currentJob));
+const CreationFormFields = ({ config, currentJob, compact, workflowMode, onWorkflowModeChange, onCreated }) => {
+  const [form, setForm] = useState(() => createInitialValues(config, currentJob, workflowMode));
   const [styleFiles, setStyleFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const updateForm = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === 'workflowMode') {
+      onWorkflowModeChange?.(value);
+    }
   };
+
+  useEffect(() => {
+    if (workflowMode == null) return;
+    const normalized = normalizeWorkflowMode(workflowMode);
+    setForm((prev) => (prev.workflowMode === normalized ? prev : { ...prev, workflowMode: normalized }));
+  }, [workflowMode]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -79,6 +91,7 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
     formData.append('image_preset', form.imagePreset);
     formData.append('style_notes', form.styleNotes);
     formData.append('job_target', form.jobTarget);
+    formData.append('workflow_mode', form.workflowMode);
     formData.append('image_quality', form.imageQuality);
     formData.append('include_cover_page', String(form.includeCoverPage));
     formData.append('page_richness_default', form.pageRichnessDefault);
@@ -115,6 +128,15 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
   return (
     <form className="creation-form" onSubmit={handleSubmit}>
       <div className="form-grid">
+        <div className="field field--full">
+          <span>生成工作流</span>
+          <WorkflowModeSwitch
+            value={form.workflowMode}
+            onChange={(value) => updateForm('workflowMode', value)}
+            disabled={submitting}
+          />
+        </div>
+
         <label className={compact ? 'field field--wide' : 'field field--full'}>
           <span>任务内容</span>
           <textarea
@@ -255,13 +277,13 @@ const CreationFormFields = ({ config, currentJob, compact, onCreated }) => {
 
       <button type="submit" className="btn btn-primary creation-form__submit" disabled={submitting}>
         <WandSparkles size={18} />
-        <span>{submitting ? '正在提交...' : currentJob ? '基于当前任务生成新版' : '生成初稿'}</span>
+        <span>{submitting ? '正在提交...' : currentJob ? `基于当前任务${getWorkflowSubmitLabel(form.workflowMode)}` : getWorkflowSubmitLabel(form.workflowMode)}</span>
       </button>
     </form>
   );
 };
 
-const CreationForm = ({ currentJob, compact = false, onCreated }) => {
+const CreationForm = ({ currentJob, compact = false, workflowMode, onWorkflowModeChange, onCreated }) => {
   const { config, loading } = useConfig();
 
   if (loading || !config) {
@@ -275,6 +297,8 @@ const CreationForm = ({ currentJob, compact = false, onCreated }) => {
       config={config}
       currentJob={currentJob}
       compact={compact}
+      workflowMode={workflowMode}
+      onWorkflowModeChange={onWorkflowModeChange}
       onCreated={onCreated}
     />
   );

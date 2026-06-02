@@ -66,6 +66,21 @@ def api_resume_job(job_id: str):
     return jobs_api_service.api_resume_job(job_id)
 
 
+@bp.get("/api/jobs/<job_id>/plan")
+def api_get_job_plan(job_id: str):
+    return jobs_api_service.api_get_job_plan(job_id)
+
+
+@bp.put("/api/jobs/<job_id>/plan")
+def api_update_job_plan(job_id: str):
+    return jobs_api_service.api_update_job_plan(job_id)
+
+
+@bp.post("/api/jobs/<job_id>/plan/confirm")
+def api_confirm_job_plan(job_id: str):
+    return jobs_api_service.api_confirm_job_plan(job_id)
+
+
 @bp.post("/api/jobs/<job_id>/deliver")
 def api_deliver_job(job_id: str):
     return jobs_api_service.api_deliver_job(job_id)

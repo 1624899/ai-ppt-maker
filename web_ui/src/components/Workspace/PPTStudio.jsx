@@ -43,6 +43,7 @@ const PPTStudio = ({
   const meta = getJobMeta(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
   const canResume = ['interrupted', 'error'].includes(String(currentJob?.status || ''));
+  const awaitingPlanConfirmation = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const { pendingKey, error: actionError, runAction } = useJobActions({
     currentJob,
     onJobUpdated,
@@ -155,6 +156,12 @@ const PPTStudio = ({
               <button type="button" className="btn btn-primary" onClick={() => runAction('resume')} disabled={pendingKey !== ''}>
                 <Play size={16} />
                 {pendingKey === 'resume' ? '提交中...' : '继续生成'}
+              </button>
+            )}
+            {awaitingPlanConfirmation && (
+              <button type="button" className="btn btn-primary" onClick={() => runAction('plan/confirm', undefined, { key: 'confirm-plan' })} disabled={pendingKey !== ''}>
+                <Play size={16} />
+                {pendingKey === 'confirm-plan' ? '确认中...' : '确认规划并继续'}
               </button>
             )}
           </div>

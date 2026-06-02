@@ -255,6 +255,40 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
         else:
             append_stage_log(job_dir, job_id, "planning", "检测到已有规划结果，继续从已保存进度执行")
 
+        state = load_job_state(job_id, job_dir) or state
+        if should_execute_planning or not get_active_plan_version(state):
+            mutate_job_state(
+                job_dir,
+                job_id,
+                lambda current_state: save_plan_version(
+                    current_state,
+                    source="model",
+                    summary="模型初始规划",
+                ),
+            )
+            state = load_job_state(job_id, job_dir) or state
+
+        if should_pause_after_planning(state):
+            append_stage_log(job_dir, job_id, "planning", "分步规划模式已暂停，等待用户确认规划")
+
+            def pause_after_planning(current_state):
+                mark_awaiting_plan_confirmation(current_state)
+                for stage in current_state.get("stages", []):
+                    if isinstance(stage, dict) and stage.get("key") == "planning":
+                        stage["status"] = "completed"
+                        stage["summary"] = "规划已生成，等待确认后继续生成"
+                        break
+
+            mutate_job_state(job_dir, job_id, pause_after_planning)
+            update_job_record(
+                JOBS_DB_PATH,
+                job_id,
+                status=AWAITING_PLAN_CONFIRMATION_STATUS,
+                current_stage="planning",
+                stop_requested=False,
+            )
+            return
+
         stage1_concurrency = max(1, int(config.get("stage1_concurrency", 1)))
         stage2_concurrency = max(1, int(config["stage2_concurrency"]))
         pending_reference_pages = []

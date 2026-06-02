@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.generation.title_extraction import derive_title_from_content
 
 RUNTIME_STATE_FIELDS = ("status", "current_stage", "stop_requested")
 NON_TERMINAL_JOB_STATUSES = {"", "pending", "queued", "running", "stopping"}
@@ -455,8 +456,7 @@ def parse_job_timestamp(value: Any) -> datetime | None:
 
 
 def build_job_title(content: str) -> str:
-    text = " ".join(content.split())
-    return text[:36] + ("..." if len(text) > 36 else "")
+    return derive_title_from_content(content)
 
 
 def _find_preview_image(state: dict[str, Any]) -> str:
