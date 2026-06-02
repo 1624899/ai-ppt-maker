@@ -21,9 +21,9 @@
 
 ## ✨ 项目简介
 
-AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输入一段长文内容和可选的风格参考图，系统就能自动完成内容规划、版式设计、配图生成和可编辑 PPT 导出的全流程——无需手动排版，即可获得专业级的演示文稿。
+AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。你可以输入一段长文内容和可选的风格参考图，让系统自动完成内容规划、版式设计、配图生成和可编辑 PPT 导出的全流程；也可以直接上传已有整页原稿图，把它登记为任务原稿图并从元素图阶段继续转换。
 
-系统采用 **Flask 后端 + React/Vite 前端** 架构，内置完整的 Web 创作工作区，支持任务管理、实时进度追踪、Agent 辅助编辑和图片标注等交互功能。
+系统采用 **Flask 后端 + React/Vite 前端** 架构，内置完整的 Web 创作工作区，支持任务管理、实时进度追踪、Agent 辅助编辑、图片标注和多图上传预览等交互功能。
 
 ## ⚠️ 注意
 本人用的模型为**gpt5.5+gpt-image-2**，没尝试过其他模型的效果，使用其他模型的效果暂时请自己探索。如若你用的是**中转站api**，请**务必把代理关闭**，不然图片可能无法正常生成
@@ -51,6 +51,8 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输�
 ### 🎨 两阶段图像生成
 - **原稿图（Reference）**：生成带文字的完整页面视觉稿
 - **元素图（Elements）**：基于原稿图生成去文字的纯元素背景图
+- 支持将已有整页原稿图登记为任务原稿图，跳过一阶段生成并从元素图阶段继续转换
+- 外部原稿图支持多图导入，按上传顺序生成多页任务，并提供拉伸填满、等比留白、等比裁切三种画幅适配方式
 - 支持风格参考图引导生成，保持全套 PPT 视觉一致性
 - 并发生成，可配置并发数
 
@@ -65,7 +67,8 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输�
 - 支持单页导出和整套导出两种交付模式
 
 ### 🌐 Web 创作工作区
-- **创作表单**：输入内容、选择页数、上传风格参考图
+- **创作表单**：支持从文本生成或从已有原稿图继续转换，集中配置页数、画幅、输出模式等参数
+- **图片上传预览**：原稿图和参考风格图上传后展示缩略预览，支持继续添加和单张删除
 - **PPT Studio**：实时预览生成结果，对比原稿图与导出效果
 - **任务中心**：管理所有生成任务，支持暂停/续跑/中断
 - **Agent 对话**：通过自然语言对话生成结构化修改草案
@@ -82,16 +85,19 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。只需输�
 
 ```mermaid
 flowchart TD
-    A["用户输入长文 + 风格参考"] --> B["内容规划"]
+    A1["文本 Brief + 风格参考图"] --> B["内容规划"]
+    A2["已有整页原稿图"] --> R["登记为任务原稿图"]
     B --> C["生成带文字原稿图"]
     C --> D["生成去文字元素图"]
+    R --> D
     D --> E["导出编排"]
     E --> F["首轮：原稿图 + 元素图 → 文字脚本"]
     F --> G["PowerPoint 真实导出 PNG"]
     G --> H["二轮：原稿图 + 导出图 → 回看修正"]
     H --> I["输出分层 PPTX"]
 
-    style A fill:#667eea,stroke:#764ba2,color:#fff
+    style A1 fill:#667eea,stroke:#764ba2,color:#fff
+    style A2 fill:#0f9f8f,stroke:#0b7469,color:#fff
     style I fill:#f093fb,stroke:#f5576c,color:#fff
 ```
 
@@ -167,6 +173,25 @@ python main.py
 
 访问 **http://127.0.0.1:7860** 即可开始使用。
 
+### 创建任务方式
+
+#### 从文本生成
+
+点击「创建任务」，选择「从文本生成」，填写任务内容、页数、画幅、输出模式和可选风格参考图。参考风格图上传后会显示缩略预览，可继续追加或单张删除。
+
+#### 从已有原稿图继续
+
+点击「创建任务」，选择「从已有原稿图继续」，上传一张或多张整页原稿图。上传后每张图片会显示预览卡片，旁边的虚线加号框可继续添加图片，多张图片会按上传和追加顺序生成多页任务。
+
+导入模式下常用参数：
+
+| 参数 | 说明 |
+|------|------|
+| `画幅` | 目标任务的页面尺寸，导入图片会先规范到该画幅 |
+| `图片适配` | `拉伸填满` 会铺满画布；`等比留白` 会完整保留图片比例；`等比裁切` 会铺满画布但可能裁掉边缘 |
+| `图像质量` | 影响后续元素图转换质量和等待时间 |
+| `只登记为原稿图任务` | 勾选后任务停在原稿图完成状态，可稍后从任务继续生成可编辑元素 |
+
 ### 前端开发模式（可选）
 
 如果需要修改前端代码，可以启动 Vite 开发服务器：
@@ -212,7 +237,7 @@ ai-ppt-maker/
 │   └── web/                    # Web 层
 │       ├── app.py              #   Flask 应用工厂
 │       ├── blueprints/         #   API 路由（配置、任务、产物等）
-│       └── services/           #   业务服务（Pipeline、Operations、Agent）
+│       └── services/           #   业务服务（Pipeline、Operations、Agent、外部原稿图导入）
 ├── web_ui/                     # React/Vite 前端
 │   └── src/
 │       ├── components/
@@ -223,7 +248,7 @@ ai-ppt-maker/
 │       ├── hooks/              #   自定义 Hooks
 │       └── utils/              #   工具函数
 ├── tools/                      # 维护与诊断工具
-├── tests/                      # 单元测试（34 个测试文件）
+├── tests/                      # 单元测试（44 个测试文件）
 ├── scripts/                    # 辅助脚本
 ├── docs/                       # 项目文档
 │   ├── architecture.md         #   架构说明
@@ -280,11 +305,32 @@ ai-ppt-maker/
 | `POST` | `/api/jobs/:id/agent/draft` | 生成 Agent 修改草案 |
 | `POST` | `/api/jobs/:id/image-edit-candidates` | 生成图片编辑候选 |
 
+`POST /api/jobs` 支持两种任务来源：
+
+- 文本生成：默认模式，提交 `content`、`page_count`、`style_images` 等参数后从规划阶段开始。
+- 已有原稿图导入：提交 `source_mode=external_reference` 和 `reference_images`，系统会把上传图片登记为原稿图，并从元素图阶段继续转换。
+
+导入已有原稿图示例：
+
+```bash
+curl -X POST http://127.0.0.1:7860/api/jobs \
+  -F source_mode=external_reference \
+  -F content="外部设计稿转可编辑 PPT" \
+  -F image_preset=landscape_2k \
+  -F image_quality=medium \
+  -F external_reference_resize_mode=contain \
+  -F external_reference_create_only=false \
+  -F reference_images=@page_01.png \
+  -F reference_images=@page_02.png
+```
+
+外部原稿图支持 `PNG`、`JPG/JPEG`、`WEBP`。`external_reference_create_only=true` 时任务只登记原稿图并停在原稿图完成态，之后可通过界面或 `/api/jobs/:id/resume` 继续生成可编辑元素。
+
 完整 API 文档参见 [运行手册](docs/runbook.md)。
 
 ## 🧪 测试
 
-项目包含 34 个测试文件，覆盖核心模块的单元测试：
+项目包含 44 个测试文件，覆盖核心模块的单元测试：
 
 ```bash
 # 运行全部测试
@@ -303,11 +349,25 @@ npm run build
 |------|------|
 | `inspect_layered_ppt.py` | 检查分层 PPT 结构 |
 | `render_preview_from_script.py` | 从文字脚本渲染预览 |
+| `continue_from_reference_image.py` | 把已有图片登记为任务原稿图，并从元素图阶段继续转换 |
 | `rerun_transparent_asset_split.py` | 重新执行元素分割 |
 | `render_global_alignment_diagnostics.py` | 全局对齐诊断 |
 | `assemble_assets_only_ppt.py` | 仅资产组装 PPT |
 | `assemble_preview_ppt_from_assets.py` | 从资产组装预览 PPT |
 | `reconstruct_transparent_pages_from_assets.py` | 重建透明页面 |
+
+外部原稿图转换工具示例：
+
+```bash
+# 读取文件夹中的图片，登记原稿图后继续转换成可编辑 PPT
+python tools/continue_from_reference_image.py 图片转换 --resize-mode contain
+
+# 只登记原稿图任务，稍后从 Web 界面继续
+python tools/continue_from_reference_image.py 图片转换 --create-only
+
+# 继续一个已登记的外部原稿图任务
+python tools/continue_from_reference_image.py --resume-job <job_id>
+```
 
 ## 🔧 技术栈
 
