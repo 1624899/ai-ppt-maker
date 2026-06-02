@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -18,6 +19,12 @@ from ppt_system.web.services.job_submission_runtime import (
     build_active_config,
     submit_existing_job_pipeline,
 )
+from ppt_system.web.services.external_reference_job import (
+    EXTERNAL_REFERENCE_SOURCE_MODE,
+    SUPPORTED_IMAGE_SUFFIXES,
+    create_external_reference_job,
+)
+from ppt_system.jobs.job_targets import JOB_TARGET_REFERENCE_ONLY
 
 
 def _resolve_job_dir(config: dict[str, Any], job_id: str) -> Path:
@@ -25,9 +32,17 @@ def _resolve_job_dir(config: dict[str, Any], job_id: str) -> Path:
     return runtime.ROOT / str(config["output_dir"]) / job_id
 
 
+def _is_truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def api_create_job():
     runtime = get_runtime_module()
     config = runtime.read_config()
+    source_mode = request.form.get("source_mode", "").strip().lower()
+    if source_mode == EXTERNAL_REFERENCE_SOURCE_MODE:
+        return _api_create_external_reference_job(runtime, config)
+
     content = request.form.get("content", "").strip()
     page_count = int(request.form.get("page_count", config["default_pages"]))
     image_preset_name = request.form.get("image_preset", str(config.get("default_image_preset", "2k")))
@@ -149,6 +164,83 @@ def api_create_job():
     )
     bind_submitted_job(job_id, future)
     return jsonify(state), 202
+
+
+def _api_create_external_reference_job(runtime: Any, config: dict[str, Any]):
+    files = [file for file in request.files.getlist("reference_images") if file and file.filename]
+    if not files:
+        return jsonify({"error": "请上传至少一张原稿图。"}), 400
+    max_pages = int(config.get("max_pages") or 0)
+    if max_pages > 0 and len(files) > max_pages:
+        return jsonify({"error": f"导入原稿图数量不能超过 {max_pages} 张。"}), 400
+
+    job_id = uuid.uuid4().hex[:12]
+    job_dir = _resolve_job_dir(config, job_id)
+    upload_dir = job_dir / "external_reference_uploads"
+    source_paths: list[Path] = []
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        for index, file in enumerate(files, start=1):
+            original_name = Path(file.filename).name or f"reference_{index:02d}.png"
+            suffix = Path(original_name).suffix.lower()
+            if suffix not in SUPPORTED_IMAGE_SUFFIXES:
+                suffixes = "、".join(sorted(SUPPORTED_IMAGE_SUFFIXES))
+                shutil.rmtree(job_dir, ignore_errors=True)
+                return jsonify({"error": f"不支持的原稿图格式：{suffix or original_name}；支持格式：{suffixes}"}), 400
+            target = upload_dir / f"{index:02d}_{original_name}"
+            file.save(target)
+            source_paths.append(target)
+
+        image_preset_name = request.form.get("image_preset", str(config.get("default_image_preset", "2k")))
+        image_quality = request.form.get("image_quality", str(config.get("image_quality", "medium"))).strip().lower()
+        create_only = (
+            _is_truthy(request.form.get("external_reference_create_only"))
+            or request.form.get("job_target", "").strip().lower() == JOB_TARGET_REFERENCE_ONLY
+        )
+        created = create_external_reference_job(
+            runtime,
+            config=config,
+            source_images=source_paths,
+            job_id=job_id,
+            title=request.form.get("title", "").strip(),
+            content=request.form.get("content", "").strip(),
+            page_title=request.form.get("page_title", "").strip(),
+            image_preset_name=image_preset_name,
+            image_quality=image_quality,
+            resize_mode=request.form.get("external_reference_resize_mode", "stretch"),
+            background=request.form.get("external_reference_background", "#FFFFFF"),
+            create_only=create_only,
+        )
+    except ValueError as exc:
+        if not runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) and job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        if not runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) and job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+        return jsonify({"error": str(exc)}), 500
+
+    state = created["state"]
+    if not create_only:
+        runtime.mark_job_managed(job_id)
+        future = runtime.JOB_EXECUTOR.submit(
+            runtime.run_job_pipeline,
+            job_id,
+            created["job_dir"],
+            config,
+            created["active_config"],
+            created["content"],
+            created["page_count"],
+            created["image_preset"],
+            "",
+            created["generation_options"],
+            created["stage1_dir"],
+            created["stage2_dir"],
+            created["refs_dir"],
+        )
+        bind_submitted_job(job_id, future)
+
+    return jsonify(runtime.attach_delivery_actions(state, Path(created["job_dir"]))), 202
 
 
 def api_job_status(job_id: str):

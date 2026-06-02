@@ -10,12 +10,44 @@ const buildInsight = (label, value, detail) => ({
 
 export function buildTaskLaunchInsights(params = {}, { limit = Infinity } = {}) {
   const insights = [];
+  const sourceMode = normalizeText(params.sourceMode);
   const pageCount = Number(params.pageCount || 0);
   const workflowLabel = getGenerationParameterLabel('workflowMode', params.workflowMode);
   const targetLabel = getGenerationParameterLabel('jobTarget', params.jobTarget);
   const richnessLabel = getGenerationParameterLabel('pageRichnessDefault', params.pageRichnessDefault);
   const adherenceLabel = getGenerationParameterLabel('referenceStyleAdherence', params.referenceStyleAdherence);
   const imageQualityLabel = getGenerationParameterLabel('imageQuality', params.imageQuality);
+
+  if (sourceMode === 'external_reference') {
+    insights.push(buildInsight(
+      '任务来源',
+      '已有原稿图',
+      '会把上传图片登记为任务原稿图，跳过模型规划和原稿图生成。',
+    ));
+    insights.push(buildInsight(
+      '转换起点',
+      params.externalReferenceCreateOnly ? '停在原稿图阶段' : '继续生成可编辑元素',
+      params.externalReferenceCreateOnly
+        ? '适合先归档和预览，之后可以从任务继续生成。'
+        : '会直接从元素图阶段开始处理，后续生成可编辑 PPT 资源。',
+    ));
+    insights.push(buildInsight(
+      '画幅适配',
+      getExternalReferenceResizeModeLabel(params.externalReferenceResizeMode),
+      params.externalReferenceResizeMode === 'contain'
+        ? '会保留完整图片比例，空白区域使用系统默认背景。'
+        : '会把图片规范到目标画幅，便于后续流水线统一处理。',
+    ));
+    if (imageQualityLabel) {
+      insights.push(buildInsight(
+        '元素图质量',
+        imageQualityLabel,
+        '质量档位会影响后续元素图转换的细节稳定性和等待时间。',
+      ));
+    }
+    const maxItems = Number.isFinite(limit) ? Math.max(0, limit) : insights.length;
+    return insights.filter((item) => item.value).slice(0, maxItems);
+  }
 
   if (workflowLabel) {
     insights.push(buildInsight(
@@ -71,4 +103,13 @@ export function buildTaskLaunchInsights(params = {}, { limit = Infinity } = {}) 
 
   const maxItems = Number.isFinite(limit) ? Math.max(0, limit) : insights.length;
   return insights.filter((item) => item.value).slice(0, maxItems);
+}
+
+function getExternalReferenceResizeModeLabel(value) {
+  const labels = {
+    stretch: '拉伸填满',
+    contain: '等比留白',
+    cover: '等比裁切',
+  };
+  return labels[normalizeText(value)] || '拉伸填满';
 }

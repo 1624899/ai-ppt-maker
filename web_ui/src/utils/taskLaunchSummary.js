@@ -18,12 +18,13 @@ export function buildTaskLaunchSummary(job, { compact = false } = {}) {
   const pageCount = Number(meta.page_count || job.page_count || getPageCount(job) || 0);
   const workflowMode = meta.workflow_mode || job.workflow_mode;
   const jobTarget = normalizeText(meta.job_target || job.job_target);
+  const sourceModeLabel = normalizeText(meta.source_mode_label || job.source_mode_label);
   const imagePreset = meta.image_preset || {};
   const imagePresetLabel = normalizeText(imagePreset.label || imagePreset.name || job.image_preset);
   const imageQuality = normalizeText(meta.image_quality || job.image_quality);
   const styleReferenceCount = getStyleReferenceImages(job).length;
 
-  pushUnique(items, meta.workflow_mode_label || getWorkflowModeLabel(workflowMode));
+  pushUnique(items, sourceModeLabel || meta.workflow_mode_label || getWorkflowModeLabel(workflowMode));
   if (pageCount > 0) pushUnique(items, `${pageCount} 页`);
   pushUnique(items, meta.job_target_label || getJobTargetLabel(jobTarget));
   pushUnique(items, imagePresetLabel);
