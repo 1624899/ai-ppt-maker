@@ -4,6 +4,12 @@ from typing import Any
 
 from ppt_system.generation.design_grammar import compress_style_for_prompt, build_prompt_anchor
 from ppt_system.generation.page_richness import build_page_richness_render_guidance, normalize_page_richness_level
+from ppt_system.generation.prompt_visual_guidance import (
+    build_no_reference_visual_guidance,
+    build_reference_visual_consistency_guidance,
+    build_template_quality_guidance,
+    build_visual_requirement_line,
+)
 from ppt_system.generation.reference_shape_constraints import build_shape_clarity_prompt_lines
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_prompt_lines,
@@ -122,7 +128,7 @@ def build_reference_prompt(
             *adherence_lines,
             element_section,
             "文字要求：中文排版清晰，层级明确，标题和正文要可读；不要生成乱码。",
-            "视觉要求：边界清晰，高级商务科技风格，元素低透明但轮廓明确，图标/logo/icon 可以保留。",
+            build_visual_requirement_line(style_notes, style_guide),
             *build_shape_clarity_prompt_lines(style_guide, detail="full"),
             "布局要求：保持文字区和视觉元素区分明，元素之间留出足够间隔，方便后续识别和拆分。",
             negative_section,
@@ -190,7 +196,7 @@ def build_compact_reference_prompt(
         else:
             lines.append("让新页面延续同一套模板体系，同时为本页内容保留适度变化空间。")
     else:
-        lines.append("整体保持高级企业汇报 / 咨询信息图气质，结构清晰、边界明确、留白充足。")
+        lines.append(build_no_reference_visual_guidance(style_notes, style_guide, mode="compact"))
     lines.append(f"页面主题：{title}")
     if summary:
         lines.append(f"核心表达：{summary}")
@@ -246,7 +252,7 @@ def build_slot_brief_reference_prompt(
             )
         )
     else:
-        lines.append("围绕本页内容重新组织页面，保持咨询信息图式的理性与秩序。")
+        lines.append(build_no_reference_visual_guidance(style_notes, style_guide, mode="slot_brief"))
     lines.append(f"页面标题：{title}")
     if summary:
         lines.append(f"页面任务：{summary}")
@@ -271,7 +277,7 @@ def build_slot_brief_reference_prompt(
     if style_notes:
         lines.append(f"补充风格说明：{style_notes}")
     lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
-    lines.append("整体要像成熟企业汇报模板，结构清楚、留白充足、边界明确。")
+    lines.append(build_template_quality_guidance(style_notes, style_guide))
     return "\n".join(lines)
 
 
@@ -295,10 +301,7 @@ def merge_prompt_with_style_lock(
 
     prefix: list[str] = []
     if has_reference_images:
-        prefix.append(
-            "优先参考上传的风格图，保持整套 PPT 的主色、背景明度和信息图气质一致。"
-            "在不偏离整体风格的前提下，可根据本页内容调整模块数量、信息密度和局部构图。"
-        )
+        prefix.append(build_reference_visual_consistency_guidance())
 
     if prompt_anchor:
         prefix.append(f"统一风格锚点：{prompt_anchor}")

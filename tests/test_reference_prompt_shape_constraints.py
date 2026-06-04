@@ -94,6 +94,43 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
         self.assertIn("优先学习原稿图的版芯比例", prompt)
         self.assertIn("你可以自主决定最适合的视觉重心", prompt)
 
+    def test_no_reference_default_prompt_does_not_force_business_or_consulting_style(self) -> None:
+        blocked_terms = ["企业", "商务", "咨询", "科技风格", "成熟企业"]
+
+        prompts = [
+            build_reference_prompt_by_mode(
+                self.page,
+                "",
+                2048,
+                1152,
+                prompt_mode=mode,
+                style_guide={},
+                has_reference_images=False,
+                reference_style_adherence="balanced",
+            )
+            for mode in ("baseline", "compact", "slot_brief")
+        ]
+
+        for prompt in prompts:
+            self.assertIn("页面主题", prompt)
+            for term in blocked_terms:
+                self.assertNotIn(term, prompt)
+
+    def test_no_reference_prompt_keeps_explicit_style_notes_as_user_context(self) -> None:
+        prompt = build_reference_prompt_by_mode(
+            self.page,
+            "儿童科普手绘风",
+            2048,
+            1152,
+            prompt_mode="compact",
+            style_guide={},
+            has_reference_images=False,
+            reference_style_adherence="balanced",
+        )
+
+        self.assertIn("儿童科普手绘风", prompt)
+        self.assertIn("优先服从已给定的风格说明", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

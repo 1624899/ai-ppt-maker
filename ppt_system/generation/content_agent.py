@@ -208,7 +208,7 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
 
     return {
         "source": "fallback",
-        "style_name": style_notes or "通用商务科技汇报",
+        "style_name": style_notes or "通用主题化简报",
         "style_core": dict(DEFAULT_STYLE_CORE),
         "layout_families": list(DEFAULT_LAYOUT_FAMILIES),
         "element_primitives": list(DEFAULT_ELEMENT_PRIMITIVES),
@@ -567,7 +567,7 @@ def normalize_content_plan(
             page["image_prompt"] = planner_image_prompt
         page["image_prompt"] = build_reference_prompt_by_mode(
             page,
-            style_notes or style_type,
+            style_notes,
             image_width,
             image_height,
             prompt_mode=resolved_prompt_mode,

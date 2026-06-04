@@ -67,6 +67,41 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
         self.assertEqual(plan["pages"][1]["reference_mode"], "generation")
         self.assertIn("统一框架下调整", plan["pages"][0]["image_prompt"])
 
+    def test_empty_style_notes_do_not_leak_inferred_business_style_into_prompt(self) -> None:
+        result = {
+            "style_type": "商务汇报",
+            "pages": [
+                {
+                    "page_no": 1,
+                    "title": "儿童节气观察",
+                    "summary": "用自然观察活动解释四季节气变化。",
+                    "bullets": ["观察天气", "记录植物", "分享发现"],
+                    "layout_family": "grid_n_x_m",
+                    "layout_slots": ["观察区", "记录区", "分享区"],
+                }
+            ],
+        }
+
+        plan = normalize_content_plan(
+            result,
+            content="面向小学生的节气观察活动",
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="",
+            style_guide={},
+            has_reference_images=False,
+            generation_options={"include_cover_page": False},
+        )
+
+        prompt = plan["pages"][0]["image_prompt"]
+        self.assertEqual(plan["style_type"], "商务汇报")
+        self.assertIn("儿童节气观察", prompt)
+        self.assertIn("不要套用固定领域模板", prompt)
+        self.assertNotIn("商务汇报", prompt)
+        self.assertNotIn("企业", prompt)
+        self.assertNotIn("咨询", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

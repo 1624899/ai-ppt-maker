@@ -16,12 +16,12 @@ ALLOWED_LAYOUT_FAMILIES: set[str] = {
 }
 
 DEFAULT_STYLE_CORE: dict[str, Any] = {
-    "background_tone": "白底或浅蓝灰底",
-    "palette": ["深海军蓝", "亮蓝", "浅蓝灰", "白色"],
-    "title_style": "深蓝粗体大标题，亮蓝关键词强调",
-    "card_style": "浅蓝描边圆角卡片，弱阴影或无阴影",
-    "icon_style": "扁平线性图标",
-    "line_style": "清晰箭头、虚线反馈链路、编号圆点",
+    "background_tone": "按主题选择浅色或中性底色，保证正文可读",
+    "palette": ["主题主色", "辅助强调色", "中性色", "背景色"],
+    "title_style": "标题层级清楚，关键词强调方式与主题气质一致",
+    "card_style": "信息容器边界明确，圆角、描边和阴影强度按主题适配",
+    "icon_style": "图标风格与内容领域一致，保持统一和可识别",
+    "line_style": "连接线、箭头和编号关系清晰，样式随版式语义适配",
 }
 
 DEFAULT_ELEMENT_PRIMITIVES: list[str] = [
@@ -40,9 +40,9 @@ DEFAULT_VARIATION_POLICY: dict[str, Any] = {
 }
 
 DEFAULT_NEGATIVE_RULES: list[str] = [
-    "不要写实人物海报风",
-    "不要复杂炫光背景",
-    "不要突然切成深色大屏风",
+    "不要套用与主题无关的固定行业模板",
+    "不要使用干扰阅读的复杂背景",
+    "不要让页面之间的视觉语言突然断裂",
 ]
 
 DEFAULT_LAYOUT_FAMILIES: list[str] = [
@@ -182,7 +182,7 @@ def normalize_design_grammar(style_guide: dict[str, Any]) -> dict[str, Any]:
 def _default_grammar() -> dict[str, Any]:
     return {
         "source": "fallback",
-        "style_name": "通用商务科技汇报",
+        "style_name": "通用主题化简报",
         "style_core": dict(DEFAULT_STYLE_CORE),
         "layout_families": list(DEFAULT_LAYOUT_FAMILIES),
         "element_primitives": list(DEFAULT_ELEMENT_PRIMITIVES),
