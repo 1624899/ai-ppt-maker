@@ -225,7 +225,6 @@ ai-ppt-maker/
 │   ├── image/                  # 图像处理与元素分割
 │   │   ├── splitter.py         #   连通域分割
 │   │   ├── background_removal.py #  背景移除与透明化
-│   │   ├── global_element_alignment.py # 全局元素对齐
 │   │   └── ...                 #   Alpha 处理、形态学、颜色聚类等
 │   ├── integrations/           # 外部模型接入
 │   │   ├── openai_chat_provider.py #  对话模型适配
@@ -248,7 +247,7 @@ ai-ppt-maker/
 │       ├── hooks/              #   自定义 Hooks
 │       └── utils/              #   工具函数
 ├── tools/                      # 维护与诊断工具
-├── tests/                      # 单元测试（44 个测试文件）
+├── tests/                      # 单元测试（43 个测试文件）
 ├── scripts/                    # 辅助脚本
 ├── docs/                       # 项目文档
 │   ├── architecture.md         #   架构说明
@@ -330,7 +329,7 @@ curl -X POST http://127.0.0.1:7860/api/jobs \
 
 ## 🧪 测试
 
-项目包含 44 个测试文件，覆盖核心模块的单元测试：
+项目包含 43 个测试文件，覆盖核心模块的单元测试：
 
 ```bash
 # 运行全部测试
@@ -351,7 +350,6 @@ npm run build
 | `render_preview_from_script.py` | 从文字脚本渲染预览 |
 | `continue_from_reference_image.py` | 把已有图片登记为任务原稿图，并从元素图阶段继续转换 |
 | `rerun_transparent_asset_split.py` | 重新执行元素分割 |
-| `render_global_alignment_diagnostics.py` | 全局对齐诊断 |
 | `assemble_assets_only_ppt.py` | 仅资产组装 PPT |
 | `assemble_preview_ppt_from_assets.py` | 从资产组装预览 PPT |
 | `reconstruct_transparent_pages_from_assets.py` | 重建透明页面 |

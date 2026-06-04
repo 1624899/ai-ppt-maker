@@ -40,8 +40,7 @@ from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
-from ppt_system.image.global_element_alignment import GLOBAL_ELEMENT_ALIGNMENT_VERSION
-from ppt_system.image.text_placeholder_detection import load_text_placeholders, placeholder_bboxes, save_text_placeholders
+from ppt_system.image.text_placeholder_detection import load_text_placeholders, save_text_placeholders
 
 
 StageLogger = Callable[[str], None]
@@ -57,7 +56,6 @@ class PreparedProjectPageAssets:
     split_source_image: str
     transparent_preview_image: str | None
     asset_count: int
-    global_alignment: dict[str, Any] | None
     asset_adjustments: dict[str, Any]
     image_width: int
     image_height: int
@@ -98,7 +96,6 @@ def _build_asset_option_signature_payload(
         "merge_distance": int(merge_distance),
         "skip_enhance": bool(skip_enhance),
         "skip_transparent": bool(skip_transparent),
-        "global_alignment_version": int(GLOBAL_ELEMENT_ALIGNMENT_VERSION),
     }
 
 
@@ -123,7 +120,6 @@ def _summarize_prepared_page_assets(
         "text_placeholders": str(prepared_assets.text_placeholders_path),
         "split_source_image": str(prepared_assets.split_source_image),
         "transparent_preview_image": str(prepared_assets.transparent_preview_image or ""),
-        "global_alignment": prepared_assets.global_alignment,
         "asset_adjustments": dict(prepared_assets.asset_adjustments),
         "processing": {
             "page_no": int(prepared_assets.page_no),
@@ -161,7 +157,6 @@ def _build_prepared_assets_from_payload(
         split_source_image=str(payload.get("split_source_image", "")),
         transparent_preview_image=str(payload.get("transparent_preview_image") or "") or None,
         asset_count=int(manifest.get("count", 0)),
-        global_alignment=payload.get("global_alignment") if isinstance(payload.get("global_alignment"), dict) else None,
         asset_adjustments=normalize_asset_adjustments(payload.get("asset_adjustments")),
         image_width=int(image_width),
         image_height=int(image_height),
@@ -203,27 +198,6 @@ def _build_prepared_assets_from_completed_page_checkpoint(
         page_no=page_no,
         image_width=image_width,
         image_height=image_height,
-    )
-
-
-def _log_page_alignment_result(
-    page_logger: PageLogger | None,
-    page_no: int,
-    global_alignment: dict[str, Any] | None,
-) -> None:
-    if not isinstance(global_alignment, dict):
-        return
-    if bool(global_alignment.get("should_apply")):
-        _log_page(
-            page_logger,
-            page_no,
-            f"整页元素拟合对齐已应用：dx={int(global_alignment.get('dx', 0))}, dy={int(global_alignment.get('dy', 0))}",
-        )
-        return
-    _log_page(
-        page_logger,
-        page_no,
-        f"整页元素拟合未应用：{str(global_alignment.get('reason', 'unknown'))}",
     )
 
 
@@ -522,7 +496,7 @@ def prepare_direct_project_assets(
         )
         if cached_prepared_assets is not None:
             prepared_assets_by_page[page_no] = cached_prepared_assets
-            _log_page(page_logger, page_no, "命中元素资产准备缓存，跳过整页拟合与切分")
+            _log_page(page_logger, page_no, "命中元素资产准备缓存，跳过元素处理与切分")
             page_summaries.append(
                 _summarize_prepared_page_assets(
                     cached_prepared_assets,
@@ -536,8 +510,6 @@ def prepare_direct_project_assets(
             work_dir=work_dir,
             page_no=page_no,
             elements_image=visual_image,
-            reference_image=reference_image,
-            reference_text_boxes=placeholder_bboxes(text_placeholders),
             image_width=image_width,
             image_height=image_height,
             alpha_threshold=alpha_threshold,
@@ -558,7 +530,6 @@ def prepare_direct_project_assets(
             split_source_image=str(asset_result.split_source_image),
             transparent_preview_image=asset_result.transparent_preview_image,
             asset_count=int(manifest.get("count", 0)),
-            global_alignment=asset_result.global_alignment if isinstance(asset_result.global_alignment, dict) else None,
             asset_adjustments=dict(asset_result.asset_adjustments),
             image_width=int(image_width),
             image_height=int(image_height),
@@ -574,7 +545,6 @@ def prepare_direct_project_assets(
         )
         prepared_assets_by_page[page_no] = prepared_record
         _log_page(page_logger, page_no, f"已准备分割元素资产，共 {int(prepared_record.asset_count)} 个元素")
-        _log_page_alignment_result(page_logger, page_no, prepared_record.global_alignment)
         page_summaries.append(
             _summarize_prepared_page_assets(
                 prepared_record,

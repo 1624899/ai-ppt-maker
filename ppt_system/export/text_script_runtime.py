@@ -370,12 +370,6 @@ def _resolve_asset_box(asset, adjustment_plan):
     width = int(asset["width"])
     height = int(asset["height"])
 
-    global_adjustment = dict((adjustment_plan or {{}}).get("global", {{}}))
-    left += int(global_adjustment.get("dx", 0))
-    top += int(global_adjustment.get("dy", 0))
-    width += int(global_adjustment.get("dw", 0))
-    height += int(global_adjustment.get("dh", 0))
-
     asset_map = dict((adjustment_plan or {{}}).get("asset_map", {{}}))
     asset_adjustment = dict(asset_map.get(str(int(asset.get("index", 0))), {{}}))
     if "left" in asset_adjustment:
@@ -456,10 +450,6 @@ def normalize_asset_adjustments(adjustments: Any) -> dict[str, Any]:
         return {}
 
     normalized: dict[str, Any] = {}
-    global_adjustment = _normalize_numeric_mapping(adjustments.get("global"), ASSET_RELATIVE_FIELDS)
-    if global_adjustment:
-        normalized["global"] = global_adjustment
-
     asset_map: dict[str, dict[str, int]] = {}
     raw_asset_map = adjustments.get("asset_map")
     if isinstance(raw_asset_map, dict):

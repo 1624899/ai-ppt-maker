@@ -9,8 +9,6 @@ def cleanup_split_intermediate_images(page_dir: Path, *, page_no: int) -> list[s
     candidates = [
         page_dir / f"page_{resolved_page_no:02d}_enhanced.png",
         page_dir / f"page_{resolved_page_no:02d}_transparent.png",
-        page_dir / f"page_{resolved_page_no:02d}_aligned_for_split.png",
-        page_dir / f"page_{resolved_page_no:02d}_aligned.png",
     ]
     removed: list[str] = []
     for candidate in candidates:

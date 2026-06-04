@@ -9,7 +9,6 @@ from typing import Any, Callable
 from PIL import Image
 
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE
-from ppt_system.image.global_element_alignment import align_elements_image_to_reference
 from ppt_system.image.image_alpha_profile import inspect_image_alpha
 from ppt_system.image.image_ops import enhance_image, make_transparent
 from ppt_system.image.intermediate_artifact_cleanup import cleanup_split_intermediate_images
@@ -22,7 +21,6 @@ from ppt_system.export.text_script_runtime import (
     normalize_asset_adjustments,
     normalize_page_script,
 )
-from ppt_system.image.text_placeholder_detection import placeholder_bboxes, save_text_placeholders
 from ppt_system.runtime.interruptible_execution import run_interruptible_call
 
 
@@ -52,7 +50,6 @@ class PreparedDirectPageAssets:
     split_source_image: str
     transparent_preview_image: str | None
     removed_intermediate_images: list[str]
-    global_alignment: dict[str, Any] | None
     asset_adjustments: dict[str, Any]
 
 
@@ -131,7 +128,7 @@ def build_direct_page_refine_prompt(
         "第一张图是完整原稿图，第二张图是当前 PPT 的真实导出渲染图。"
         "请直接修正 page_script，让第二张图尽量贴近第一张图。"
         "重点检查：字号、位置、宽高、对齐、换行、是否压线、是否偏离元素中心、文本是否过大或过小。"
-        "本轮只修文字，不要修改元素贴图位置与尺寸；元素位置沿用前置资产拟合对齐结果。"
+        "本轮只修文字，不要修改元素贴图位置与尺寸。"
         "不要输出新的图形、背景或边框。"
         "如果原稿图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
@@ -183,8 +180,6 @@ def prepare_direct_page_assets(
     work_dir: Path,
     page_no: int,
     elements_image: Path,
-    reference_image: Path | None = None,
-    reference_text_boxes: list[tuple[int, int, int, int]] | None = None,
     image_width: int,
     image_height: int,
     alpha_threshold: int = 8,
@@ -232,18 +227,6 @@ def prepare_direct_page_assets(
         transparent_preview_image = current_source
     _ensure_not_stopped(stop_checker)
 
-    alignment_decision = None
-    if reference_image is not None:
-        aligned_path = page_dir / f"page_{int(page_no):02d}_aligned_for_split.png"
-        alignment_decision = align_elements_image_to_reference(
-            reference_image=Path(reference_image),
-            elements_image=current_source,
-            output_path=aligned_path,
-            text_boxes=list(reference_text_boxes or []),
-            alpha_threshold=int(alpha_threshold),
-        )
-    _ensure_not_stopped(stop_checker)
-
     manifest = split_transparent_png(
         current_source,
         assets_dir,
@@ -262,25 +245,7 @@ def prepare_direct_page_assets(
         removed_intermediate_images = cleanup_split_intermediate_images(page_dir, page_no=page_no)
     _ensure_not_stopped(stop_checker)
     manifest_path = assets_dir / "assets.json"
-    global_alignment = None
     asset_adjustments: dict[str, Any] = {}
-    if alignment_decision is not None:
-        global_alignment = {
-            "should_apply": bool(alignment_decision.should_apply),
-            "dx": int(alignment_decision.dx),
-            "dy": int(alignment_decision.dy),
-            "baseline_iou": float(alignment_decision.baseline_iou),
-            "shifted_iou": float(alignment_decision.shifted_iou),
-            "confidence": float(alignment_decision.confidence),
-            "reason": alignment_decision.reason,
-        }
-        if bool(alignment_decision.should_apply) and (int(alignment_decision.dx) or int(alignment_decision.dy)):
-            asset_adjustments = {
-                "global": {
-                    "dx": int(alignment_decision.dx),
-                    "dy": int(alignment_decision.dy),
-                }
-            }
     return PreparedDirectPageAssets(
         manifest_path=str(manifest_path),
         manifest=manifest,
@@ -289,7 +254,6 @@ def prepare_direct_page_assets(
         split_source_image=str(current_source),
         transparent_preview_image=str(transparent_preview_image) if transparent_preview_image else None,
         removed_intermediate_images=removed_intermediate_images,
-        global_alignment=global_alignment,
         asset_adjustments=asset_adjustments,
     )
 

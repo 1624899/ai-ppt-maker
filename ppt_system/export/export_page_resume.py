@@ -143,7 +143,6 @@ def _normalize_asset_options(asset_options: dict[str, Any]) -> dict[str, Any]:
         "merge_distance": int(asset_options.get("merge_distance", 0)),
         "skip_enhance": bool(asset_options.get("skip_enhance", False)),
         "skip_transparent": bool(asset_options.get("skip_transparent", False)),
-        "global_alignment_version": int(asset_options.get("global_alignment_version", 0)),
     }
 
 
@@ -161,8 +160,6 @@ def _normalize_page_result(raw_page_result: Any, *, page_no: int) -> dict[str, A
     page_result["comparison_paths"] = _normalize_existing_paths(page_result.get("comparison_paths"))
     if isinstance(page_result.get("text_asset_overlap"), dict):
         page_result["text_asset_overlap"] = dict(page_result["text_asset_overlap"])
-    if isinstance(page_result.get("asset_alignment_decision"), dict):
-        page_result["asset_alignment_decision"] = dict(page_result["asset_alignment_decision"])
     return page_result
 
 

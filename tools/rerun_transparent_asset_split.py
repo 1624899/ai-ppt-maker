@@ -50,7 +50,6 @@ def main() -> None:
             work_dir=output_root,
             page_no=page_no,
             elements_image=transparent_path,
-            reference_image=None,
             image_width=int(project_payload.get("image_width", 0)),
             image_height=int(project_payload.get("image_height", 0)),
             alpha_threshold=int(args.alpha_threshold),

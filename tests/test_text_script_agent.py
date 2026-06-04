@@ -22,7 +22,12 @@ from ppt_system.export.direct_page_script import (
     prepare_direct_page_assets,
 )
 from ppt_system.export.export_pipeline import export_project_to_pptx
-from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script, normalize_page_script
+from ppt_system.export.text_script_runtime import (
+    build_project_script_source,
+    execute_generated_text_script,
+    normalize_asset_adjustments,
+    normalize_page_script,
+)
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
@@ -103,7 +108,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             image_width=2048,
             image_height=1152,
             page_script='add_text(slide, "标题", 100, 100, 300, 60, size=24)',
-            asset_adjustments={"global": {"dy": 6}},
+            asset_adjustments={"asset_map": {"1": {"dy": 6}}},
             round_index=0,
         )
         self.assertIn("asset_adjustments", prompt)
@@ -111,17 +116,11 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertIn("asset_adjustments 固定返回空对象 {}", prompt)
         self.assertIn("请直接修正 page_script", prompt)
 
-    def test_prepare_assets_exposes_global_alignment_as_default_asset_adjustment(self) -> None:
+    def test_prepare_assets_does_not_apply_global_asset_adjustment(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             work_dir = root / "work"
-            reference_path = root / "reference.png"
             visual_path = root / "visual.png"
-
-            reference = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
-            draw_reference = ImageDraw.Draw(reference)
-            draw_reference.rectangle((80, 40, 140, 90), outline=(0, 80, 220, 255), width=4)
-            reference.save(reference_path)
 
             visual = Image.new("RGBA", (240, 140), (255, 255, 255, 255))
             draw_visual = ImageDraw.Draw(visual)
@@ -132,23 +131,22 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                 work_dir=work_dir,
                 page_no=1,
                 elements_image=visual_path,
-                reference_image=reference_path,
-                reference_text_boxes=[],
                 image_width=240,
                 image_height=140,
             )
 
-            self.assertIsNotNone(result.global_alignment)
-            self.assertTrue(bool(result.global_alignment["should_apply"]))
-            self.assertEqual(
-                result.asset_adjustments,
-                {
-                    "global": {
-                        "dx": int(result.global_alignment["dx"]),
-                        "dy": int(result.global_alignment["dy"]),
-                    }
-                },
-            )
+            self.assertEqual(result.asset_adjustments, {})
+            self.assertFalse((work_dir / "page_01" / "page_01_aligned_for_split.png").exists())
+
+    def test_normalize_asset_adjustments_drops_global_adjustment(self) -> None:
+        adjustments = normalize_asset_adjustments(
+            {
+                "global": {"dx": 20, "dy": 10},
+                "asset_map": {"1": {"dx": 5, "dy": 3}},
+            }
+        )
+
+        self.assertEqual(adjustments, {"asset_map": {"1": {"dx": 5, "dy": 3}}})
 
     def test_prepare_direct_page_assets_preserves_existing_transparent_input_and_tiny_components(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -166,7 +164,6 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
                 work_dir=work_dir,
                 page_no=1,
                 elements_image=visual_path,
-                reference_image=None,
                 image_width=40,
                 image_height=40,
             )
@@ -499,7 +496,7 @@ def build_deck():
             self.assertAlmostEqual(picture.left / prs.slide_width, 0.1, places=3)
             self.assertAlmostEqual(picture.top / prs.slide_height, 0.1, places=3)
 
-    def test_generated_script_applies_asset_adjustments(self) -> None:
+    def test_generated_script_applies_per_asset_adjustments(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             work_dir = root / "work"
@@ -531,7 +528,7 @@ def build_deck():
                 project,
                 work_dir,
                 output_pptx,
-                [{"page_no": 1, "script": "", "asset_adjustments": {"global": {"dx": 20, "dy": 10}}}],
+                [{"page_no": 1, "script": "", "asset_adjustments": {"asset_map": {"1": {"dx": 20, "dy": 10}}}}],
                 include_assets=True,
             )
             script_path = work_dir / "generated_text_layout.py"
@@ -642,8 +639,7 @@ def build_deck():
                     "split_source_image": str(visual_path),
                     "transparent_preview_image": str(visual_path),
                     "removed_intermediate_images": [],
-                    "global_alignment": {"should_apply": True, "dx": -10, "dy": 40},
-                    "asset_adjustments": {"global": {"dx": -10, "dy": 40}},
+                    "asset_adjustments": {"asset_map": {"1": {"dx": -10, "dy": 40}}},
                 },
             )()
 
@@ -674,7 +670,6 @@ def build_deck():
             self.assertIn("二轮改字", final_script)
             self.assertIn('"dx": -10', final_script)
             self.assertIn('"dy": 40', final_script)
-            self.assertNotIn("asset_alignment_decision", result["page_results"][0])
 
     def test_export_project_to_pptx_requires_chat_provider(self) -> None:
         with TemporaryDirectory() as temp_dir:

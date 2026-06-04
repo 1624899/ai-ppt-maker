@@ -118,14 +118,13 @@ def _compose_asset_canvas(manifest: dict[str, Any], adjustments: dict[str, Any])
     canvas = Image.new("RGBA", (width, height), (255, 255, 255, 0))
     assets_dir = resolve_assets_dir_from_manifest(manifest)
     normalized_adjustments = _normalize_adjustments(adjustments)
-    global_adjustment = dict(normalized_adjustments.get("global", {}))
     asset_map = dict(normalized_adjustments.get("asset_map", {}))
 
     for asset in manifest.get("assets", []):
         asset_path = assets_dir / str(asset["file"])
         asset_image = Image.open(asset_path).convert("RGBA")
-        left = int(asset["left"]) + int(global_adjustment.get("dx", 0))
-        top = int(asset["top"]) + int(global_adjustment.get("dy", 0))
+        left = int(asset["left"])
+        top = int(asset["top"])
 
         per_asset = dict(asset_map.get(str(int(asset.get("index", 0))), {}))
         left = int(per_asset.get("left", left + int(per_asset.get("dx", 0))))
@@ -139,13 +138,6 @@ def _normalize_adjustments(adjustments: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     normalized: dict[str, Any] = {}
-    global_adjustment = adjustments.get("global")
-    if isinstance(global_adjustment, dict):
-        dx = _coerce_int(global_adjustment.get("dx"))
-        dy = _coerce_int(global_adjustment.get("dy"))
-        if dx or dy:
-            normalized["global"] = {"dx": dx, "dy": dy}
-
     asset_map: dict[str, dict[str, int]] = {}
     raw_asset_map = adjustments.get("asset_map")
     if isinstance(raw_asset_map, dict):
