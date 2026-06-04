@@ -1,10 +1,12 @@
+import { getResumeControl } from './resumeControl';
+
 const RUNNING_TASK_STATUSES = new Set(['queued', 'running', 'stopping']);
-const RESUMABLE_TASK_STATUSES = new Set(['interrupted', 'error']);
 
 const normalizeStatus = (status) => String(status || '').trim();
 
 export function getTopbarTaskAction(job, pendingKey = '') {
   const status = normalizeStatus(job?.status);
+  const resumeControl = getResumeControl(job);
 
   if (status === 'awaiting_plan_confirmation') {
     const pending = pendingKey === 'confirm-plan';
@@ -18,15 +20,16 @@ export function getTopbarTaskAction(job, pendingKey = '') {
     };
   }
 
-  if (RESUMABLE_TASK_STATUSES.has(status)) {
+  if (resumeControl.visible) {
     const pending = pendingKey === 'resume';
+    const waiting = resumeControl.waitingForStop;
     return {
       type: 'resume',
       action: 'resume',
-      icon: 'play',
-      label: pending ? '继续中...' : '继续任务',
-      className: 'btn-task-resume',
-      disabled: pending,
+      icon: waiting ? 'loader' : 'play',
+      label: pending ? '提交中...' : waiting ? resumeControl.label : '继续任务',
+      className: waiting ? 'btn-task-waiting' : 'btn-task-resume',
+      disabled: pending || !resumeControl.canResume,
     };
   }
 

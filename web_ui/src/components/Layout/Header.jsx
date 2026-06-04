@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, ChevronUp, Pause, Play, Plus, RotateCcw, Settings, SlidersHorizontal } from 'lucide-react';
+import { CheckCircle2, ChevronUp, LoaderCircle, Pause, Play, Plus, RotateCcw, Settings, SlidersHorizontal } from 'lucide-react';
 import clsx from 'clsx';
 import SettingsModal from './SettingsModal';
 import pptStudioIcon from '../../assets/ppt-studio-icon.png';
@@ -14,6 +14,7 @@ const ACTION_ICONS = {
   play: Play,
   plus: Plus,
   check: CheckCircle2,
+  loader: LoaderCircle,
 };
 
 const Header = ({
@@ -105,7 +106,7 @@ const Header = ({
             onClick={handleTaskAction}
             disabled={taskAction.disabled}
           >
-            <TaskActionIcon size={18} />
+            <TaskActionIcon size={18} className={taskAction.icon === 'loader' ? 'spin' : undefined} />
             <span>{taskAction.label}</span>
           </button>
         </div>

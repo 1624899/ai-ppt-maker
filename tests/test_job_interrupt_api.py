@@ -316,6 +316,74 @@ class JobInterruptApiTests(unittest.TestCase):
             self.assertIsNotNone(payload)
             self.assertIn("正在停止", payload["error"])
 
+    def test_job_detail_disables_resume_while_managed_worker_is_still_stopping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base_dir = Path(tmp_dir)
+            jobs_db_path = base_dir / "jobs.sqlite3"
+            init_job_db(jobs_db_path)
+            job_id = "job-managed-resume-control-demo"
+            job_dir = base_dir / job_id
+            job_dir.mkdir(parents=True, exist_ok=True)
+            state = {
+                "job_id": job_id,
+                "status": "interrupted",
+                "current_stage": "elements_generation",
+                "error": "",
+                "stop_requested": False,
+                "job_meta": {
+                    "job_target": "editable_ppt",
+                    "generation_options": {},
+                },
+                "pages": [],
+                "reference_pages": [],
+                "element_pages": [],
+                "result": {},
+                "stages": [
+                    {"key": "elements_generation", "status": "interrupted", "summary": "任务已暂停，可继续从当前进度恢复", "logs": []},
+                ],
+            }
+            (job_dir / "status.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            create_job_record(
+                jobs_db_path,
+                {
+                    "job_id": job_id,
+                    "status": "interrupted",
+                    "current_stage": "elements_generation",
+                    "title": "测试任务",
+                    "content": "测试任务",
+                    "page_count": 1,
+                    "image_preset": "landscape_2k",
+                    "image_quality": "medium",
+                    "style_notes": "",
+                    "job_dir": str(job_dir),
+                    "request": {
+                        "content": "测试任务",
+                        "page_count": 1,
+                        "image_preset": "landscape_2k",
+                        "image_quality": "medium",
+                        "generation_options": {},
+                    },
+                    "state": state,
+                    "result": {},
+                    "stop_requested": False,
+                },
+            )
+
+            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
+                main.request_job_stop(job_dir, job_id)
+                mark_job_managed(job_id)
+                main.JOB_STATUS_CACHE.clear()
+                client = main.app.test_client()
+                response = client.get(f"/api/jobs/{job_id}")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertIsNotNone(payload)
+            resume_control = payload["resume_control"]
+            self.assertFalse(resume_control["can_resume"])
+            self.assertTrue(resume_control["is_waiting_for_stop"])
+            self.assertEqual(resume_control["label"], "停止收尾中")
+
     def test_stale_stopping_job_is_archived_on_status_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             base_dir = Path(tmp_dir)

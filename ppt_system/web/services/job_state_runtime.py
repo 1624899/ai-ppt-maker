@@ -160,12 +160,36 @@ def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] |
         state = record.get("state", {})
         if isinstance(state, dict) and state:
             enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
-            return runtime.attach_delivery_actions(enriched, job_dir), record
+            response_state = runtime.attach_delivery_actions(enriched, job_dir)
+            attach_resume_control(response_state, record, job_dir)
+            return response_state, record
     state = load_job_state(job_id, job_dir)
     if not state:
         return None, record
     enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
-    return runtime.attach_delivery_actions(enriched, job_dir), record
+    response_state = runtime.attach_delivery_actions(enriched, job_dir)
+    attach_resume_control(response_state, record, job_dir)
+    return response_state, record
+
+
+def attach_resume_control(state: dict[str, Any], record: dict[str, Any] | None, job_dir: Path) -> None:
+    runtime = _runtime()
+    job_id = str((record or {}).get("job_id") or state.get("job_id") or "").strip()
+    resolved_job_dir = Path(str((record or {}).get("job_dir") or job_dir))
+    record_status = str((record or {}).get("status") or "").strip()
+    status = record_status or str(state.get("status") or "").strip()
+    stop_requested = bool((record or {}).get("stop_requested") or state.get("stop_requested"))
+    is_managed = bool(job_id and runtime.is_job_managed(job_id))
+    has_stop_signal = bool(job_id and runtime.has_job_stop_request(resolved_job_dir, job_id))
+    is_waiting_for_stop = status == "stopping" or (is_managed and (has_stop_signal or stop_requested))
+    status_can_resume = status in {"interrupted", "error"} or runtime.can_upgrade_to_editable(state)
+
+    state["resume_control"] = {
+        "can_resume": bool(status_can_resume and not is_waiting_for_stop),
+        "is_waiting_for_stop": bool(is_waiting_for_stop),
+        "label": "停止收尾中" if is_waiting_for_stop else "继续生成",
+        "message": "正在等待当前图片请求或导出步骤收尾，完成后会自动恢复继续按钮。" if is_waiting_for_stop else "",
+    }
 
 
 def mutate_job_state(job_dir: Path, job_id: str, updater: Callable[[dict[str, Any]], None]) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FileArchive, MousePointer2, Play, Square } from 'lucide-react';
+import { Download, ExternalLink, FileArchive, LoaderCircle, MousePointer2, Play, Square } from 'lucide-react';
 import clsx from 'clsx';
 import ImagePreviewSwitch from './ImagePreviewSwitch';
 import SlideImage from './SlideImage';
@@ -13,6 +13,7 @@ import {
   getPageTitle,
   getStatusLabel,
 } from '../../utils/jobPresentation';
+import { getResumeControl } from '../../utils/resumeControl';
 
 const buildDeliveryPayload = (action) => ({
   delivery_key: action.delivery_key || action.key,
@@ -42,7 +43,7 @@ const PPTStudio = ({
   const actions = Array.isArray(currentJob?.delivery_actions) ? currentJob.delivery_actions : [];
   const meta = getJobMeta(currentJob);
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
-  const canResume = ['interrupted', 'error'].includes(String(currentJob?.status || ''));
+  const resumeControl = getResumeControl(currentJob);
   const awaitingPlanConfirmation = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const { pendingKey, error: actionError, runAction } = useJobActions({
     currentJob,
@@ -152,10 +153,16 @@ const PPTStudio = ({
                 {pendingKey === 'interrupt' ? '停止中...' : '停止生成'}
               </button>
             )}
-            {canResume && (
-              <button type="button" className="btn btn-primary" onClick={() => runAction('resume')} disabled={pendingKey !== ''}>
-                <Play size={16} />
-                {pendingKey === 'resume' ? '提交中...' : '继续生成'}
+            {resumeControl.visible && (
+              <button
+                type="button"
+                className={clsx('btn', resumeControl.waitingForStop ? 'btn-task-waiting' : 'btn-primary')}
+                onClick={() => runAction('resume')}
+                disabled={pendingKey !== '' || !resumeControl.canResume}
+                title={resumeControl.message || undefined}
+              >
+                {resumeControl.waitingForStop ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}
+                {pendingKey === 'resume' ? '提交中...' : resumeControl.label}
               </button>
             )}
             {awaitingPlanConfirmation && (

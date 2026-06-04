@@ -93,6 +93,7 @@ from ppt_system.web.services.app_config_runtime import (
 from ppt_system.web.services.job_state_runtime import (
     _attach_page_evaluations,
     append_stage_log,
+    attach_resume_control,
     build_job_state,
     build_job_title,
     cache_job_state,

@@ -278,7 +278,8 @@ def api_job_stream(job_id: str):
                 yield f"event: job\ndata: {payload}\n\n"
                 heartbeat_at = time.monotonic()
 
-            if state.get("status") in {"completed", "error", "interrupted"}:
+            resume_control = state.get("resume_control", {}) if isinstance(state.get("resume_control"), dict) else {}
+            if state.get("status") in {"completed", "error", "interrupted"} and not resume_control.get("is_waiting_for_stop"):
                 break
 
             now = time.monotonic()
@@ -408,7 +409,9 @@ def api_interrupt_job(job_id: str):
     )
     refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
     response_state = runtime.enrich_job_state_with_record(updated_state, refreshed_record)
-    return jsonify(runtime.attach_delivery_actions(response_state, job_dir))
+    response_state = runtime.attach_delivery_actions(response_state, job_dir)
+    runtime.attach_resume_control(response_state, refreshed_record, job_dir)
+    return jsonify(response_state)
 
 
 def api_resume_job(job_id: str):
@@ -447,7 +450,15 @@ def api_resume_job(job_id: str):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     state = runtime.load_job_state(job_id, job_dir)
-    return jsonify(state or {"ok": True})
+    if state:
+        refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+        response_state = runtime.attach_delivery_actions(
+            runtime.enrich_job_state_with_record(state, refreshed_record),
+            job_dir,
+        )
+        runtime.attach_resume_control(response_state, refreshed_record, job_dir)
+        return jsonify(response_state)
+    return jsonify({"ok": True})
 
 
 def api_get_job_plan(job_id: str):
