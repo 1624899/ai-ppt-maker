@@ -19,18 +19,18 @@ DEFAULT_STYLE_CORE: dict[str, Any] = {
     "background_tone": "按主题选择浅色或中性底色，保证正文可读",
     "palette": ["主题主色", "辅助强调色", "中性色", "背景色"],
     "title_style": "标题层级清楚，关键词强调方式与主题气质一致",
-    "card_style": "信息容器边界明确，圆角、描边和阴影强度按主题适配",
+    "card_style": "信息分组方式随内容语义选择，需要容器时保持边界可辨",
     "icon_style": "图标风格与内容领域一致，保持统一和可识别",
     "line_style": "连接线、箭头和编号关系清晰，样式随版式语义适配",
 }
 
 DEFAULT_ELEMENT_PRIMITIVES: list[str] = [
-    "rounded_card",
-    "value_tag",
-    "number_badge",
-    "linear_icon",
-    "arrow_connector",
-    "dashed_feedback_line",
+    "语义分组",
+    "重点标记",
+    "步骤或指标标记",
+    "内容匹配图标",
+    "关系连接",
+    "反馈或依赖提示",
 ]
 
 DEFAULT_VARIATION_POLICY: dict[str, Any] = {

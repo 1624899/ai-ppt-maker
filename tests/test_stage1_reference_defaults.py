@@ -102,6 +102,26 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
         self.assertNotIn("企业", prompt)
         self.assertNotIn("咨询", prompt)
 
+    def test_no_reference_fallback_style_is_not_card_or_border_first(self) -> None:
+        style_guide = fallback_style_guide("", has_reference_images=False)
+
+        anchor = style_guide["prompt_anchor"]
+        primitives = style_guide["element_primitives"]
+
+        self.assertIn("信息分组方式随内容语义选择", anchor)
+        self.assertIn("语义分组", primitives)
+        self.assertIn("关系连接", primitives)
+        self.assertNotIn("圆角", anchor)
+        self.assertNotIn("描边", anchor)
+        self.assertNotIn("rounded_card", primitives)
+        self.assertNotIn("dashed_feedback_line", primitives)
+
+    def test_reference_fallback_can_still_preserve_card_language_from_reference_images(self) -> None:
+        style_guide = fallback_style_guide("蓝白科技汇报", has_reference_images=True)
+
+        self.assertIn("卡片样式", style_guide["prompt_anchor"])
+        self.assertIn("继承原稿图卡片描边与圆角", style_guide["style_core"]["card_style"])
+
 
 if __name__ == "__main__":
     unittest.main()
