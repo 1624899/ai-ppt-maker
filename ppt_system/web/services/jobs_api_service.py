@@ -44,7 +44,10 @@ def api_create_job():
         return _api_create_external_reference_job(runtime, config)
 
     content = request.form.get("content", "").strip()
-    page_count = int(request.form.get("page_count", config["default_pages"]))
+    try:
+        page_count = _parse_page_count(request.form.get("page_count"), config)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     image_preset_name = request.form.get("image_preset", str(config.get("default_image_preset", "2k")))
     image_quality = request.form.get("image_quality", str(config.get("image_quality", "medium"))).strip().lower()
     job_target = runtime.normalize_job_target(
@@ -241,6 +244,14 @@ def _api_create_external_reference_job(runtime: Any, config: dict[str, Any]):
         bind_submitted_job(job_id, future)
 
     return jsonify(runtime.attach_delivery_actions(state, Path(created["job_dir"]))), 202
+
+
+def _parse_page_count(raw_value: Any, config: dict[str, Any]) -> int:
+    value = config.get("default_pages") if raw_value is None or str(raw_value).strip() == "" else raw_value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError("页数必须是整数。") from None
 
 
 def api_job_status(job_id: str):

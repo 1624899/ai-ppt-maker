@@ -43,6 +43,12 @@ class OpenAIImageProvider:
         self.transport_retry_count = int(config.get("request_transport_retry_count", 1))
         self.ambiguous_transport_retry_count = int(config.get("request_ambiguous_retry_count", 0))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
+        self.supports_extended_options = _coerce_bool(
+            profile.get(
+                "supports_extended_options",
+                config.get("image_supports_extended_options", True),
+            )
+        )
 
         if not self.api_key:
             raise RuntimeError("未在模型配置中填写生图模型 API Key。")
@@ -178,16 +184,9 @@ class OpenAIImageProvider:
         return self.size
 
     def _supports_extended_options(self) -> bool:
-        base = self.api_base_url.lower()
-        model = self.model.lower()
-        if "anyaigc.com" in base:
-            return False
-        if model.endswith("-all"):
-            return False
-        return True
+        return self.supports_extended_options
 
     def _post_with_retry(self, url: str, *, deadline: float | None = None, **kwargs: Any) -> requests.Response:
-        last_response: requests.Response | None = None
         response_attempt = 0
         transport_attempt = 0
         deadline = deadline if deadline is not None else self._request_deadline()
@@ -196,7 +195,6 @@ class OpenAIImageProvider:
             try:
                 request_timeout = self._remaining_request_timeout(deadline)
                 response = requests.post(url, timeout=request_timeout, **kwargs)
-                last_response = response
                 if not self._should_retry(response) or response_attempt >= self.retry_count:
                     return response
 
@@ -219,8 +217,6 @@ class OpenAIImageProvider:
                 transport_attempt += 1
                 self._sleep_with_deadline(delay, deadline)
                 continue
-
-        return last_response
 
     @staticmethod
     def _rewind_files(files: Any) -> None:
@@ -300,3 +296,14 @@ def bounded_timeout_seconds(raw_value: Any, *, default: int, maximum: int = 180)
     except (TypeError, ValueError):
         value = int(default)
     return max(1, min(int(maximum), value))
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"0", "false", "no", "off"}:
+        return False
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    return bool(value)

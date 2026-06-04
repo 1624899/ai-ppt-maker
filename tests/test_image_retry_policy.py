@@ -104,6 +104,42 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(provider.total_timeout, 180)
         self.assertEqual(provider.image_download_timeout, 180)
 
+    def test_extended_generation_options_are_config_driven(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2",
+                "image_supports_extended_options": False,
+            },
+            {"api_key": "test-key"},
+        )
+
+        payload = provider._image_payload("测试提示词", mode="generation")
+
+        self.assertNotIn("resolution", payload)
+        self.assertNotIn("background", payload)
+        self.assertNotIn("output_format", payload)
+
+    def test_profile_can_enable_extended_generation_options(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2-all",
+                "image_supports_extended_options": False,
+                "image_resolution": "2k",
+            },
+            {
+                "api_key": "test-key",
+                "supports_extended_options": True,
+            },
+        )
+
+        payload = provider._image_payload("测试提示词", mode="generation")
+
+        self.assertEqual(payload["resolution"], "2k")
+        self.assertEqual(payload["background"], "opaque")
+        self.assertEqual(payload["output_format"], "png")
+
 
 if __name__ == "__main__":
     unittest.main()

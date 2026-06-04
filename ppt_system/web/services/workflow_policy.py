@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Mapping
+
+from ppt_system.runtime.time_utils import utc_iso_timestamp
 
 
 WORKFLOW_MODE_AUTO = "auto"
@@ -172,4 +173,4 @@ def mark_plan_draft(state: dict[str, Any]) -> None:
 
 
 def _utc_timestamp() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return utc_iso_timestamp()

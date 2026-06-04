@@ -2,9 +2,33 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from ppt_system.runtime.time_utils import utc_timestamp_millis
+
+
+JOB_JSON_FIELD_COLUMNS = {
+    "request": "request_json",
+    "state": "state_json",
+    "result": "result_json",
+}
+JOB_UPDATE_COLUMNS = {
+    "status",
+    "current_stage",
+    "title",
+    "content",
+    "page_count",
+    "image_preset",
+    "image_quality",
+    "style_notes",
+    "job_dir",
+    "stop_requested",
+    "pinned_at",
+    "created_at",
+    "updated_at",
+    *JOB_JSON_FIELD_COLUMNS,
+}
 
 
 def init_db(db_path: Path) -> None:
@@ -72,8 +96,10 @@ def update_job(db_path: Path, job_id: str, touch_updated_at: bool = True, **fiel
     columns = []
     values = []
     for key, value in fields.items():
-        if key in {"request", "state", "result"}:
-            columns.append(f"{key}_json = ?")
+        if key not in JOB_UPDATE_COLUMNS:
+            raise ValueError(f"不支持更新任务字段：{key}")
+        if key in JOB_JSON_FIELD_COLUMNS:
+            columns.append(f"{JOB_JSON_FIELD_COLUMNS[key]} = ?")
             values.append(json.dumps(value or {}, ensure_ascii=False))
         elif key == "stop_requested":
             columns.append("stop_requested = ?")
@@ -136,7 +162,7 @@ def _load_json(value: str) -> dict[str, Any]:
 
 
 def current_timestamp() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return utc_timestamp_millis()
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:

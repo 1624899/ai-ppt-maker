@@ -73,6 +73,10 @@ def upsert_model_config(
             if existing.get("id") == config_id:
                 if not item["api_key"]:
                     item["api_key"] = str(existing.get("api_key", "")).strip()
+                if model_type == "image" and "supports_extended_options" not in payload:
+                    item["supports_extended_options"] = _coerce_bool(
+                        existing.get("supports_extended_options", item["supports_extended_options"])
+                    )
                 configs[index] = item
                 return item
         raise ValueError("没有找到要更新的模型配置。")
@@ -129,6 +133,7 @@ def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str,
         item["reasoning_effort"] = reasoning_effort if reasoning_effort in {"low", "medium", "high"} else ""
     else:
         item["output_format"] = str(payload.get("output_format", "png")).strip()
+        item["supports_extended_options"] = _coerce_bool(payload.get("supports_extended_options", True))
     return item
 
 
@@ -249,3 +254,14 @@ def build_api_key_preview(api_key: str) -> str:
     visible_suffix = min(3, max(1, len(secret) - visible_prefix))
     masked_length = max(4, len(secret) - visible_prefix - visible_suffix)
     return f"{secret[:visible_prefix]}{'*' * masked_length}{secret[-visible_suffix:]}"
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"0", "false", "no", "off"}:
+        return False
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    return bool(value)

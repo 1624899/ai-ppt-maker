@@ -76,6 +76,8 @@
   "image_download_timeout_seconds": 30,
   "request_retry_count": 4,
   "request_retry_initial_delay_seconds": 6,
+  "job_worker_count": 2,
+  "job_status_cache_max_items": 500,
   "stage1_concurrency": 5,
   "stage2_concurrency": 5,
   "export_page_concurrency": 5,
@@ -129,6 +131,7 @@
         "model": "gpt-image-2",
         "enabled": true,
         "output_format": "png",
+        "supports_extended_options": true,
         "id": "image_openai_compatible"
       },
       {
@@ -138,6 +141,7 @@
         "model": "gpt-image-2",
         "enabled": true,
         "output_format": "png",
+        "supports_extended_options": false,
         "id": "image_36aee21d"
       }
     ]

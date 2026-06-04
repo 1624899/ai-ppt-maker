@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import copy
-from datetime import datetime
 from typing import Any, Mapping
+
+from ppt_system.runtime.time_utils import utc_iso_timestamp
 
 from ppt_system.generation.design_grammar import normalize_layout_family_name
 from ppt_system.generation.title_extraction import resolve_plan_title
@@ -254,4 +255,4 @@ def _filter_artifacts_by_pages(items: Any, pages: list[dict[str, Any]]) -> list[
 
 
 def _utc_timestamp() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return utc_iso_timestamp()

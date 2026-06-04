@@ -142,6 +142,21 @@ class JobApiPageRichnessTests(unittest.TestCase):
         self.assertEqual(payload["job_meta"]["job_target"], "reference_only")
         self.assertEqual(len(self.executor.calls), 1)
 
+    def test_create_job_rejects_non_integer_page_count(self) -> None:
+        response = self.client.post(
+            "/api/jobs",
+            data={
+                "content": "第一页讲总览，第二页讲拆解。",
+                "page_count": "abc",
+                "image_preset": "landscape_2k",
+                "image_quality": "medium",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "页数必须是整数。")
+        self.assertEqual(self.executor.calls, [])
+
     def test_resume_job_reuses_saved_page_richness_generation_options(self) -> None:
         create_response = self.client.post(
             "/api/jobs",

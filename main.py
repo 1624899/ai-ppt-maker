@@ -128,6 +128,11 @@ from ppt_system.web.services.job_state_runtime import (
 )
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
 from ppt_system.web.services.job_db_maintenance_service import execute_job_db_maintenance
+from ppt_system.web.services.job_runtime_limits import (
+    BoundedJobStatusCache,
+    resolve_job_status_cache_max_items,
+    resolve_job_worker_count,
+)
 from ppt_system.web.services.plan_version_store import (
     apply_plan_to_state,
     build_plan_response,
@@ -149,6 +154,7 @@ from ppt_system.web.services.workflow_policy import (
     requires_plan_confirmation,
     should_pause_after_planning,
 )
+from ppt_system.web.services.static_assets import build_static_asset_version
 
 
 sys.modules.setdefault("main", sys.modules[__name__])
@@ -158,9 +164,11 @@ CONFIG_PATH = ROOT / "config.json"
 ENV_PATH = ROOT / ".env"
 JOBS_DB_PATH = ROOT / "output" / "jobs.sqlite3"
 init_job_db(JOBS_DB_PATH)
-JOB_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+JOB_EXECUTOR = ThreadPoolExecutor(max_workers=resolve_job_worker_count(read_config))
 JOB_STATUS_LOCK = threading.Lock()
-JOB_STATUS_CACHE: dict[str, dict[str, Any]] = {}
+JOB_STATUS_CACHE: BoundedJobStatusCache = BoundedJobStatusCache(
+    max_items=resolve_job_status_cache_max_items(read_config)
+)
 JOB_DB_MAINTENANCE_SCHEDULER = JobDbMaintenanceScheduler(
     db_path=JOBS_DB_PATH,
     config_loader=read_config,
@@ -312,7 +320,7 @@ from ppt_system.web import create_app
 
 
 def static_asset_version() -> str:
-    return "1"
+    return build_static_asset_version(ROOT)
 
 
 app = create_app(

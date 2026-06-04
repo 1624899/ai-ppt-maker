@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ppt_system.runtime.time_utils import utc_now_naive
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.generation.title_extraction import derive_title_from_content
 
@@ -445,7 +446,7 @@ def is_stale_stopping_job(record: dict[str, Any] | None) -> bool:
     updated_at = parse_job_timestamp(record.get("updated_at"))
     if updated_at is None:
         return True
-    return datetime.utcnow() - updated_at >= timedelta(seconds=resolve_stale_stopping_grace_seconds())
+    return utc_now_naive() - updated_at >= timedelta(seconds=resolve_stale_stopping_grace_seconds())
 
 
 def resolve_stale_stopping_grace_seconds() -> int:

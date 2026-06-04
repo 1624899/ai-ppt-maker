@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from ppt_system.runtime.time_utils import utc_iso_timestamp
 
 
 STOP_SIGNAL_FILE_NAME = ".job_stop_requested.json"
@@ -18,7 +19,7 @@ def request_job_stop(job_dir: Path, job_id: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "job_id": str(job_id),
-        "requested_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "requested_at": utc_iso_timestamp(),
     }
     temp_path = target.with_suffix(target.suffix + ".tmp")
     temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

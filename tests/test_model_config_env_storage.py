@@ -11,6 +11,7 @@ from ppt_system.integrations.model_config import (
     read_config,
     resolve_model_api_key_env_name,
     save_model_api_key,
+    upsert_model_config,
     write_config,
 )
 
@@ -90,6 +91,41 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
 
             self.assertNotIn(env_name, os.environ)
             self.assertEqual(env_path.read_text(encoding="utf-8"), "")
+
+    def test_update_image_model_config_keeps_existing_capability_flag_when_omitted(self) -> None:
+        config = {
+            "model_configs": {
+                "chat": [],
+                "image": [
+                    {
+                        "id": "image_demo",
+                        "name": "生图模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-image",
+                        "model": "gpt-image-2",
+                        "enabled": True,
+                        "output_format": "png",
+                        "supports_extended_options": False,
+                    }
+                ],
+            }
+        }
+
+        updated = upsert_model_config(
+            config,
+            "image",
+            {
+                "name": "生图模型",
+                "base_url": "https://example.com/v1",
+                "api_key": "",
+                "model": "gpt-image-2",
+                "enabled": True,
+                "output_format": "png",
+            },
+            config_id="image_demo",
+        )
+
+        self.assertFalse(updated["supports_extended_options"])
 
 
 if __name__ == "__main__":

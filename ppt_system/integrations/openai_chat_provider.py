@@ -92,7 +92,6 @@ class OpenAIChatProvider:
         }
 
     def _post_with_retry(self, payload: dict[str, Any]) -> requests.Response:
-        last_response: requests.Response | None = None
         response_attempt = 0
         transport_attempt = 0
         request_attempt = 0
@@ -138,7 +137,6 @@ class OpenAIChatProvider:
                 print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
                 time.sleep(delay)
                 continue
-            last_response = response
             elapsed = time.perf_counter() - request_started_at
             print(
                 format_log_line(
@@ -161,7 +159,6 @@ class OpenAIChatProvider:
                 flush=True,
             )
             time.sleep(delay)
-        return last_response
 
     def _build_max_attempts_label(self) -> str:
         response_attempts = max(0, int(self.retry_count)) + 1
