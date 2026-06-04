@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
 from ppt_system.integrations.image_response import decode_data_uri, resolve_image_bytes, save_image_from_response_payload
 
 
@@ -62,6 +63,29 @@ class ImageResponseTests(unittest.TestCase):
 
             self.assertEqual(output_path.read_bytes(), raw)
             self.assertEqual(image["revised_prompt"], "test")
+
+    def test_provider_download_uses_independent_download_timeout(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2",
+                "request_timeout_seconds": 180,
+                "request_total_timeout_seconds": 180,
+                "image_download_timeout_seconds": 30,
+            },
+            {"api_key": "test-key"},
+        )
+        response_json = {"data": [{"url": "https://example.com/test.png"}]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "page.png"
+            with patch(
+                "ppt_system.integrations.openai_image_provider.save_image_from_response_payload",
+                return_value=response_json["data"][0],
+            ) as mock_save:
+                provider._save_response_image(response_json, output_path)
+
+        self.assertEqual(mock_save.call_args.kwargs["timeout"], 30)
 
 
 if __name__ == "__main__":

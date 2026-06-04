@@ -115,7 +115,7 @@ def test_export_project_to_pptx_resumes_completed_pages_from_checkpoints() -> No
         def fail_after_first_page(
             script_path: Path,
             *,
-            timeout_seconds: int = 600,
+            timeout_seconds: int = 180,
             stop_checker=None,
         ) -> None:
             if script_path.name == "generated_text_layout_preview_round_01.py":

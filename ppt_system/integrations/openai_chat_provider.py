@@ -33,7 +33,7 @@ class OpenAIChatProvider:
         self.temperature = float(profile.get("temperature", config.get("chat_temperature", 0.3)))
         self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
         self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
-        self.timeout = int(config.get("request_timeout_seconds", 600))
+        self.timeout = int(config.get("request_timeout_seconds", 180))
         self.retry_count = int(config.get("chat_retry_count", config.get("request_retry_count", 3)))
         self.transport_retry_count = int(
             config.get("chat_transport_retry_count", config.get("request_transport_retry_count", 1))

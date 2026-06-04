@@ -755,7 +755,7 @@ def build_deck():
             def fail_after_first_page(
                 script_path: Path,
                 *,
-                timeout_seconds: int = 600,
+                timeout_seconds: int = 180,
                 stop_checker=None,
             ) -> None:
                 if script_path.name == "generated_text_layout_preview_round_01.py":

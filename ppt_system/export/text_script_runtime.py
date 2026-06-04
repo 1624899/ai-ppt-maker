@@ -30,7 +30,7 @@ StopChecker = Callable[[], bool]
 def execute_generated_text_script(
     script_path: Path,
     *,
-    timeout_seconds: int = 600,
+    timeout_seconds: int = 180,
     stop_checker: StopChecker | None = None,
 ) -> None:
     worker_script = Path(__file__).with_name("text_script_worker.py")

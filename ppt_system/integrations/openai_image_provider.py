@@ -33,8 +33,12 @@ class OpenAIImageProvider:
         self.response_format = str(config.get("image_response_format", "url")).strip()
         self.moderation = str(config.get("image_moderation", "low")).strip()
         self.n = int(config.get("image_n", 1))
-        self.timeout = int(config.get("request_timeout_seconds", 600))
-        self.total_timeout = int(config.get("request_total_timeout_seconds", 180))
+        self.timeout = bounded_timeout_seconds(config.get("request_timeout_seconds", 180), default=180)
+        self.total_timeout = bounded_timeout_seconds(config.get("request_total_timeout_seconds", 180), default=180)
+        self.image_download_timeout = bounded_timeout_seconds(
+            config.get("image_download_timeout_seconds", 30),
+            default=30,
+        )
         self.retry_count = int(config.get("request_retry_count", 3))
         self.transport_retry_count = int(config.get("request_transport_retry_count", 1))
         self.ambiguous_transport_retry_count = int(config.get("request_ambiguous_retry_count", 0))
@@ -70,8 +74,10 @@ class OpenAIImageProvider:
                 purpose="reference_page",
             )
 
+        deadline = self._request_deadline()
         response = self._post_with_retry(
             self.images_generations_url,
+            deadline=deadline,
             headers={**self._headers(), "Content-Type": "application/json"},
             json=self._image_payload(prompt, mode="generation"),
         )
@@ -124,8 +130,10 @@ class OpenAIImageProvider:
                 # 官方 Images Edits API 使用 image 字段；多图时重复该字段。
                 files.append(("image", (image_path.name, handle, image_mime_type(image_path))))
 
+            deadline = self._request_deadline()
             response = self._post_with_retry(
                 self.images_edits_url,
+                deadline=deadline,
                 headers=self._headers(),
                 data=self._image_payload(prompt, mode="edit"),
                 files=files,
@@ -178,19 +186,15 @@ class OpenAIImageProvider:
             return False
         return True
 
-    def _post_with_retry(self, url: str, **kwargs: Any) -> requests.Response:
+    def _post_with_retry(self, url: str, *, deadline: float | None = None, **kwargs: Any) -> requests.Response:
         last_response: requests.Response | None = None
         response_attempt = 0
         transport_attempt = 0
-        deadline = time.monotonic() + max(1, self.total_timeout)
+        deadline = deadline if deadline is not None else self._request_deadline()
         while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RuntimeError(f"图像接口请求超时：单次生图流程超过 {self.total_timeout} 秒，已停止自动重试")
-
             self._rewind_files(kwargs.get("files"))
             try:
-                request_timeout = max(1.0, min(float(self.timeout), remaining))
+                request_timeout = self._remaining_request_timeout(deadline)
                 response = requests.post(url, timeout=request_timeout, **kwargs)
                 last_response = response
                 if not self._should_retry(response) or response_attempt >= self.retry_count:
@@ -232,11 +236,15 @@ class OpenAIImageProvider:
     def _should_retry(response: requests.Response) -> bool:
         return is_retryable_status_code(response.status_code)
 
-    def _save_response_image(self, response_json: dict[str, Any], output_path: Path) -> dict[str, Any]:
+    def _save_response_image(
+        self,
+        response_json: dict[str, Any],
+        output_path: Path,
+    ) -> dict[str, Any]:
         image = save_image_from_response_payload(
             response_json,
             output_path,
-            timeout=min(self.timeout, self.total_timeout),
+            timeout=self.image_download_timeout,
         )
 
         return {
@@ -264,8 +272,17 @@ class OpenAIImageProvider:
     def _sleep_with_deadline(self, delay: float, deadline: float) -> None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError(f"图像接口请求超时：单次生图流程超过 {self.total_timeout} 秒，已停止自动重试")
+            raise RuntimeError(f"图像接口请求超时：单次生图请求超过 {self.total_timeout} 秒，已停止自动重试")
         time.sleep(min(delay, remaining))
+
+    def _request_deadline(self) -> float:
+        return time.monotonic() + max(1.0, float(self.total_timeout))
+
+    def _remaining_request_timeout(self, deadline: float) -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"图像接口请求超时：单次生图请求超过 {self.total_timeout} 秒，已停止自动重试")
+        return min(max(0.001, float(self.timeout)), remaining)
 
 
 def image_mime_type(path: Path) -> str:
@@ -275,3 +292,11 @@ def image_mime_type(path: Path) -> str:
     if suffix == ".webp":
         return "image/webp"
     return "image/png"
+
+
+def bounded_timeout_seconds(raw_value: Any, *, default: int, maximum: int = 180) -> int:
+    try:
+        value = int(float(raw_value))
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(1, min(int(maximum), value))
