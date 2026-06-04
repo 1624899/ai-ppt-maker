@@ -9,6 +9,7 @@ from typing import Any, Callable
 from ppt_system.runtime.time_utils import utc_now_naive
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.generation.title_extraction import derive_title_from_content
+from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
 
 RUNTIME_STATE_FIELDS = ("status", "current_stage", "stop_requested")
 NON_TERMINAL_JOB_STATUSES = {"", "pending", "queued", "running", "stopping"}
@@ -137,6 +138,7 @@ def save_job_state(job_dir: Path, state: dict[str, Any]) -> None:
     cache_job_state(state["job_id"], state)
     status_file(job_dir).write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     sync_job_record(state["job_id"], state)
+    JOB_EVENT_BUS.notify_job_changed(state["job_id"])
 
 
 def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
@@ -208,7 +210,8 @@ def mutate_job_state(job_dir: Path, job_id: str, updater: Callable[[dict[str, An
         runtime.JOB_STATUS_CACHE[job_id] = state
         status_file(job_dir).write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         sync_job_record(job_id, state)
-        return state
+    JOB_EVENT_BUS.notify_job_changed(job_id)
+    return state
 
 
 def append_stage_log(job_dir: Path, job_id: str, stage_key: str, message: str) -> None:
@@ -340,6 +343,7 @@ def sync_job_record(job_id: str, state: dict[str, Any]) -> None:
         result=merged_result,
         stop_requested=state.get("stop_requested", False),
     )
+    JOB_EVENT_BUS.notify_history_changed()
 
 
 def reconcile_stale_stopping_job(record: dict[str, Any] | None) -> dict[str, Any] | None:

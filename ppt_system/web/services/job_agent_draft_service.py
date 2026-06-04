@@ -10,6 +10,7 @@ from flask import jsonify, request
 
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services.app_config_runtime import resolve_image_preset
+from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_agent_draft_model_planner import plan_agent_draft_with_model
 from ppt_system.web.services.job_agent_draft_models import AgentDraft
 from ppt_system.web.services.job_submission_runtime import build_active_config
@@ -24,11 +25,11 @@ def api_create_agent_draft(job_id: str):
     try:
         result = create_agent_draft(job_id, payload)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except FileNotFoundError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error(exc, 404)
     except Exception as exc:
-        return jsonify({"error": f"Agent 模型理解失败：{exc}"}), 502
+        return api_error(f"Agent 模型理解失败：{exc}", 502)
     return jsonify(result)
 
 
@@ -36,7 +37,7 @@ def api_clear_agent_conversation(job_id: str):
     try:
         result = clear_agent_conversation(job_id)
     except FileNotFoundError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error(exc, 404)
     return jsonify(result)
 
 

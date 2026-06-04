@@ -126,7 +126,15 @@ from ppt_system.web.services.job_state_runtime import (
     update_stage,
     write_error,
 )
+from ppt_system.jobs.job_errors import JobInterruptedError
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
+from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
+from ppt_system.web.services.job_snapshot_runtime import (
+    build_job_payload,
+    build_job_payload_from_state,
+    load_job_snapshot,
+    write_job_snapshot,
+)
 from ppt_system.web.services.job_db_maintenance_service import execute_job_db_maintenance
 from ppt_system.web.services.job_runtime_limits import (
     BoundedJobStatusCache,
@@ -181,139 +189,6 @@ JOB_DB_MAINTENANCE_SCHEDULER = JobDbMaintenanceScheduler(
     ),
 )
 JOB_DB_MAINTENANCE_SCHEDULER.start()
-
-
-class JobInterruptedError(RuntimeError):
-    pass
-
-
-def build_job_payload(
-    *,
-    job_id: str,
-    config: dict[str, Any],
-    content: str,
-    plan: dict[str, Any],
-    pages: list[dict[str, Any]],
-    references: list[dict[str, Any]],
-    element_pages: list[dict[str, Any]],
-    chat_provider: OpenAIChatProvider,
-    chat_profile: dict[str, Any],
-    image_provider: OpenAIImageProvider,
-    image_profile: dict[str, Any],
-    result_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return {
-        "job_id": job_id,
-        "mode": config["generation_mode"],
-        "content": content,
-        "plan": plan,
-        "pages": pages,
-        "model_profiles": {
-            "chat": {
-                "id": chat_profile.get("id", ""),
-                "name": chat_profile.get("name", ""),
-                "model": chat_provider.model,
-                "base_url": chat_provider.api_base_url,
-            },
-            "image": {
-                "id": image_profile.get("id", ""),
-                "name": image_profile.get("name", ""),
-                "model": image_provider.model,
-                "base_url": image_provider.api_base_url,
-            },
-        },
-        "reference_pages": references,
-        "element_pages": element_pages,
-        "result": normalize_job_result_payload(result_payload),
-    }
-
-
-def write_job_snapshot(job_dir: Path, job_payload: dict[str, Any]) -> None:
-    (job_dir / "job.json").write_text(
-        json.dumps(job_payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
-def load_job_snapshot(job_dir: Path) -> dict[str, Any]:
-    snapshot_path = job_dir / "job.json"
-    if not snapshot_path.exists():
-        return {}
-    try:
-        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def build_job_payload_from_state(
-    state: dict[str, Any],
-    snapshot: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    result_payload = normalize_job_result_payload(state.get("result", {}))
-    if isinstance(snapshot, dict) and snapshot:
-        result_payload = merge_job_result(snapshot.get("result", {}), result_payload)
-    source = snapshot if isinstance(snapshot, dict) and snapshot else {}
-    return {
-        "job_id": str(state.get("job_id") or source.get("job_id") or ""),
-        "mode": str(source.get("mode") or ""),
-        "content": str(source.get("content") or state.get("job_meta", {}).get("content") or ""),
-        "plan": source.get("plan", state.get("plan", {})),
-        "pages": source.get("pages", extract_pages_from_state(state)),
-        "model_profiles": source.get("model_profiles", {}),
-        "reference_pages": source.get("reference_pages", extract_reference_pages_from_state(state)),
-        "element_pages": source.get("element_pages", extract_element_pages_from_state(state)),
-        "result": result_payload,
-    }
-
-
-def submit_reference_task(
-    executor: ThreadPoolExecutor,
-    job_dir: Path,
-    job_id: str,
-    page: dict[str, Any],
-    stage1_dir: Path,
-    image_provider: OpenAIImageProvider,
-    style_reference_paths: list[Path],
-    reference_mode: str = "generation",
-) -> tuple[Any, int, str, Path]:
-    page_no = int(page["page_no"])
-    prompt = str(page["image_prompt"]).strip()
-    if not prompt:
-        raise ValueError(f"第 {page_no} 页缺少原稿图提示词，需重新执行规划阶段")
-    image_path = stage1_dir / f"page_{page_no:02d}_reference.png"
-    prompt_path = stage1_dir / f"page_{page_no:02d}_reference_prompt.txt"
-    prompt_path.write_text(prompt, encoding="utf-8")
-    update_page_state(job_dir, job_id, page_no, status="rendering_reference", reference_prompt=prompt)
-    append_stage_log(job_dir, job_id, "reference_generation", f"第 {page_no} 页已进入原稿图生成队列")
-    future = executor.submit(
-        image_provider.generate_reference_page,
-        prompt,
-        image_path,
-        style_reference_paths,
-        reference_mode,
-    )
-    return future, page_no, prompt, image_path
-
-
-def submit_elements_task(
-    executor: ThreadPoolExecutor,
-    job_dir: Path,
-    job_id: str,
-    page_no: int,
-    elements_prompt: str,
-    stage1_dir: Path,
-    stage2_dir: Path,
-    image_provider: OpenAIImageProvider,
-) -> tuple[Any, int, Path]:
-    ref_path = stage1_dir / f"page_{page_no:02d}_reference.png"
-    out_path = stage2_dir / f"page_{page_no:02d}_elements.png"
-    prompt_path = stage2_dir / f"page_{page_no:02d}_elements_prompt.txt"
-    prompt_path.write_text(elements_prompt, encoding="utf-8")
-    update_page_state(job_dir, job_id, page_no, status="rendering_elements", elements_prompt=elements_prompt)
-    append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图已进入并发队列")
-    future = executor.submit(image_provider.generate_elements_page, elements_prompt, ref_path, out_path)
-    return future, page_no, out_path
 
 
 from ppt_system.web import create_app

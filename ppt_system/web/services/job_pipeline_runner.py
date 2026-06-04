@@ -1,49 +1,72 @@
 from __future__ import annotations
 
+import json
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from ppt_system.export.delivery_options import build_editable_ppt_filename
+from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.export_pipeline import export_web_job_to_pptx
+from ppt_system.export.reference_preview_export import export_reference_images_to_pptx
+from ppt_system.export.stage_resume import has_expected_outputs, should_run_stage
+from ppt_system.generation.content_agent import build_content_plan
+from ppt_system.generation.generation_prompts import build_elements_prompt
+from ppt_system.generation.page_evaluator import evaluate_plan
+from ppt_system.generation.page_image_pipeline import run_page_image_pipeline
+from ppt_system.generation.planning_state import has_complete_planning_state
+from ppt_system.integrations.model_config import get_active_model_config
+from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
+from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
+from ppt_system.jobs.job_delivery_state import (
+    build_reference_delivery_payload,
+    normalize_job_result_payload,
+    set_editable_delivery_bundle,
+    set_reference_delivery,
+)
+from ppt_system.jobs.job_errors import JobInterruptedError
+from ppt_system.jobs.job_interrupt_signal import clear_job_stop_request
+from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.jobs.job_targets import get_terminal_stage, should_continue_after_stage
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.app_config_runtime import build_export_options
+from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
+from ppt_system.web.services.job_snapshot_runtime import build_job_payload, write_job_snapshot
+from ppt_system.web.services.job_state_runtime import (
+    _attach_page_evaluations,
+    append_stage_log,
+    build_job_title,
+    ensure_job_not_stopped,
+    extract_element_pages_from_state,
+    extract_pages_from_state,
+    extract_reference_pages_from_state,
+    finalize_job_completed,
+    finalize_job_error,
+    finalize_job_interrupted,
+    get_job_target_from_state,
+    load_job_state,
+    mark_job_stopping,
+    mutate_job_state,
+    reconcile_resume_state,
+    should_stop_job,
+    update_page_state,
+    update_stage,
+)
+from ppt_system.web.services.plan_version_store import get_active_plan_version, save_plan_version
+from ppt_system.web.services.workflow_policy import (
+    AWAITING_PLAN_CONFIRMATION_STATUS,
+    mark_awaiting_plan_confirmation,
+    should_pause_after_planning,
+)
+
+
+def _jobs_db_path() -> Path:
+    return get_runtime_module().JOBS_DB_PATH
 
 
 def run_job_pipeline(
-    job_id: str,
-    job_dir: Path,
-    config: dict[str, Any],
-    active_config: dict[str, Any],
-    content: str,
-    page_count: int,
-    image_preset: dict[str, Any],
-    style_notes: str,
-    generation_options: dict[str, Any],
-    stage1_dir: Path,
-    stage2_dir: Path,
-    refs_dir: Path,
-) -> None:
-    runtime = get_runtime_module()
-    local_scope = {"runtime": runtime}
-    exec(
-        _LEGACY_RUN_JOB_PIPELINE,
-        runtime.__dict__,
-        local_scope,
-    )
-    local_scope["run_job_pipeline"](
-        job_id,
-        job_dir,
-        config,
-        active_config,
-        content,
-        page_count,
-        image_preset,
-        style_notes,
-        generation_options,
-        stage1_dir,
-        stage2_dir,
-        refs_dir,
-    )
-
-
-_LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
     job_id: str,
     job_dir: Path,
     config: dict[str, Any],
@@ -281,7 +304,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
 
             mutate_job_state(job_dir, job_id, pause_after_planning)
             update_job_record(
-                JOBS_DB_PATH,
+                _jobs_db_path(),
                 job_id,
                 status=AWAITING_PLAN_CONFIRMATION_STATUS,
                 current_stage="planning",
@@ -685,7 +708,7 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
         )
     except JobInterruptedError as exc:
         finalize_job_interrupted(job_dir, job_id, str(exc), INTERRUPTED_MESSAGE)
-        update_job_record(JOBS_DB_PATH, job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
+        update_job_record(_jobs_db_path(), job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
         clear_job_stop_request(job_dir, job_id)
     except Exception as exc:
         stage_key = "reference_generation"
@@ -707,4 +730,4 @@ _LEGACY_RUN_JOB_PIPELINE = r"""def run_job_pipeline(
                 "exception_type": exc.__class__.__name__,
                 "traceback": traceback.format_exc(),
             },
-        )"""
+        )

@@ -12,6 +12,7 @@ from ppt_system.integrations.model_config import get_active_model_config
 from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
+from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_submission_runtime import build_active_config
 
 
@@ -44,12 +45,12 @@ def api_create_image_edit_candidate(job_id: str):
     try:
         state = create_image_edit_candidate(job_id, payload)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except FileNotFoundError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error(exc, 404)
     except RuntimeError as exc:
         status = 409 if "正在运行" in str(exc) else 502
-        return jsonify({"error": str(exc)}), status
+        return api_error(exc, status)
     return jsonify(state)
 
 
@@ -57,12 +58,12 @@ def api_apply_image_edit_candidate(job_id: str, candidate_id: str):
     try:
         state = apply_image_edit_candidate(job_id, candidate_id)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except FileNotFoundError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error(exc, 404)
     except RuntimeError as exc:
         status = 409 if "正在运行" in str(exc) else 500
-        return jsonify({"error": str(exc)}), status
+        return api_error(exc, status)
     return jsonify(state)
 
 

@@ -10,6 +10,7 @@ from typing import Any
 from flask import Response, jsonify, request, send_from_directory, stream_with_context
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.api_response import api_error, api_ok
 from ppt_system.export.editable_delivery_cache import (
     load_cached_editable_delivery,
     save_editable_delivery_cache,
@@ -19,6 +20,8 @@ from ppt_system.web.services.job_submission_runtime import (
     build_active_config,
     submit_existing_job_pipeline,
 )
+from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
+from ppt_system.web.services.job_snapshot_runtime import resolve_delivery_action_layer_mode
 from ppt_system.web.services.external_reference_job import (
     EXTERNAL_REFERENCE_SOURCE_MODE,
     SUPPORTED_IMAGE_SUFFIXES,
@@ -47,7 +50,7 @@ def api_create_job():
     try:
         page_count = _parse_page_count(request.form.get("page_count"), config)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     image_preset_name = request.form.get("image_preset", str(config.get("default_image_preset", "2k")))
     image_quality = request.form.get("image_quality", str(config.get("image_quality", "medium"))).strip().lower()
     job_target = runtime.normalize_job_target(
@@ -63,23 +66,23 @@ def api_create_job():
         try:
             generation_payload["page_richness_map"] = json.loads(raw_page_richness_map)
         except json.JSONDecodeError:
-            return jsonify({"error": "逐页内容丰富度参数格式错误。"}), 400
+            return api_error("逐页内容丰富度参数格式错误。")
     generation_options = runtime.resolve_generation_options(generation_payload, config=config)
 
     if not content:
-        return jsonify({"error": "请输入内容。"}), 400
+        return api_error("请输入内容。")
     if page_count < 1 or page_count > int(config["max_pages"]):
-        return jsonify({"error": f"页数必须在 1 到 {config['max_pages']} 之间。"}), 400
+        return api_error(f"页数必须在 1 到 {config['max_pages']} 之间。")
 
     try:
         image_preset = runtime.resolve_image_preset(config, image_preset_name)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
 
     image_width = int(image_preset["width"])
     image_height = int(image_preset["height"])
     if image_quality not in {"low", "medium", "high", "auto"}:
-        return jsonify({"error": "图像质量只能选择 low、medium、high 或 auto。"}), 400
+        return api_error("图像质量只能选择 low、medium、high 或 auto。")
     active_config = build_active_config(config, image_preset, image_quality)
 
     job_id = uuid.uuid4().hex[:12]
@@ -172,10 +175,10 @@ def api_create_job():
 def _api_create_external_reference_job(runtime: Any, config: dict[str, Any]):
     files = [file for file in request.files.getlist("reference_images") if file and file.filename]
     if not files:
-        return jsonify({"error": "请上传至少一张原稿图。"}), 400
+        return api_error("请上传至少一张原稿图。")
     max_pages = int(config.get("max_pages") or 0)
     if max_pages > 0 and len(files) > max_pages:
-        return jsonify({"error": f"导入原稿图数量不能超过 {max_pages} 张。"}), 400
+        return api_error(f"导入原稿图数量不能超过 {max_pages} 张。")
 
     job_id = uuid.uuid4().hex[:12]
     job_dir = _resolve_job_dir(config, job_id)
@@ -189,7 +192,7 @@ def _api_create_external_reference_job(runtime: Any, config: dict[str, Any]):
             if suffix not in SUPPORTED_IMAGE_SUFFIXES:
                 suffixes = "、".join(sorted(SUPPORTED_IMAGE_SUFFIXES))
                 shutil.rmtree(job_dir, ignore_errors=True)
-                return jsonify({"error": f"不支持的原稿图格式：{suffix or original_name}；支持格式：{suffixes}"}), 400
+                return api_error(f"不支持的原稿图格式：{suffix or original_name}；支持格式：{suffixes}")
             target = upload_dir / f"{index:02d}_{original_name}"
             file.save(target)
             source_paths.append(target)
@@ -217,11 +220,11 @@ def _api_create_external_reference_job(runtime: Any, config: dict[str, Any]):
     except ValueError as exc:
         if not runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) and job_dir.exists():
             shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except Exception as exc:
         if not runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) and job_dir.exists():
             shutil.rmtree(job_dir, ignore_errors=True)
-        return jsonify({"error": str(exc)}), 500
+        return api_error(exc, 500)
 
     state = created["state"]
     if not create_only:
@@ -260,7 +263,7 @@ def api_job_status(job_id: str):
     job_dir = _resolve_job_dir(config, job_id)
     state, _record = runtime.get_job_state_snapshot(job_id, job_dir)
     if not state:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     return jsonify(state)
 
 
@@ -270,12 +273,13 @@ def api_job_stream(job_id: str):
     job_dir = _resolve_job_dir(config, job_id)
     initial_state, _record = runtime.get_job_state_snapshot(job_id, job_dir)
     if not initial_state:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
 
     @stream_with_context
     def event_stream():
         last_payload = ""
         heartbeat_at = time.monotonic()
+        last_version = JOB_EVENT_BUS.job_version(job_id)
         yield "retry: 1500\n\n"
         while True:
             state, _record = runtime.get_job_state_snapshot(job_id, job_dir)
@@ -297,7 +301,8 @@ def api_job_stream(job_id: str):
             if now - heartbeat_at >= 15:
                 yield ": keep-alive\n\n"
                 heartbeat_at = now
-            time.sleep(0.8)
+            wait_seconds = max(0.1, min(15.0, 15.0 - (time.monotonic() - heartbeat_at)))
+            last_version = JOB_EVENT_BUS.wait_for_job_change(job_id, last_version, wait_seconds)
 
     return Response(
         event_stream(),
@@ -320,14 +325,15 @@ def api_delete_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     record = runtime.reconcile_job_record(record)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     if record["status"] in {"queued", "running", "stopping"}:
-        return jsonify({"error": "运行中任务不能删除，请先暂停任务后再删除。"}), 400
+        return api_error("运行中任务不能删除，请先暂停任务后再删除。")
     runtime.remove_job_artifacts(Path(record["job_dir"]))
     runtime.delete_job_record(runtime.JOBS_DB_PATH, job_id)
     with runtime.JOB_STATUS_LOCK:
         runtime.JOB_STATUS_CACHE.pop(job_id, None)
-    return jsonify({"ok": True})
+    JOB_EVENT_BUS.notify_job_changed(job_id)
+    return api_ok()
 
 
 def api_update_job(job_id: str):
@@ -335,7 +341,7 @@ def api_update_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     record = runtime.reconcile_job_record(record)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
 
     payload = request.get_json(silent=True) or {}
     fields: dict[str, Any] = {}
@@ -344,7 +350,7 @@ def api_update_job(job_id: str):
     if "title" in payload:
         title = str(payload.get("title") or "").strip()
         if not title:
-            return jsonify({"error": "任务名称不能为空。"}), 400
+            return api_error("任务名称不能为空。")
         fields["title"] = title
 
     touch_updated_at = True
@@ -355,15 +361,15 @@ def api_update_job(job_id: str):
         fields["pinned_at"] = ""
         touch_updated_at = False
     elif action and action != "rename":
-        return jsonify({"error": f"不支持的任务操作：{action}"}), 400
+        return api_error(f"不支持的任务操作：{action}")
 
     if not fields:
-        return jsonify({"error": "没有可更新的任务字段。"}), 400
+        return api_error("没有可更新的任务字段。")
 
     runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, touch_updated_at=touch_updated_at, **fields)
     refreshed = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     if not refreshed:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     return jsonify(runtime.job_summary(refreshed))
 
 
@@ -374,6 +380,7 @@ def api_job_history_stream():
     def event_stream():
         last_payload = ""
         heartbeat_at = time.monotonic()
+        last_version = JOB_EVENT_BUS.history_version()
         yield "retry: 2000\n\n"
         while True:
             payload = json.dumps({"items": runtime.list_job_summaries(limit=100)}, ensure_ascii=False)
@@ -385,7 +392,8 @@ def api_job_history_stream():
             if now - heartbeat_at >= 15:
                 yield ": keep-alive\n\n"
                 heartbeat_at = now
-            time.sleep(1.2)
+            wait_seconds = max(0.1, min(15.0, 15.0 - (time.monotonic() - heartbeat_at)))
+            last_version = JOB_EVENT_BUS.wait_for_history_change(last_version, wait_seconds)
 
     return Response(
         event_stream(),
@@ -403,9 +411,9 @@ def api_interrupt_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     record = runtime.reconcile_job_record(record)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     if record["status"] not in {"queued", "running"}:
-        return jsonify({"error": "只有运行中任务可以中断。"}), 400
+        return api_error("只有运行中任务可以中断。")
     current_stage = str(record.get("current_stage") or "queued")
     job_dir = Path(record["job_dir"])
     runtime.request_job_stop(job_dir, job_id)
@@ -430,17 +438,17 @@ def api_resume_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     record = runtime.reconcile_job_record(record)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     current_state = record.get("state", {})
     can_resume = record["status"] in {"interrupted", "error"} or runtime.can_upgrade_to_editable(current_state)
     if not can_resume:
-        return jsonify({"error": "当前任务状态不支持继续。"}), 400
+        return api_error("当前任务状态不支持继续。")
     request_payload = record.get("request", {})
     next_job_target = runtime.JOB_TARGET_EDITABLE_PPT
     request_payload["job_target"] = next_job_target
     job_dir = Path(record["job_dir"])
     if runtime.is_job_managed(job_id) and runtime.has_job_stop_request(job_dir, job_id):
-        return jsonify({"error": "任务后台正在停止，请稍后再继续。"}), 400
+        return api_error("任务后台正在停止，请稍后再继续。")
     runtime.update_job_record(
         runtime.JOBS_DB_PATH,
         job_id,
@@ -459,7 +467,7 @@ def api_resume_job(job_id: str):
     try:
         submit_existing_job_pipeline(record, request_payload=request_payload)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     state = runtime.load_job_state(job_id, job_dir)
     if state:
         refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
@@ -469,18 +477,18 @@ def api_resume_job(job_id: str):
         )
         runtime.attach_resume_control(response_state, refreshed_record, job_dir)
         return jsonify(response_state)
-    return jsonify({"ok": True})
+    return api_ok()
 
 
 def api_get_job_plan(job_id: str):
     runtime = get_runtime_module()
     record = _get_existing_job_record(runtime, job_id)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     job_dir = Path(record["job_dir"])
     state = _load_editable_job_state(runtime, record, job_dir)
     if not state:
-        return jsonify({"error": "任务状态不存在"}), 404
+        return api_error("任务状态不存在", 404)
     runtime.ensure_workflow_metadata(state, record.get("request", {}))
     return jsonify(runtime.build_plan_response(state))
 
@@ -489,14 +497,14 @@ def api_update_job_plan(job_id: str):
     runtime = get_runtime_module()
     record = _get_existing_job_record(runtime, job_id)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     if str(record.get("status") or "").strip() in {"queued", "running", "stopping"}:
-        return jsonify({"error": "任务正在执行中，请先暂停或等待当前阶段完成。"}), 400
+        return api_error("任务正在执行中，请先暂停或等待当前阶段完成。")
 
     payload = request.get_json(silent=True) or {}
     raw_plan = payload.get("plan", payload)
     if not isinstance(raw_plan, dict):
-        return jsonify({"error": "规划内容必须是对象。"}), 400
+        return api_error("规划内容必须是对象。")
 
     job_dir = Path(record["job_dir"])
 
@@ -529,14 +537,14 @@ def api_confirm_job_plan(job_id: str):
     runtime = get_runtime_module()
     record = _get_existing_job_record(runtime, job_id)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     if str(record.get("status") or "").strip() in {"queued", "running", "stopping"}:
-        return jsonify({"error": "任务正在执行中，不能重复确认规划。"}), 400
+        return api_error("任务正在执行中，不能重复确认规划。")
 
     payload = request.get_json(silent=True) or {}
     raw_plan = payload.get("plan")
     if raw_plan is not None and not isinstance(raw_plan, dict):
-        return jsonify({"error": "规划内容必须是对象。"}), 400
+        return api_error("规划内容必须是对象。")
 
     job_dir = Path(record["job_dir"])
     request_payload = dict(record.get("request", {}) if isinstance(record.get("request"), dict) else {})
@@ -570,7 +578,7 @@ def api_confirm_job_plan(job_id: str):
     try:
         updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
 
     request_payload["workflow_mode"] = runtime.normalize_workflow_mode(
         request_payload.get("workflow_mode") or updated_state.get("job_meta", {}).get("workflow_mode")
@@ -589,7 +597,7 @@ def api_confirm_job_plan(job_id: str):
     try:
         submit_existing_job_pipeline(refreshed_record, request_payload=request_payload)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
 
     state = runtime.load_job_state(job_id, job_dir) or updated_state
     return jsonify(state)
@@ -600,19 +608,19 @@ def api_deliver_job(job_id: str):
     record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
     record = runtime.reconcile_job_record(record)
     if not record:
-        return jsonify({"error": "任务不存在"}), 404
+        return api_error("任务不存在", 404)
     job_dir = Path(record["job_dir"])
     state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
     if not state:
-        return jsonify({"error": "任务状态不存在"}), 404
+        return api_error("任务状态不存在", 404)
     if record["status"] in {"queued", "running", "stopping"}:
-        return jsonify({"error": "任务仍在运行，请等待当前生成阶段完成后再导出。"}), 400
+        return api_error("任务仍在运行，请等待当前生成阶段完成后再导出。")
 
     payload = request.get_json(silent=True) or {}
     delivery_key = str(payload.get("delivery_key", "")).strip()
     if not delivery_key:
-        return jsonify({"error": "缺少 delivery_key。"}), 400
-    requested_layer_mode = _resolve_delivery_action_layer_mode(runtime, delivery_key, payload)
+        return api_error("缺少 delivery_key。")
+    requested_layer_mode = resolve_delivery_action_layer_mode(delivery_key, payload)
     if requested_layer_mode:
         delivery_key = runtime.EDITABLE_PPT_DELIVERY_KEY
 
@@ -624,7 +632,7 @@ def api_deliver_job(job_id: str):
         if delivery_key == runtime.REFERENCE_PPT_DELIVERY_KEY:
             reference_pages = runtime.extract_reference_pages_from_state(state)
             if not reference_pages:
-                return jsonify({"error": "原稿图尚未生成完成，暂时不能导出图片PPT。"}), 400
+                return api_error("原稿图尚未生成完成，暂时不能导出图片PPT。")
             image_preset = state.get("job_meta", {}).get("image_preset", {})
             image_width = int(image_preset.get("width") or runtime.read_config().get("image_width", 2048))
             image_height = int(image_preset.get("height") or runtime.read_config().get("image_height", 1152))
@@ -651,7 +659,7 @@ def api_deliver_job(job_id: str):
             editable_bundle = runtime.get_editable_delivery_bundle(result_payload)
             bundle_path = Path(str(editable_bundle.get("bundle_path", "")).strip())
             if not bundle_path.exists():
-                return jsonify({"error": "可编辑元素尚未生成完成，暂时不能导出可编辑PPT。"}), 400
+                return api_error("可编辑元素尚未生成完成，暂时不能导出可编辑PPT。")
             output_pptx = job_dir / runtime.build_editable_ppt_filename(requested_layer_mode)
             export_payload = load_cached_editable_delivery(
                 bundle_path,
@@ -677,9 +685,9 @@ def api_deliver_job(job_id: str):
                 layer_mode=requested_layer_mode,
             )
         else:
-            return jsonify({"error": f"不支持的导出类型：{delivery_key}"}), 400
+            return api_error(f"不支持的导出类型：{delivery_key}")
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        return api_error(exc, 500)
 
     job_payload["result"] = result_payload
     runtime.write_job_snapshot(job_dir, job_payload)
@@ -689,17 +697,8 @@ def api_deliver_job(job_id: str):
 
     runtime.mutate_job_state(job_dir, job_id, updater)
     refreshed_state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
-    return jsonify(refreshed_state or {"ok": True})
+    return jsonify(refreshed_state) if refreshed_state else api_ok()
 
-
-def _resolve_delivery_action_layer_mode(runtime: Any, delivery_key: str, payload: dict[str, Any]) -> str:
-    if delivery_key == runtime.EDITABLE_SINGLE_PAGE_DELIVERY_ACTION_KEY:
-        return runtime.OVERLAY_LAYER_MODE
-    if delivery_key == runtime.EDITABLE_SPLIT_PAGES_DELIVERY_ACTION_KEY:
-        return runtime.SEPARATE_LAYER_MODE
-    if delivery_key == runtime.EDITABLE_PPT_DELIVERY_KEY:
-        return str(payload.get("layer_mode", "")).strip()
-    return ""
 
 
 def serve_run_file(job_id: str, filename: str):

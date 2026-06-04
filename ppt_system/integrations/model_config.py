@@ -13,15 +13,57 @@ from ppt_system.runtime.env_loader import load_dotenv
 MODEL_TYPES = {"chat", "image"}
 KEY_PLACEHOLDER = "__ENV__"
 ENV_KEY_PREFIX = "PPT_SYSTEM"
+LOCAL_CONFIG_FILENAME = "config.local.json"
 
 
 def read_config(path: Path) -> dict[str, Any]:
-    config = json.loads(path.read_text(encoding="utf-8"))
+    config = read_merged_config(path)
     return hydrate_model_config_api_keys(config, env_path=path.with_name(".env"))
 
 
 def write_config(path: Path, config: dict[str, Any]) -> None:
-    path.write_text(json.dumps(strip_model_config_api_keys(config), ensure_ascii=False, indent=2), encoding="utf-8")
+    target_path = resolve_writable_config_path(path)
+    target_path.write_text(json.dumps(strip_model_config_api_keys(config), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def read_merged_config(path: Path) -> dict[str, Any]:
+    config = read_json_object(path)
+    local_path = resolve_local_config_path(path)
+    if local_path.exists():
+        config = merge_config(config, read_json_object(local_path))
+    return config
+
+
+def resolve_local_config_path(path: Path) -> Path:
+    return path.with_name(LOCAL_CONFIG_FILENAME)
+
+
+def resolve_writable_config_path(path: Path) -> Path:
+    local_path = resolve_local_config_path(path)
+    if local_path.exists():
+        return local_path
+    return path
+
+
+def read_json_object(path: Path) -> dict[str, Any]:
+    config = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(config, dict):
+        raise ValueError(f"配置文件必须是 JSON 对象：{path}")
+    return config
+
+
+def merge_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = copy_config(base)
+    _merge_mapping(merged, override)
+    return merged
+
+
+def _merge_mapping(base: dict[str, Any], override: dict[str, Any]) -> None:
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _merge_mapping(base[key], value)
+        else:
+            base[key] = copy_config(value) if isinstance(value, (dict, list)) else value
 
 
 def list_model_configs(config: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:

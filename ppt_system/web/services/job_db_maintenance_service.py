@@ -6,6 +6,8 @@ from typing import Any
 from flask import jsonify, request
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.api_response import api_error
+from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
 
 
 def api_job_db_stats():
@@ -30,7 +32,7 @@ def api_job_db_maintenance():
             vacuum=vacuum,
         )
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     return jsonify(result)
 
 
@@ -67,6 +69,8 @@ def execute_job_db_maintenance(
                 runtime.JOB_STATUS_CACHE.pop(job_id, None)
             cleaned_job_ids.append(job_id)
         deleted_count = runtime.delete_job_db_records(db_path, cleaned_job_ids)
+        if deleted_count > 0:
+            JOB_EVENT_BUS.notify_history_changed()
         if vacuum and (deleted_count > 0 or before_stats.get("reclaimable_bytes", 0) > 0):
             runtime.vacuum_job_db(db_path)
     after_stats = runtime.collect_job_db_stats(db_path)

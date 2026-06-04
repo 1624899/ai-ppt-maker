@@ -10,6 +10,7 @@ from ppt_system.generation.reference_style_adherence import (
     REFERENCE_STYLE_ADHERENCE_LEVELS,
 )
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.api_response import api_error, api_ok
 
 
 def api_config():
@@ -68,7 +69,7 @@ def api_create_model_config(model_type: str):
         runtime.save_model_api_key(runtime.ENV_PATH, model_type, item)
         runtime.write_config(runtime.CONFIG_PATH, config)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     return jsonify(runtime.list_model_configs(config)[model_type][-1])
 
 
@@ -86,9 +87,9 @@ def api_update_model_config(model_type: str, config_id: str):
         runtime.write_config(runtime.CONFIG_PATH, config)
         return jsonify(item)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except StopIteration:
-        return jsonify({"error": "保存后未找到配置。"}), 500
+        return api_error("保存后未找到配置。", 500)
 
 
 def api_delete_model_config(model_type: str, config_id: str):
@@ -99,8 +100,8 @@ def api_delete_model_config(model_type: str, config_id: str):
         runtime.delete_model_api_key(runtime.ENV_PATH, model_type, removed)
         runtime.write_config(runtime.CONFIG_PATH, config)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({"ok": True})
+        return api_error(exc)
+    return api_ok()
 
 
 def api_activate_model_config(model_type: str, config_id: str):
@@ -110,8 +111,8 @@ def api_activate_model_config(model_type: str, config_id: str):
         runtime.set_active_model_config(config, model_type, config_id)
         runtime.write_config(runtime.CONFIG_PATH, config)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({"ok": True})
+        return api_error(exc)
+    return api_ok()
 
 
 def api_test_model_config(model_type: str):
@@ -123,7 +124,7 @@ def api_test_model_config(model_type: str):
         timeout = int(config.get("connectivity_test_timeout_seconds", 20))
         result = test_model_connectivity(model_type, profile, timeout=timeout)
     except ValueError as exc:
-        return jsonify({"error": str(exc), "ok": False}), 400
+        return api_error(exc, ok=False)
     return jsonify(result.to_dict()), (200 if result.ok else 400)
 
 

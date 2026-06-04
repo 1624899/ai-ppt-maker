@@ -9,6 +9,7 @@ from ppt_system.integrations.model_config import (
     delete_model_api_key,
     list_model_configs,
     read_config,
+    resolve_writable_config_path,
     resolve_model_api_key_env_name,
     save_model_api_key,
     upsert_model_config,
@@ -126,6 +127,84 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
         )
 
         self.assertFalse(updated["supports_extended_options"])
+
+    def test_read_config_merges_local_override_without_losing_template_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.json"
+            local_config_path = root / "config.local.json"
+            config_path.write_text(
+                """
+{
+  "max_pages": 10,
+  "default_pages": 4,
+  "active_chat_config_id": "chat_template",
+  "model_configs": {
+    "chat": [
+      {
+        "id": "chat_template",
+        "name": "模板模型",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "",
+        "model": "gpt-5.5",
+        "enabled": true,
+        "temperature": 0.3,
+        "max_tokens": 5000,
+        "reasoning_effort": ""
+      }
+    ],
+    "image": []
+  }
+}
+""".strip(),
+                encoding="utf-8",
+            )
+            local_config_path.write_text(
+                """
+{
+  "default_pages": 6,
+  "active_chat_config_id": "chat_local",
+  "model_configs": {
+    "chat": [
+      {
+        "id": "chat_local",
+        "name": "本地模型",
+        "base_url": "https://example.test/v1",
+        "api_key": "",
+        "model": "local-chat",
+        "enabled": true,
+        "temperature": 0.2,
+        "max_tokens": 3000,
+        "reasoning_effort": ""
+      }
+    ],
+    "image": []
+  }
+}
+""".strip(),
+                encoding="utf-8",
+            )
+
+            config = read_config(config_path)
+
+            self.assertEqual(config["max_pages"], 10)
+            self.assertEqual(config["default_pages"], 6)
+            self.assertEqual(config["active_chat_config_id"], "chat_local")
+            self.assertEqual(config["model_configs"]["chat"][0]["base_url"], "https://example.test/v1")
+
+    def test_write_config_prefers_existing_local_override_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.json"
+            local_config_path = root / "config.local.json"
+            config_path.write_text('{"default_pages": 4, "model_configs": {"chat": [], "image": []}}', encoding="utf-8")
+            local_config_path.write_text('{"default_pages": 6, "model_configs": {"chat": [], "image": []}}', encoding="utf-8")
+
+            self.assertEqual(resolve_writable_config_path(config_path), local_config_path)
+            write_config(config_path, {"default_pages": 8, "model_configs": {"chat": [], "image": []}})
+
+            self.assertIn('"default_pages": 4', config_path.read_text(encoding="utf-8"))
+            self.assertIn('"default_pages": 8', local_config_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

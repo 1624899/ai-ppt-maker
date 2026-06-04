@@ -10,6 +10,7 @@ from typing import Any
 from flask import jsonify, request
 
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_edit_planner import (
     apply_job_style_edit,
     apply_page_layout_edit,
@@ -46,11 +47,11 @@ def api_create_job_operation(job_id: str):
     try:
         state = create_job_operation(job_id, payload)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return api_error(exc)
     except FileNotFoundError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error(exc, 404)
     except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 409
+        return api_error(exc, 409)
     return jsonify(state)
 
 
