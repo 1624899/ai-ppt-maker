@@ -14,7 +14,7 @@ const buildPlanFromJob = (job) => normalizePlan({
   pages: Array.isArray(job?.pages) ? job.pages : [],
 });
 
-const PlanningEditorSession = ({ currentJob, onJobUpdated }) => {
+const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
   const jobId = currentJob.job_id;
   const [plan, setPlan] = useState(() => buildPlanFromJob(currentJob));
   const [versions, setVersions] = useState(() => (Array.isArray(currentJob?.plan_versions) ? currentJob.plan_versions : []));
@@ -191,6 +191,7 @@ const PlanningEditorSession = ({ currentJob, onJobUpdated }) => {
               page={page}
               index={index}
               total={plan.pages.length}
+              layoutFamilyOptions={config?.layout_family_options}
               onChange={(nextPage) => updatePage(index, nextPage)}
               onDuplicate={duplicatePage}
               onDelete={deletePage}
@@ -212,7 +213,7 @@ const PlanningEditorSession = ({ currentJob, onJobUpdated }) => {
   );
 };
 
-const PlanningEditor = ({ currentJob, onJobUpdated }) => {
+const PlanningEditor = ({ currentJob, config, onJobUpdated }) => {
   if (!currentJob?.job_id) {
     return <div className="empty-state">创建任务后，这里会显示可编辑规划。</div>;
   }
@@ -223,7 +224,7 @@ const PlanningEditor = ({ currentJob, onJobUpdated }) => {
     currentJob.status || '',
   ].join(':');
 
-  return <PlanningEditorSession key={sessionKey} currentJob={currentJob} onJobUpdated={onJobUpdated} />;
+  return <PlanningEditorSession key={sessionKey} currentJob={currentJob} config={config} onJobUpdated={onJobUpdated} />;
 };
 
 export default PlanningEditor;

@@ -2,19 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-ALLOWED_LAYOUT_FAMILIES: set[str] = {
-    "grid_n_x_m",
-    "timeline_horizontal",
-    "timeline_vertical",
-    "hub_and_spoke",
-    "split_left_right",
-    "split_top_bottom",
-    "compare_dual_axis",
-    "process_horizontal",
-    "process_vertical",
-    "hero_with_supporting_cards",
-}
-
 DEFAULT_STYLE_CORE: dict[str, Any] = {
     "background_tone": "按主题选择浅色或中性底色，保证正文可读",
     "palette": ["主题主色", "辅助强调色", "中性色", "背景色"],
@@ -58,6 +45,21 @@ DEFAULT_LAYOUT_FAMILIES: list[str] = [
     "hero_with_supporting_cards",
 ]
 
+ALLOWED_LAYOUT_FAMILIES: set[str] = set(DEFAULT_LAYOUT_FAMILIES)
+
+LAYOUT_FAMILY_LABELS: dict[str, str] = {
+    "grid_n_x_m": "宫格卡片",
+    "timeline_horizontal": "横向时间线",
+    "timeline_vertical": "纵向时间线",
+    "hub_and_spoke": "中心辐射",
+    "split_left_right": "左右分栏",
+    "split_top_bottom": "上下分区",
+    "compare_dual_axis": "双轴对比",
+    "process_horizontal": "横向流程",
+    "process_vertical": "纵向流程",
+    "hero_with_supporting_cards": "主视觉卡片",
+}
+
 
 def validate_layout_family(name: str) -> bool:
     return name in ALLOWED_LAYOUT_FAMILIES
@@ -81,6 +83,7 @@ _LAYOUT_ALIASES: dict[str, str] = {
     "compare": "compare_dual_axis",
     "dual_axis": "compare_dual_axis",
     "comparison": "compare_dual_axis",
+    "contrast": "compare_dual_axis",
     "process": "process_horizontal",
     "flow": "process_horizontal",
     "pipeline": "process_horizontal",
@@ -88,6 +91,44 @@ _LAYOUT_ALIASES: dict[str, str] = {
     "hero": "hero_with_supporting_cards",
     "cards": "hero_with_supporting_cards",
     "feature_cards": "hero_with_supporting_cards",
+    "title_content": "split_top_bottom",
+    "title_and_content": "split_top_bottom",
+    "cover": "hero_with_supporting_cards",
+    "dashboard": "grid_n_x_m",
+    "宫格": "grid_n_x_m",
+    "宫格卡片": "grid_n_x_m",
+    "卡片宫格": "grid_n_x_m",
+    "矩阵": "grid_n_x_m",
+    "横向时间线": "timeline_horizontal",
+    "横向时间轴": "timeline_horizontal",
+    "时间线": "timeline_horizontal",
+    "时间轴": "timeline_horizontal",
+    "纵向时间线": "timeline_vertical",
+    "纵向时间轴": "timeline_vertical",
+    "中心辐射": "hub_and_spoke",
+    "中心发散": "hub_and_spoke",
+    "辐射图": "hub_and_spoke",
+    "左右分栏": "split_left_right",
+    "左右分区": "split_left_right",
+    "双栏": "split_left_right",
+    "上下分区": "split_top_bottom",
+    "上下分栏": "split_top_bottom",
+    "标题正文": "split_top_bottom",
+    "双轴对比": "compare_dual_axis",
+    "双轴比较": "compare_dual_axis",
+    "对比": "compare_dual_axis",
+    "比较": "compare_dual_axis",
+    "对照": "compare_dual_axis",
+    "左右对照": "compare_dual_axis",
+    "横向流程": "process_horizontal",
+    "横向流程图": "process_horizontal",
+    "流程图": "process_horizontal",
+    "纵向流程": "process_vertical",
+    "纵向流程图": "process_vertical",
+    "封面主视觉": "hero_with_supporting_cards",
+    "主视觉卡片": "hero_with_supporting_cards",
+    "封面": "hero_with_supporting_cards",
+    "大标题卡片": "hero_with_supporting_cards",
 }
 
 _LAYOUT_FAMILY_LIST = list(ALLOWED_LAYOUT_FAMILIES)
@@ -96,7 +137,7 @@ _LAYOUT_FAMILY_LIST = list(ALLOWED_LAYOUT_FAMILIES)
 def normalize_layout_family_name(name: str) -> str:
     if not name:
         return "grid_n_x_m"
-    cleaned = str(name).strip().lower().replace(" ", "_").replace("-", "_")
+    cleaned = _normalize_layout_token(name)
     cleaned = _strip_number_suffix(cleaned)
     if validate_layout_family(cleaned):
         return cleaned
@@ -106,6 +147,28 @@ def normalize_layout_family_name(name: str) -> str:
         if key in cleaned or cleaned in key:
             return val
     return "grid_n_x_m"
+
+
+def get_layout_family_label(name: str) -> str:
+    family = normalize_layout_family_name(name)
+    return LAYOUT_FAMILY_LABELS.get(family, family)
+
+
+def build_layout_family_options(families: list[str] | None = None) -> list[dict[str, str]]:
+    source = families if families is not None else DEFAULT_LAYOUT_FAMILIES
+    options: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in source:
+        family = normalize_layout_family_name(item)
+        if family in seen:
+            continue
+        seen.add(family)
+        options.append({"value": family, "label": get_layout_family_label(family)})
+    return options
+
+
+def _normalize_layout_token(name: str) -> str:
+    return str(name).strip().lower().replace(" ", "_").replace("-", "_")
 
 
 def _strip_number_suffix(name: str) -> str:

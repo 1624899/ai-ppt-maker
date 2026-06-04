@@ -63,6 +63,14 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
                 {"value": "strict", "label": "严格"},
             ],
         )
+        self.assertIn(
+            {"value": "hero_with_supporting_cards", "label": "主视觉卡片"},
+            payload["layout_family_options"],
+        )
+        self.assertIn(
+            {"value": "split_left_right", "label": "左右分栏"},
+            payload["layout_family_options"],
+        )
 
 
 if __name__ == "__main__":

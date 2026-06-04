@@ -25,6 +25,7 @@ import { getTaskLaunchSummaryText } from '../../utils/taskLaunchSummary';
 
 const AgentWorkspace = ({
   currentJob,
+  config,
   selectedPageIndex,
   selectedPreviewType,
   imageAnnotations,
@@ -202,7 +203,7 @@ const AgentWorkspace = ({
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className="planning-stage"
             >
-              <PlanningEditor currentJob={currentJob} onJobUpdated={onJobUpdated} />
+              <PlanningEditor currentJob={currentJob} config={config} onJobUpdated={onJobUpdated} />
             </motion.section>
           ) : (
             <motion.section 

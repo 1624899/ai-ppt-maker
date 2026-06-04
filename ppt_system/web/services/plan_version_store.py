@@ -4,6 +4,7 @@ import copy
 from datetime import datetime
 from typing import Any, Mapping
 
+from ppt_system.generation.design_grammar import normalize_layout_family_name
 from ppt_system.generation.title_extraction import resolve_plan_title
 
 
@@ -32,7 +33,7 @@ def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
         "summary": str(page.get("summary") or "").strip(),
         "bullets": normalize_string_list(page.get("bullets")),
         "layout_intent": str(page.get("layout_intent") or "").strip(),
-        "layout_family": str(page.get("layout_family") or "").strip(),
+        "layout_family": normalize_layout_family_name(str(page.get("layout_family") or "").strip()),
         "page_richness": str(page.get("page_richness") or "").strip(),
         "visual_suggestion": str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip(),
         "reference_mode": str(page.get("reference_mode") or "generation").strip(),

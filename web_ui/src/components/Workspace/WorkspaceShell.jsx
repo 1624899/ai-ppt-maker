@@ -6,6 +6,7 @@ import ImageMarkupPanel from './ImageMarkupPanel';
 import PPTStudio from './PPTStudio';
 import TaskCenter from './TaskCenter';
 import TaskLaunchPanel from './TaskLaunchPanel';
+import { useConfig } from '../../hooks/useConfig';
 import { useJobDetail } from '../../hooks/useJobDetail';
 import { useJobs } from '../../hooks/useJobs';
 import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from '../../utils/jobPresentation';
@@ -17,6 +18,7 @@ const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
 );
 
 const WorkspaceShell = () => {
+  const { config } = useConfig();
   const { jobs, loading: jobsLoading, setJobs, refreshJobs } = useJobs();
   const [currentJobId, setCurrentJobId] = useState(null);
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
@@ -192,6 +194,7 @@ const WorkspaceShell = () => {
           <AgentWorkspace
             key="agent-workspace"
             currentJob={currentJob}
+            config={config}
             selectedPageIndex={safeSelectedPageIndex}
             selectedPreviewType={selectedPreview?.key || selectedPreviewType}
             imageAnnotations={imageAnnotations}

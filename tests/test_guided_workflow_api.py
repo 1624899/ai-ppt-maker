@@ -209,6 +209,42 @@ class GuidedWorkflowApiTests(unittest.TestCase):
         self.assertEqual(saved_state["status"], "awaiting_plan_confirmation")
         self.assertEqual(saved_state["job_meta"]["page_count"], 4)
 
+    def test_plan_api_normalizes_chinese_layout_family_labels(self) -> None:
+        job_id, job_dir, _payload = self._create_job("guided")
+        self._seed_planned_state(job_id, job_dir)
+        plan = {
+            "title": "中文版式规划",
+            "pages": [
+                {
+                    "page_no": 1,
+                    "title": "开场",
+                    "summary": "封面",
+                    "layout_family": "主视觉卡片",
+                    "reference_prompt": "开场页提示词",
+                },
+                {
+                    "page_no": 2,
+                    "title": "拆解",
+                    "summary": "流程",
+                    "layout_family": "横向流程",
+                    "reference_prompt": "拆解页提示词",
+                },
+            ],
+        }
+
+        response = self.client.put(f"/api/jobs/{job_id}/plan", json={"plan": plan})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        families = [page["layout_family"] for page in payload["plan"]["pages"]]
+        self.assertEqual(families, ["hero_with_supporting_cards", "process_horizontal"])
+
+        saved_state = load_job_state(job_id, job_dir)
+        self.assertIsNotNone(saved_state)
+        self.assertEqual(saved_state["pages"][0]["layout_family"], "hero_with_supporting_cards")
+        self.assertEqual(saved_state["pages"][1]["layout_family"], "process_horizontal")
+
     def test_plan_api_does_not_use_full_content_as_title(self) -> None:
         job_id, job_dir, _payload = self._create_job("guided")
         self._seed_planned_state(job_id, job_dir)

@@ -11,7 +11,7 @@ except Exception:
     ALLOWED_LAYOUT_FAMILIES = [
         "split_left_right", "split_top_bottom",
         "timeline_horizontal", "timeline_vertical",
-        "hub_and_spoke", "grid_n_x_m",
+        "hub_and_spoke", "grid_n_x_m", "compare_dual_axis",
         "process_horizontal", "process_vertical",
         "hero_with_supporting_cards",
     ]
@@ -28,6 +28,11 @@ _SLOT_TEMPLATES: dict[str, dict] = {
     "split_top_bottom": {
         "title": {"anchor": "top_center"},
         "content_blocks": ["top_visual", "bottom_text"],
+        "visual_focus": "center",
+    },
+    "compare_dual_axis": {
+        "title": {"anchor": "top_center"},
+        "content_blocks": ["left_compare", "right_compare", "axis_notes"],
         "visual_focus": "center",
     },
     "timeline_horizontal": {
@@ -68,6 +73,10 @@ _SLOT_TEMPLATES: dict[str, dict] = {
 }
 
 _DENSITY_SCALE: dict[str, float] = {"low": 0.85, "medium": 1.0, "high": 1.15}
+
+
+def list_supported_layout_slot_families() -> set[str]:
+    return set(_SLOT_TEMPLATES)
 
 
 def split_sentences(content: str) -> list[str]:
@@ -125,6 +134,11 @@ def build_layout_slots_by_family(
         slot_coords["title"] = (round(W * 0.06), round(H * 0.04), round(W * 0.88), round(H * 0.10))
         slot_coords["top_visual"] = (round(W * 0.06), round(H * 0.16), round(W * 0.88), round(H * 0.38))
         slot_coords["bottom_text"] = (round(W * 0.06), round(H * 0.58), round(W * 0.88), round(H * 0.32 * scale))
+    elif family == "compare_dual_axis":
+        slot_coords["title"] = (round(W * 0.06), round(H * 0.05), round(W * 0.88), round(H * 0.10))
+        slot_coords["left_compare"] = (round(W * 0.06), round(H * 0.22), round(W * 0.36), round(H * 0.56 * scale))
+        slot_coords["right_compare"] = (round(W * 0.58), round(H * 0.22), round(W * 0.36), round(H * 0.56 * scale))
+        slot_coords["axis_notes"] = (round(W * 0.43), round(H * 0.30), round(W * 0.14), round(H * 0.40 * scale))
     elif family == "timeline_horizontal":
         slot_coords["title"] = (round(W * 0.06), round(H * 0.06), round(W * 0.40), round(H * 0.10))
         slot_coords["timeline_items_left_to_right"] = (round(W * 0.06), round(H * 0.22), round(W * 0.88), round(H * 0.55 * scale))
@@ -211,7 +225,7 @@ def build_text_boxes_from_slots(
         if block_name not in coords:
             continue
         l, t, w, h = coords[block_name]
-        if family in ("hub_and_spoke", "grid_n_x_m", "process_horizontal", "process_vertical"):
+        if family in ("hub_and_spoke", "grid_n_x_m", "process_horizontal", "process_vertical", "compare_dual_axis"):
             chunk_size = max(1, len(text_content_parts) // max(1, len(text_block_indices)))
             start = idx_pos * chunk_size
             end = start + chunk_size if idx_pos < len(text_block_indices) - 1 else len(text_content_parts)
@@ -259,6 +273,14 @@ def build_fallback_boxes_for_family(
             {"role": "title", "text": title, "left": round(W * 0.06), "top": round(H * 0.04), "width": round(W * 0.88), "height": round(H * 0.10), "font_size": 34, "bold": True, "color": "FFFFFF"},
             {"role": "body", "text": body, "left": round(W * 0.06), "top": round(H * 0.58), "width": round(W * 0.88), "height": round(H * 0.32), "font_size": 22, "bold": False, "color": "DDEBFF"},
         ]
+    if family == "compare_dual_axis":
+        left_body, right_body, axis_body = split_body_for_blocks(body, 3)
+        return [
+            {"role": "title", "text": title, "left": round(W * 0.06), "top": round(H * 0.05), "width": round(W * 0.88), "height": round(H * 0.10), "font_size": 34, "bold": True, "color": "FFFFFF"},
+            {"role": "body", "text": left_body, "left": round(W * 0.06), "top": round(H * 0.22), "width": round(W * 0.36), "height": round(H * 0.56), "font_size": 22, "bold": False, "color": "DDEBFF"},
+            {"role": "body", "text": right_body, "left": round(W * 0.58), "top": round(H * 0.22), "width": round(W * 0.36), "height": round(H * 0.56), "font_size": 22, "bold": False, "color": "DDEBFF"},
+            {"role": "body", "text": axis_body, "left": round(W * 0.43), "top": round(H * 0.30), "width": round(W * 0.14), "height": round(H * 0.40), "font_size": 18, "bold": False, "color": "DDEBFF"},
+        ]
     if family == "timeline_horizontal":
         return [
             {"role": "title", "text": title, "left": round(W * 0.06), "top": round(H * 0.06), "width": round(W * 0.40), "height": round(H * 0.10), "font_size": 34, "bold": True, "color": "FFFFFF"},
@@ -299,6 +321,16 @@ def build_fallback_boxes_for_family(
         {"role": "title", "text": title, "left": round(W * 0.06), "top": round(H * 0.12), "width": round(W * 0.42), "height": round(H * 0.10), "font_size": 34, "bold": True, "color": "FFFFFF"},
         {"role": "body", "text": body, "left": round(W * 0.06), "top": round(H * 0.26), "width": round(W * 0.42), "height": round(H * 0.48), "font_size": 22, "bold": False, "color": "DDEBFF"},
     ]
+
+
+def split_body_for_blocks(body: str, block_count: int) -> list[str]:
+    count = max(1, block_count)
+    lines = [line for line in body.split("\n") if line.strip()]
+    if not lines:
+        return [body] + [""] * (count - 1)
+    chunk_size = max(1, (len(lines) + count - 1) // count)
+    chunks = ["\n".join(lines[index : index + chunk_size]) for index in range(0, len(lines), chunk_size)]
+    return (chunks + [""] * count)[:count]
 
 
 def build_text_layouts(

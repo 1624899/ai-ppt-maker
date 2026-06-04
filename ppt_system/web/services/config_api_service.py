@@ -4,6 +4,7 @@ from flask import jsonify, request
 
 from ppt_system.integrations.model_config import sanitize_model_config
 from ppt_system.integrations.model_connectivity import test_model_connectivity
+from ppt_system.generation.design_grammar import build_layout_family_options
 from ppt_system.generation.reference_style_adherence import (
     REFERENCE_STYLE_ADHERENCE_LABELS,
     REFERENCE_STYLE_ADHERENCE_LEVELS,
@@ -34,6 +35,7 @@ def api_config():
             "default_include_cover_page": bool(defaults["include_cover_page"]),
             "default_page_richness": str(defaults["page_richness_default"]),
             "page_richness_options": list(runtime.PAGE_RICHNESS_LEVELS),
+            "layout_family_options": build_layout_family_options(),
             "default_reference_style_adherence": str(defaults["reference_style_adherence"]),
             "reference_style_adherence_options": [
                 {"value": value, "label": REFERENCE_STYLE_ADHERENCE_LABELS[value]}
