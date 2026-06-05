@@ -32,6 +32,19 @@ from ppt_system.generation.reference_style_adherence import (
     get_reference_style_adherence_label,
 )
 from ppt_system.generation.style_runtime import apply_text_theme
+from ppt_system.generation.source_content_control import (
+    build_source_content_control_prompt,
+    count_anchor_facts,
+    count_anchor_source_chars,
+    resolve_source_content_budget,
+)
+from ppt_system.generation.source_content_anchors import (
+    build_page_content_from_source_anchors,
+    build_source_content_anchors,
+    format_source_anchors_for_prompt,
+    has_meaningful_source_anchors,
+    resolve_page_source_anchors,
+)
 from ppt_system.generation.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
 from ppt_system.generation.title_extraction import resolve_plan_title
 
@@ -60,6 +73,7 @@ def build_content_plan(
     generation_options["page_richness_map"] = page_richness_map
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
+    source_anchors = build_source_content_anchors(content, page_count)
     messages = [
         {
             "role": "system",
@@ -67,6 +81,7 @@ def build_content_plan(
                 "你是专业 PPT 内容策划与图像提示词 agent。"
                 "你必须只返回 JSON，不要返回 Markdown。"
                 "你会把用户长文拆成指定页数的 PPT 页面结构，并为每页生成可直接用于 gpt-image-2 的中文生图提示词。"
+                "页面事实只能来自用户输入内容，不得改写数字、分类、事项名称或业务结论。"
                 "如果存在参考风格图，必须优先服从原稿图的版式语言、背景明度、主色、卡片结构与图标风格，"
                 "内容变化不能破坏整套视觉一致性。"
             ),
@@ -81,6 +96,7 @@ def build_content_plan(
                 style_notes=style_notes,
                 style_image_count=style_image_count,
                 style_guide=style_guide,
+                source_anchors=source_anchors,
                 generation_options=generation_options,
                 page_richness_map=page_richness_map,
             ),
@@ -311,6 +327,7 @@ def build_planning_prompt(
     style_notes: str,
     style_image_count: int,
     style_guide: dict[str, Any],
+    source_anchors: list[dict[str, Any]] | None = None,
     generation_options: dict[str, Any] | None = None,
     page_richness_map: dict[str, str] | None = None,
 ) -> str:
@@ -333,6 +350,7 @@ def build_planning_prompt(
     element_primitives = style_guide.get("element_primitives", [])
     variation_policy = style_guide.get("variation_policy", {})
     negative_rules = style_guide.get("negative_rules", [])
+    source_anchors = source_anchors or build_source_content_anchors(content, page_count)
 
     core_lines: list[str] = []
     if isinstance(style_core, dict):
@@ -348,6 +366,9 @@ def build_planning_prompt(
 
 输入内容：
 {content}
+
+源文事实锚点：
+{format_source_anchors_for_prompt(source_anchors)}
 
 参考风格补充：
 {style_notes or "用户没有填写风格补充，请根据内容自行判断。"}
@@ -379,6 +400,9 @@ def build_planning_prompt(
 每页内容丰富度要求：
 {chr(10).join(build_page_richness_prompt_lines(page_richness_map)) if page_richness_map else "- 所有页面使用中等丰富度"}
 
+内容把控规则：
+{build_source_content_control_prompt()}
+
 禁止事项：
 {format_style_list(negative_rules)}
 
@@ -393,6 +417,7 @@ JSON 格式必须如下：
       "title": "页面标题，18字以内",
       "summary": "本页内容摘要",
       "bullets": ["要点1", "要点2", "要点3"],
+      "source_anchor_ids": ["S01"],
       "layout_family": "从可用版式家族中选择一个抽象排版模式",
       "layout_slots": ["语义槽位1", "语义槽位2"],
       "element_plan": {{"primitives": ["本页使用的元素原语1", "元素原语2"], "icon_topics": ["图标主题1"], "diagram_type": "图表类型"}},
@@ -411,17 +436,20 @@ JSON 格式必须如下：
 2. 每页必须选择一个 layout_family，必须从可用版式家族中选择，不能写成模板编号。
 3. 相邻页不能重复同一 layout_family。
 4. 整套页至少覆盖 3 种以上不同的 layout_family。
-5. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
-6. 不允许复用原稿图的具体构图，每页必须有 difference_from_previous。
-7. layout_slots 是语义槽位，描述本页信息分区的含义，不是固定像素坐标。
-8. image_prompt 可以为空；如果填写，也只写本页独有的视觉重点，避免重复整套固定风格。
-9. 文字要出现在图中，因为这是第一阶段带文字原稿图。
-10. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
-11. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
-12. {build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
-13. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
-14. page_richness 必须填写为 low、medium、high 之一，并与该页丰富度要求保持一致。
-15. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
+5. source_anchor_ids 必须从“源文事实锚点”中选择，可以一页承载一个或多个锚点；你可以规划每页放哪些锚点，但不能新增锚点外事实。
+6. title、summary、bullets 只能压缩或摘取所选 source_anchor_ids 中的事实，不得把“4 大类”改成事项数量，不得自行计算、补写或改写数字口径。
+7. page_richness 不能作为盲目扩充或缩减依据：偏长内容要做重点突出和语义总结，偏短内容只允许少量承接性表达以服务排版。
+8. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
+9. 不允许复用原稿图的具体构图，每页必须有 difference_from_previous。
+10. layout_slots 是语义槽位，描述本页信息分区的含义，不是固定像素坐标。
+11. image_prompt 可以为空；如果填写，也只写本页独有的视觉重点，避免重复整套固定风格。
+12. 文字要出现在图中，因为这是第一阶段带文字原稿图。
+13. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
+14. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
+15. {build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
+16. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
+17. page_richness 必须填写为 low、medium、high 之一，并与该页丰富度要求保持一致。
+18. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
 """.strip()
 
 
@@ -449,6 +477,8 @@ def normalize_content_plan(
     generation_options["page_richness_map"] = page_richness_map
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     resolved_prompt_mode = "slot_brief" if has_reference_images else "compact"
+    source_anchors = build_source_content_anchors(content, page_count)
+    use_source_anchoring = has_meaningful_source_anchors(content, source_anchors, page_count)
     fallback_pages = build_text_layouts(
         content,
         page_count=page_count,
@@ -468,12 +498,40 @@ def normalize_content_plan(
     for index in range(page_count):
         fallback = fallback_pages[index]
         raw = pages_input[index] if index < len(pages_input) and isinstance(pages_input[index], dict) else {}
+        selected_source_anchors = (
+            resolve_page_source_anchors(raw, index, page_count, source_anchors)
+            if use_source_anchoring
+            else []
+        )
+        page_richness = normalize_page_richness_level(
+            raw.get("page_richness") or page_richness_map.get(str(index + 1)),
+            page_richness_map.get(str(index + 1), DEFAULT_PAGE_RICHNESS),
+        )
+        source_content_budget = resolve_source_content_budget(
+            page_richness,
+            fact_count=count_anchor_facts(selected_source_anchors),
+            source_char_count=count_anchor_source_chars(selected_source_anchors),
+        )
+        anchored_content = build_page_content_from_source_anchors(
+            selected_source_anchors,
+            raw_page=raw,
+            content_budget=source_content_budget,
+        )
         bullets = raw.get("bullets", [])
         if not isinstance(bullets, list):
             bullets = []
         bullets = [str(item).strip() for item in bullets if str(item).strip()]
-        title = str(raw.get("title") or fallback["title"]).strip()
-        summary = str(raw.get("summary") or fallback["summary"]).strip()
+        if anchored_content.get("has_content"):
+            title = str(anchored_content.get("title") or fallback["title"]).strip()
+            summary = str(anchored_content.get("summary") or fallback["summary"]).strip()
+            bullets = [
+                str(item).strip()
+                for item in anchored_content.get("bullets", [])
+                if str(item).strip()
+            ]
+        else:
+            title = str(raw.get("title") or fallback["title"]).strip()
+            summary = str(raw.get("summary") or fallback["summary"]).strip()
         if bullets:
             fallback["texts"][1]["text"] = "\n".join(f"• {item}" for item in bullets[:5])
 
@@ -521,11 +579,10 @@ def normalize_content_plan(
         style_constraints = str(raw.get("style_constraints", "")).strip()
         reference_mode = "edit_with_refs" if has_reference_images else "generation"
         prompt_profile = str(raw.get("prompt_profile", "compressed")).strip()
-        page_richness = normalize_page_richness_level(
-            raw.get("page_richness") or page_richness_map.get(str(index + 1)),
-            page_richness_map.get(str(index + 1), DEFAULT_PAGE_RICHNESS),
-        )
         richness_guidance = build_page_richness_planning_guidance(page_richness)
+        content_control_guidance = str(anchored_content.get("content_control", {}).get("guidance", "")).strip()
+        if content_control_guidance:
+            richness_guidance = f"{richness_guidance}；{content_control_guidance}"
         if style_constraints:
             style_constraints = f"{style_constraints}；内容丰富度要求：{richness_guidance}"
         else:
@@ -533,6 +590,7 @@ def normalize_content_plan(
 
         texts = fallback.get("texts", [])
         fallback_family = fallback.get("layout_family", "split_left_right")
+        body = "\n".join(f"• {item}" for item in bullets[:5]) if bullets else summary
         if layout_family != fallback_family:
             body_sentences = summary.split() if summary else []
             body = "\n".join(f"• {item}" for item in body_sentences[:5])
@@ -542,6 +600,7 @@ def normalize_content_plan(
             rebuilt_texts = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
             if rebuilt_texts and len(rebuilt_texts) > 1:
                 texts = rebuilt_texts
+        texts = _sync_text_boxes_with_page_content(texts, title, body)
         texts = apply_text_theme(texts, style_guide)
 
         page = {
@@ -549,6 +608,7 @@ def normalize_content_plan(
             "title": title,
             "summary": summary,
             "bullets": bullets,
+            "source_anchor_ids": anchored_content.get("source_anchor_ids", []),
             "layout_intent": str(raw.get("layout_intent", "")).strip(),
             "layout_family": layout_family,
             "layout_slots": layout_slots,
@@ -609,6 +669,23 @@ def _infer_layout_family(title: str, summary: str, bullets: list[str], index: in
                 return family
     rotation = DEFAULT_LAYOUT_FAMILIES[index % len(DEFAULT_LAYOUT_FAMILIES)]
     return rotation
+
+
+def _sync_text_boxes_with_page_content(texts: list[dict[str, Any]], title: str, body: str) -> list[dict[str, Any]]:
+    synced: list[dict[str, Any]] = []
+    body_applied = False
+    for item in texts:
+        if not isinstance(item, dict):
+            continue
+        next_item = dict(item)
+        role = str(next_item.get("role", "")).strip().lower()
+        if role == "title":
+            next_item["text"] = title
+        elif role == "body" and not body_applied:
+            next_item["text"] = body
+            body_applied = True
+        synced.append(next_item)
+    return synced or texts
 
 
 def _default_layout_slots(layout_family: str, title: str, bullets: list[str]) -> list[str]:
