@@ -202,7 +202,7 @@ def build_compact_reference_prompt(
         lines.append(f"核心表达：{summary}")
     if bullets:
         lines.append("必须体现的要点：")
-        lines.extend(f"- {bullet}" for bullet in bullets[:5])
+        lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
     if slots:
         lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
     if adherence == "strict" and has_reference_images:
@@ -258,7 +258,7 @@ def build_slot_brief_reference_prompt(
         lines.append(f"页面任务：{summary}")
     if bullets:
         lines.append("页面必须覆盖这些信息：")
-        lines.extend(f"- {bullet}" for bullet in bullets[:5])
+        lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
     if slots:
         lines.append("请围绕以下语义分区组织页面，而不是机械照抄固定构图：")
         lines.extend(f"{index + 1}. {slot}" for index, slot in enumerate(slots[:5]))
@@ -416,6 +416,34 @@ def collect_page_bullets(page: dict[str, Any]) -> list[str]:
         if lines:
             return lines
     return []
+
+
+def select_prompt_bullets(bullets: list[str], *, max_items: int = 8) -> list[str]:
+    """选择送给生图模型的必要要点，避免固定截断造成核心模块丢失。"""
+
+    cleaned = [str(item).strip() for item in bullets if str(item).strip()]
+    if len(cleaned) <= max_items:
+        return cleaned
+    visible_count = max(1, max_items - 1)
+    return [
+        *cleaned[:visible_count],
+        _compose_overflow_prompt_bullet(cleaned[visible_count:]),
+    ]
+
+
+def _compose_overflow_prompt_bullet(items: list[str]) -> str:
+    headings = [_fact_heading(item) for item in items if str(item).strip()]
+    if not headings:
+        return "其他要点：按原文剩余事实归纳呈现。"
+    return "其他要点：" + "；".join(headings)
+
+
+def _fact_heading(text: str) -> str:
+    cleaned = str(text or "").strip()
+    for separator in ("：", ":"):
+        if separator in cleaned:
+            return cleaned.split(separator, 1)[0].strip()
+    return cleaned[:40].rstrip()
 
 
 def collect_page_slots(page: dict[str, Any]) -> list[str]:

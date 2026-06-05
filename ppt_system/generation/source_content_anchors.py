@@ -8,7 +8,9 @@ from ppt_system.generation.source_content_control import SourceContentBudget
 
 _HEADING_RE = re.compile(r"^\s*(?:第?[一二三四五六七八九十百千万]+|[0-9]+)[、.．]\s*(.+?)\s*$")
 _MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$")
-_BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*•·]|[0-9]+[).、]|[（(]?[一二三四五六七八九十]+[）)])\s*")
+_BULLET_PREFIX_RE = re.compile(
+    r"^\s*(?:[-*•·]|[0-9]+[).、．]|[（(]?[一二三四五六七八九十]+[）)]|[一二三四五六七八九十]+[、.．])\s*"
+)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s*")
 _PAGE_HEADING_RE = re.compile(r"^\s*第?\s*[一二三四五六七八九十百千万0-9]+\s*页\s*[：:、.．-]\s*(.+?)\s*$")
 _INLINE_PAGE_HEADING_RE = re.compile(
@@ -18,6 +20,7 @@ _MARKDOWN_DIVIDER_RE = re.compile(r"^\s*[-*_]{3,}\s*$")
 _MARKDOWN_STRONG_RE = re.compile(r"(\*\*|__)(.+?)\1")
 _MARKDOWN_ITALIC_STAR_RE = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
 _MARKDOWN_ITALIC_UNDERSCORE_RE = re.compile(r"(?<!_)_([^_\n]+?)_(?!_)")
+_MAX_SECTION_SUMMARY_BULLETS = 8
 
 
 def build_source_content_anchors(content: str, page_count: int) -> list[dict[str, Any]]:
@@ -146,8 +149,7 @@ def build_page_content_from_source_anchors(
     bullets = _select_representative_facts(facts, max_bullets=resolved_max_bullets)
     summary_fact_count = content_budget.summary_fact_count if content_budget else 2
     summary_max_chars = content_budget.summary_max_chars if content_budget else 220
-    summary_facts = bullets[:summary_fact_count] if bullets else facts[:summary_fact_count]
-    summary = " ".join(summary_facts).strip()
+    summary = _build_page_summary(facts, bullets, summary_fact_count, summary_max_chars)
     if content_budget and content_budget.allow_short_expansion:
         bullets = _add_short_content_supporting_points(bullets, content_budget)
 
@@ -183,6 +185,41 @@ def _normalize_line(line: str) -> str:
 
 
 def _split_numbered_sections(lines: list[str]) -> list[dict[str, Any]]:
+    if _has_page_scoped_headings(lines):
+        return _split_page_scoped_sections(lines)
+    return _split_outline_sections(lines)
+
+
+def _has_page_scoped_headings(lines: list[str]) -> bool:
+    return any(_detect_heading_info(line).get("heading_type") == "page" for line in lines)
+
+
+def _split_page_scoped_sections(lines: list[str]) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+
+    for line in lines:
+        heading_info = _detect_heading_info(line)
+        if heading_info.get("heading_type") == "page":
+            if current is not None and (current["title"] or current["lines"]):
+                sections.append(current)
+            current = {
+                "title": heading_info["title"],
+                "lines": [],
+                "page_no": heading_info.get("page_no"),
+            }
+            continue
+
+        if current is None:
+            current = {"title": "", "lines": [], "page_no": None}
+        current["lines"].append(line)
+
+    if current is not None and (current["title"] or current["lines"]):
+        sections.append(current)
+    return [section for section in sections if section["title"] or section["lines"]]
+
+
+def _split_outline_sections(lines: list[str]) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     heading_count = 0
@@ -224,6 +261,7 @@ def _detect_heading_info(line: str) -> dict[str, Any]:
         return {
             "title": _shorten_title(page_heading.group(1).strip()),
             "page_no": _parse_page_heading_no(line),
+            "heading_type": "page",
         }
 
     markdown_heading = _MARKDOWN_HEADING_RE.match(line)
@@ -234,12 +272,13 @@ def _detect_heading_info(line: str) -> dict[str, Any]:
             return {
                 "title": _shorten_title(page_heading.group(1).strip()),
                 "page_no": _parse_page_heading_no(heading_text),
+                "heading_type": "page",
             }
-        return {"title": _shorten_title(heading_text), "page_no": None}
+        return {"title": _shorten_title(heading_text), "page_no": None, "heading_type": "section"}
 
     numbered_heading = _HEADING_RE.match(line)
     if numbered_heading:
-        return {"title": _shorten_title(numbered_heading.group(1).strip()), "page_no": None}
+        return {"title": _shorten_title(numbered_heading.group(1).strip()), "page_no": None, "heading_type": "section"}
     return {}
 
 
@@ -384,15 +423,16 @@ def _build_anchor(
 
 
 def _extract_facts(lines: list[str]) -> list[str]:
+    structured_facts = _extract_heading_scoped_facts(lines)
+    if structured_facts:
+        return structured_facts
+
     facts: list[str] = []
     for line in lines:
         normalized = _normalize_line(line).strip()
         if _should_drop_navigation_fact(normalized):
             continue
-        if normalized.startswith(("**", "__")):
-            cleaned = normalized
-        else:
-            cleaned = _BULLET_PREFIX_RE.sub("", normalized).strip()
+        cleaned = _clean_fact_line(normalized)
         cleaned = _strip_markdown_emphasis(cleaned)
         if not cleaned:
             continue
@@ -403,6 +443,86 @@ def _extract_facts(lines: list[str]) -> list[str]:
             continue
         facts.extend(_split_sentence_facts(cleaned))
     return _dedupe_keep_order(facts)
+
+
+def _extract_heading_scoped_facts(lines: list[str]) -> list[str]:
+    normalized_lines = [
+        _normalize_line(line).strip()
+        for line in lines
+        if _normalize_line(line).strip() and not _should_drop_navigation_fact(_normalize_line(line).strip())
+    ]
+    if not normalized_lines:
+        return []
+
+    heading_indexes = [
+        index
+        for index, line in enumerate(normalized_lines)
+        if _looks_like_fact_heading(line)
+    ]
+    if not heading_indexes:
+        return []
+
+    facts: list[str] = []
+    consumed: set[int] = set()
+    for index in heading_indexes:
+        if index in consumed:
+            continue
+        heading = _clean_fact_line(normalized_lines[index])
+        next_heading_index = next((item for item in heading_indexes if item > index), len(normalized_lines))
+        body_lines = [
+            _clean_fact_line(normalized_lines[item])
+            for item in range(index + 1, next_heading_index)
+            if _clean_fact_line(normalized_lines[item])
+        ]
+        if body_lines:
+            facts.append(_compose_heading_fact(heading, body_lines))
+            consumed.update(range(index, next_heading_index))
+            continue
+
+        next_line_is_heading = index + 1 < len(normalized_lines) and _looks_like_fact_heading(normalized_lines[index + 1])
+        previous_line_is_heading = index > 0 and _looks_like_fact_heading(normalized_lines[index - 1])
+        if not next_line_is_heading and not previous_line_is_heading:
+            facts.append(heading)
+            consumed.add(index)
+
+    for index, line in enumerate(normalized_lines):
+        if index in consumed or _looks_like_fact_heading(line):
+            continue
+        cleaned = _clean_fact_line(line)
+        if not cleaned:
+            continue
+        if _should_keep_line_as_fact(cleaned):
+            facts.append(cleaned)
+        else:
+            facts.extend(_split_sentence_facts(cleaned))
+
+    return _dedupe_keep_order(facts)
+
+
+def _looks_like_fact_heading(line: str) -> bool:
+    cleaned = _clean_fact_line(line)
+    if not cleaned or len(cleaned) > 28:
+        return False
+    if re.search(r"[。！？!?；;：:，,、]", cleaned):
+        return False
+    if _PAGE_HEADING_RE.match(cleaned):
+        return False
+    return bool(re.search(r"[\w\u4e00-\u9fff]", cleaned))
+
+
+def _clean_fact_line(line: str) -> str:
+    text = _strip_markdown_emphasis(str(line or "").strip())
+    text = _BULLET_PREFIX_RE.sub("", text).strip()
+    return _strip_markdown_emphasis(text).strip()
+
+
+def _compose_heading_fact(heading: str, body_lines: list[str]) -> str:
+    body = "；".join(item.strip("；; ") for item in body_lines if item.strip("；; "))
+    if not heading:
+        return body
+    if not body:
+        return heading
+    return f"{heading}：{body}"
 
 
 def _strip_markdown_emphasis(text: str) -> str:
@@ -579,6 +699,9 @@ def _merge_anchor_facts(selected_anchors: list[dict[str, Any]]) -> list[str]:
 
 
 def _select_representative_facts(facts: list[str], *, max_bullets: int) -> list[str]:
+    if _facts_are_section_summaries(facts):
+        return _select_section_summary_facts(facts, max_bullets=max_bullets)
+
     max_bullets = _expand_budget_for_fact_group(facts, max_bullets)
     if len(facts) <= max_bullets:
         return facts
@@ -589,11 +712,61 @@ def _select_representative_facts(facts: list[str], *, max_bullets: int) -> list[
     return [facts[index] for index in selected_indexes]
 
 
+def _build_page_summary(
+    facts: list[str],
+    bullets: list[str],
+    summary_fact_count: int,
+    summary_max_chars: int,
+) -> str:
+    if _facts_are_section_summaries(facts):
+        section_summary = _summarize_section_fact_headings(facts)
+        if section_summary:
+            return _shorten_text(section_summary, max(summary_max_chars, 260))
+
+    summary_facts = bullets[:summary_fact_count] if bullets else facts[:summary_fact_count]
+    return _shorten_text(" ".join(summary_facts).strip(), summary_max_chars)
+
+
+def _select_section_summary_facts(facts: list[str], *, max_bullets: int) -> list[str]:
+    if len(facts) <= _MAX_SECTION_SUMMARY_BULLETS:
+        return facts
+
+    visible_count = max(1, min(max_bullets, _MAX_SECTION_SUMMARY_BULLETS) - 1)
+    visible = facts[:visible_count]
+    remaining = facts[visible_count:]
+    return [*visible, _compose_section_overflow_fact(remaining)]
+
+
+def _compose_section_overflow_fact(facts: list[str]) -> str:
+    items = [_shorten_text(fact, 80) for fact in facts if str(fact).strip()]
+    return "其他要点：" + "；".join(items)
+
+
+def _summarize_section_fact_headings(facts: list[str]) -> str:
+    headings = [_section_fact_heading(fact) for fact in facts]
+    headings = _dedupe_keep_order([item for item in headings if item])
+    if not headings:
+        return ""
+    if len(headings) == 1:
+        return headings[0]
+    return f"涵盖{'、'.join(headings)}。"
+
+
+def _section_fact_heading(fact: str) -> str:
+    text = str(fact or "").strip()
+    for separator in ("：", ":"):
+        if separator in text:
+            return text.split(separator, 1)[0].strip()
+    return _shorten_title(text, 24)
+
+
 def _expand_budget_for_fact_group(facts: list[str], max_bullets: int) -> int:
     """遇到“包括：A类、B类、C类”这类枚举组时，尽量完整保留。"""
 
     if max_bullets <= 0 or len(facts) <= max_bullets:
         return max_bullets
+    if len(facts) <= max_bullets + 1 and _facts_are_section_summaries(facts):
+        return len(facts)
 
     for index, fact in enumerate(facts):
         if not _introduces_fact_group(fact):
@@ -605,6 +778,13 @@ def _expand_budget_for_fact_group(facts: list[str], max_bullets: int) -> int:
         if group_size >= 3 and index + group_size <= max_bullets + 2:
             return max(max_bullets, index + group_size)
     return max_bullets
+
+
+def _facts_are_section_summaries(facts: list[str]) -> bool:
+    if len(facts) < 2:
+        return False
+    section_like_count = sum(1 for fact in facts if "：" in fact or ":" in fact)
+    return section_like_count >= max(2, len(facts) - 1)
 
 
 def _introduces_fact_group(fact: str) -> bool:

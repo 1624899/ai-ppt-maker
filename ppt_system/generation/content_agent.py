@@ -18,6 +18,7 @@ from ppt_system.generation.design_grammar import (
 )
 from ppt_system.generation.generation_options import default_generation_options
 from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
+from ppt_system.generation.generation_prompts import select_prompt_bullets
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.generation.page_richness import (
     DEFAULT_PAGE_RICHNESS,
@@ -533,7 +534,7 @@ def normalize_content_plan(
             title = str(raw.get("title") or fallback["title"]).strip()
             summary = str(raw.get("summary") or fallback["summary"]).strip()
         if bullets:
-            fallback["texts"][1]["text"] = "\n".join(f"• {item}" for item in bullets[:5])
+            fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
         layout_family = str(raw.get("layout_family", "")).strip()
         if not layout_family:
@@ -590,12 +591,12 @@ def normalize_content_plan(
 
         texts = fallback.get("texts", [])
         fallback_family = fallback.get("layout_family", "split_left_right")
-        body = "\n".join(f"• {item}" for item in bullets[:5]) if bullets else summary
+        body = _format_body_bullets(bullets) if bullets else summary
         if layout_family != fallback_family:
             body_sentences = summary.split() if summary else []
             body = "\n".join(f"• {item}" for item in body_sentences[:5])
             if bullets:
-                body = "\n".join(f"• {item}" for item in bullets[:5])
+                body = _format_body_bullets(bullets)
             slots = build_layout_slots_by_family(layout_family, image_width, image_height)
             rebuilt_texts = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
             if rebuilt_texts and len(rebuilt_texts) > 1:
@@ -686,6 +687,10 @@ def _sync_text_boxes_with_page_content(texts: list[dict[str, Any]], title: str, 
             body_applied = True
         synced.append(next_item)
     return synced or texts
+
+
+def _format_body_bullets(bullets: list[str]) -> str:
+    return "\n".join(f"• {item}" for item in select_prompt_bullets(bullets))
 
 
 def _default_layout_slots(layout_family: str, title: str, bullets: list[str]) -> list[str]:

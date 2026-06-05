@@ -374,6 +374,136 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("后续完善知识运营闭环，提升命中率", "\n".join(anchors[1]["facts"]))
         self.assertNotIn("第二页", "\n".join(anchors[0]["facts"]))
 
+    def test_page_scoped_sections_keep_internal_numbered_items_on_same_page(self) -> None:
+        content = """
+第一页：阶段成果
+总体定位
+完成智能助手从技术原型到业务可用的跨越。
+
+第二页：后续发展计划
+一、知识运营平台升级
+新增知识运营看板，建立知识治理闭环。
+
+二、保全事项覆盖全面达成
+实现常用保全项覆盖进度100%。
+
+三、深度集成与推广
+形成“问题输入 → 规则匹配 → 步骤提示 → 结果校验”的测试闭环。
+""".strip()
+        anchors = build_source_content_anchors(content, page_count=2)
+
+        self.assertEqual([(item["id"], item.get("page_no")) for item in anchors], [("S01", 1), ("S02", 2)])
+        second_page_facts = "\n".join(anchors[1]["facts"])
+        self.assertIn("知识运营平台升级：新增知识运营看板，建立知识治理闭环", second_page_facts)
+        self.assertIn("保全事项覆盖全面达成：实现常用保全项覆盖进度100%", second_page_facts)
+        self.assertIn("深度集成与推广：形成“问题输入 → 规则匹配 → 步骤提示 → 结果校验”的测试闭环", second_page_facts)
+
+    def test_structured_page_summary_keeps_all_core_work_modules(self) -> None:
+        content = """
+第一页：本阶段重点工作综述
+总体定位
+本阶段实现保全测试智能助手从技术原型向业务可用跨越。
+
+保全事项覆盖持续扩大
+完成退保、给付、贷还款、变更等4大类保全场景梳理。
+
+业务功能贴近使用场景
+实现高频问题回答、页面辅助定位和主动澄清。
+
+公司环境验证与演示优化
+完成内网联调部署验证，优化演示流畅性。
+
+知识库由资料堆积转向可用资产
+形成保全业务知识、通用操作知识、测试辅助资料三类内容。
+""".strip()
+
+        plan = normalize_content_plan(
+            {
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "本阶段重点工作综述",
+                        "summary": "模型只提覆盖",
+                        "bullets": ["保全事项覆盖持续扩大"],
+                        "source_anchor_ids": ["S01"],
+                        "layout_family": "grid_n_x_m",
+                        "page_richness": "medium",
+                    }
+                ]
+            },
+            content=content,
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="",
+            style_guide=self.style_guide,
+            has_reference_images=False,
+            generation_options={"include_cover_page": False, "page_richness_default": "medium"},
+        )
+
+        page = plan["pages"][0]
+        joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
+        self.assertIn("总体定位", joined)
+        self.assertIn("保全事项覆盖持续扩大", joined)
+        self.assertIn("业务功能贴近使用场景", joined)
+        self.assertIn("公司环境验证与演示优化", joined)
+        self.assertIn("知识库由资料堆积转向可用资产", joined)
+
+    def test_many_structured_modules_are_grouped_without_silent_omission(self) -> None:
+        facts = [f"模块{i}：事实{i}说明。" for i in range(1, 11)]
+        content = "第一页：多模块综述\n" + "\n".join(
+            f"模块{i}\n事实{i}说明。" for i in range(1, 11)
+        )
+
+        plan = normalize_content_plan(
+            {
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "多模块综述",
+                        "source_anchor_ids": ["S01"],
+                        "layout_family": "grid_n_x_m",
+                        "page_richness": "medium",
+                    }
+                ]
+            },
+            content=content,
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="",
+            style_guide=self.style_guide,
+            has_reference_images=False,
+            generation_options={"include_cover_page": False, "page_richness_default": "medium"},
+        )
+
+        page = plan["pages"][0]
+        joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
+        for fact in facts[:7]:
+            self.assertIn(fact, joined)
+        self.assertIn("其他要点", joined)
+        self.assertIn("模块10：事实10", joined)
+        self.assertIn("其他要点", page["image_prompt"])
+        self.assertIn("模块10：事实10", page["image_prompt"])
+        body_text = "\n".join(str(item.get("text", "")) for item in page["texts"])
+        self.assertIn("其他要点", body_text)
+        self.assertIn("模块10", body_text)
+
+    def test_comma_separated_short_fact_is_not_treated_as_heading(self) -> None:
+        content = """
+第一页：知识库建设
+资产化价值
+新增保全事项时，优先通过补充知识库实现能力扩展
+为新人学习、测试支持、日常答疑提供统一入口
+知识可维护、可复用，降低长期运营成本
+""".strip()
+        anchors = build_source_content_anchors(content, page_count=1)
+        facts = "\n".join(anchors[0]["facts"])
+
+        self.assertIn("为新人学习、测试支持、日常答疑提供统一入口", facts)
+        self.assertIn("知识可维护、可复用，降低长期运营成本", facts)
+        self.assertNotIn("为新人学习、测试支持、日常答疑提供统一入口：知识可维护", facts)
+
     def test_flat_paragraph_allows_ai_information_architecture_but_keeps_facts_grounded(self) -> None:
         content = (
             "本阶段完成保全事项梳理接入，沉淀19份业务文档，覆盖退保类、给付类、贷还款类、变更类4大类保全场景，"
