@@ -13,7 +13,8 @@ from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services.api_response import api_error
-from ppt_system.web.services.job_submission_runtime import build_active_config
+from ppt_system.web.services.job_stage_requeue import reset_stages_after_artifact_change
+from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
 
 RUNNING_STATUSES = {"queued", "running", "stopping"}
@@ -169,10 +170,18 @@ def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]
         current_candidate["version_id"] = version["version_id"]
         _append_apply_operation(current_state, current_candidate, version)
         _invalidate_delivery_result(current_state)
+        _reset_followup_stages_after_apply(current_state, current_candidate)
 
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    if _should_submit_pipeline_after_apply(updated_state, preview_type):
+        runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
+        job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
+        submit_existing_job_pipeline(record)
     _sync_job_snapshot(runtime, job_dir, updated_state)
-    return runtime.attach_delivery_actions(updated_state, job_dir)
+    response_state = runtime.attach_delivery_actions(updated_state, job_dir)
+    refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+    runtime.attach_resume_control(response_state, refreshed_record, job_dir)
+    return response_state
 
 
 def build_image_edit_prompt(
@@ -330,6 +339,31 @@ def _apply_candidate_to_page(state: dict[str, Any], candidate: dict[str, Any]) -
             "edit_candidate_id": candidate.get("candidate_id", ""),
         }
         job_operations_service._upsert_artifact(state, collection_name, artifact)
+
+
+def _reset_followup_stages_after_apply(state: dict[str, Any], candidate: dict[str, Any]) -> None:
+    preview_type = _normalize_preview_type(candidate.get("preview_type"))
+    page_no = _coerce_page_no(candidate.get("page_no"))
+    if preview_type == "reference":
+        reset_stages_after_artifact_change(
+            state,
+            changed_stage="reference_generation",
+            page_numbers=(page_no,),
+            summary="原稿图已替换，等待重新生成元素图与可编辑结果",
+        )
+    elif preview_type == "element":
+        reset_stages_after_artifact_change(
+            state,
+            changed_stage="elements_generation",
+            page_numbers=(page_no,),
+            summary="元素图已替换，等待重建可编辑结果",
+        )
+
+
+def _should_submit_pipeline_after_apply(state: dict[str, Any], preview_type: str) -> bool:
+    if preview_type not in {"reference", "element"}:
+        return False
+    return str(state.get("status") or "") == "queued"
 
 
 def _append_apply_operation(

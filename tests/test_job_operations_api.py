@@ -138,6 +138,14 @@ class JobOperationsApiTests(unittest.TestCase):
                     "pages": pages,
                     "reference_pages": references,
                     "element_pages": elements,
+                    "stages": [
+                        {
+                            **stage,
+                            "status": "completed",
+                            "summary": stage.get("summary") or "测试任务已完成",
+                        }
+                        for stage in state.get("stages", [])
+                    ],
                     "result": {
                         "editable_delivery_bundle": {
                             "bundle_path": str(job_dir / "03_ppt_build" / "editable_delivery.bundle.json"),
@@ -614,6 +622,71 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(payload["operations"][-1]["type"], "image_edit_apply")
         self.assertEqual(payload["result"], {"deliveries": {}, "editable_delivery_bundle": {}})
         self.assertTrue((job_dir / "versions" / "page_02" / applied_candidate["version_id"] / "reference.png").exists())
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["current_stage"], "elements_generation")
+        stages_by_key = {stage["key"]: stage for stage in payload["stages"]}
+        self.assertEqual(stages_by_key["elements_generation"]["status"], "pending")
+        self.assertEqual(stages_by_key["ppt_export"]["status"], "pending")
+        self.assertEqual(len(self.executor.calls), 2)
+
+    def test_apply_image_edit_candidate_replaces_element_and_requeues_export_only(self) -> None:
+        job_id, _job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [],
+                "image": [
+                    {
+                        "id": "image_editor",
+                        "name": "图片编辑模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "image-model",
+                    }
+                ],
+            },
+            "active_image_config_id": "image_editor",
+        }
+
+        class FakeImageProvider:
+            def __init__(self, provider_config, profile) -> None:
+                pass
+
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"candidate-image")
+                return {"provider": "fake"}
+
+        with patch.object(main, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_image_edit_service.OpenAIImageProvider",
+            FakeImageProvider,
+        ):
+            candidate_response = self.client.post(
+                f"/api/jobs/{job_id}/image-edit-candidates",
+                json={"page_no": 2, "preview_type": "element", "instruction": "图标更清晰"},
+            )
+        self.assertEqual(candidate_response.status_code, 200)
+        candidate_payload = candidate_response.get_json()
+        self.assertIsNotNone(candidate_payload)
+        candidate_id = candidate_payload["image_edit_candidates"][0]["candidate_id"]
+        candidate_image = candidate_payload["image_edit_candidates"][0]["image"]
+
+        apply_response = self.client.post(f"/api/jobs/{job_id}/image-edit-candidates/{candidate_id}/apply")
+
+        self.assertEqual(apply_response.status_code, 200)
+        payload = apply_response.get_json()
+        self.assertIsNotNone(payload)
+        page_two = next(page for page in payload["pages"] if int(page["page_no"]) == 2)
+        self.assertEqual(page_two["element_image"], candidate_image)
+        self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1, 2])
+        self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1, 2])
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["current_stage"], "ppt_export")
+        stages_by_key = {stage["key"]: stage for stage in payload["stages"]}
+        self.assertEqual(stages_by_key["reference_generation"]["status"], "completed")
+        self.assertEqual(stages_by_key["elements_generation"]["status"], "completed")
+        self.assertEqual(stages_by_key["ppt_export"]["status"], "pending")
+        self.assertEqual(len(self.executor.calls), 2)
 
     def test_restore_page_version_restores_artifacts_and_requeues_export(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()
