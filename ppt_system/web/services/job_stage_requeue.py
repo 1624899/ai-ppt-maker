@@ -51,6 +51,28 @@ def reset_stages_after_artifact_change(
             logs.append(log_message)
 
 
+def activate_requeued_stage(state: dict[str, Any], *, summary: str = "正在继续处理更新后的图片产物") -> None:
+    """将已重排的首个阶段切换为运行中，确保接口响应与后台任务提交保持一致。"""
+    stage_key = str(state.get("current_stage") or "").strip()
+    if not stage_key:
+        return
+
+    state["status"] = "running"
+    state["error"] = ""
+    state["stop_requested"] = False
+    now = utc_iso_timestamp()
+    for stage in state.get("stages", []):
+        if not isinstance(stage, dict) or str(stage.get("key") or "") != stage_key:
+            continue
+        stage["status"] = "running"
+        stage["summary"] = summary
+        stage["updated_at"] = now
+        logs = stage.setdefault("logs", [])
+        if isinstance(logs, list):
+            logs.append(summary)
+        break
+
+
 def _affected_stage_keys(
     state: dict[str, Any],
     *,

@@ -10,10 +10,11 @@ from flask import jsonify, request
 
 from ppt_system.integrations.model_config import get_active_model_config
 from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
+from ppt_system.runtime.time_utils import utc_iso_timestamp
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services.api_response import api_error
-from ppt_system.web.services.job_stage_requeue import reset_stages_after_artifact_change
+from ppt_system.web.services.job_stage_requeue import activate_requeued_stage, reset_stages_after_artifact_change
 from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
 
@@ -172,12 +173,24 @@ def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]
         _invalidate_delivery_result(current_state)
         _reset_followup_stages_after_apply(current_state, current_candidate)
 
+    should_submit_pipeline = _apply_requeues_pipeline(preview_type)
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
     if _should_submit_pipeline_after_apply(updated_state, preview_type):
-        runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
         job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
-        submit_existing_job_pipeline(record)
-    _sync_job_snapshot(runtime, job_dir, updated_state)
+        activation_summary = _build_requeue_running_summary(preview_type)
+        updated_state = _mark_requeued_pipeline_submitting(runtime, job_dir, job_id, activation_summary)
+        _sync_job_snapshot(runtime, job_dir, updated_state)
+        try:
+            submit_existing_job_pipeline(record)
+        except Exception as exc:
+            updated_state = _mark_requeue_submission_failed(runtime, job_dir, job_id, preview_type, exc)
+            _sync_job_snapshot(runtime, job_dir, updated_state)
+            raise
+    elif should_submit_pipeline:
+        job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
+        _sync_job_snapshot(runtime, job_dir, updated_state)
+    else:
+        _sync_job_snapshot(runtime, job_dir, updated_state)
     response_state = runtime.attach_delivery_actions(updated_state, job_dir)
     refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
     runtime.attach_resume_control(response_state, refreshed_record, job_dir)
@@ -361,9 +374,73 @@ def _reset_followup_stages_after_apply(state: dict[str, Any], candidate: dict[st
 
 
 def _should_submit_pipeline_after_apply(state: dict[str, Any], preview_type: str) -> bool:
-    if preview_type not in {"reference", "element"}:
+    if not _apply_requeues_pipeline(preview_type):
         return False
     return str(state.get("status") or "") == "queued"
+
+
+def _apply_requeues_pipeline(preview_type: str) -> bool:
+    return preview_type in {"reference", "element"}
+
+
+def _build_requeue_running_summary(preview_type: str) -> str:
+    if _normalize_preview_type(preview_type) == "reference":
+        return "原稿图已替换，正在重新生成元素图与可编辑结果"
+    if _normalize_preview_type(preview_type) == "element":
+        return "元素图已替换，正在重建可编辑 PPT"
+    return "正在继续处理更新后的图片产物"
+
+
+def _mark_requeued_pipeline_submitting(
+    runtime: Any,
+    job_dir: Path,
+    job_id: str,
+    summary: str,
+) -> dict[str, Any]:
+    def updater(current_state: dict[str, Any]) -> None:
+        if str(current_state.get("status") or "") == "queued":
+            activate_requeued_stage(current_state, summary=summary)
+
+    return runtime.mutate_job_state(job_dir, job_id, updater)
+
+
+def _mark_requeue_submission_failed(
+    runtime: Any,
+    job_dir: Path,
+    job_id: str,
+    preview_type: str,
+    exc: Exception,
+) -> dict[str, Any]:
+    message = f"{IMAGE_SLOTS[_normalize_preview_type(preview_type)]['label']}已替换，但自动继续生成提交失败：{exc}"
+
+    def updater(current_state: dict[str, Any]) -> None:
+        current_state["status"] = "error"
+        current_state["error"] = message
+        current_state["stop_requested"] = False
+        stage_key = str(current_state.get("current_stage") or "").strip()
+        now = utc_iso_timestamp()
+        for stage in current_state.get("stages", []):
+            if not isinstance(stage, dict) or str(stage.get("key") or "") != stage_key:
+                continue
+            stage["status"] = "error"
+            stage["summary"] = message
+            stage["updated_at"] = now
+            logs = stage.setdefault("logs", [])
+            if isinstance(logs, list):
+                logs.append(message)
+            break
+
+    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    runtime.update_job_record(
+        runtime.JOBS_DB_PATH,
+        job_id,
+        status="error",
+        current_stage=updated_state.get("current_stage", ""),
+        state=updated_state,
+        result=updated_state.get("result", {}),
+        stop_requested=False,
+    )
+    return updated_state
 
 
 def _append_apply_operation(

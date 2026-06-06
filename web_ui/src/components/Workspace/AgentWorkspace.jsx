@@ -48,6 +48,11 @@ const AgentWorkspace = ({
     ? getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType)
     : null;
   const activePreviewLabel = selectedPreviewType === 'element' ? '元素图' : selectedPreviewType === 'preview' ? '预览图' : '原稿图';
+  const applyCandidateLabel = selectedPreviewType === 'element'
+    ? '替换元素图并重建 PPT'
+    : selectedPreviewType === 'reference'
+      ? '替换原稿图并重建后续'
+      : `替换${activePreviewLabel}`;
   const forcedPlanningMode = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const activeMode = forcedPlanningMode ? 'planning' : mode;
 
@@ -279,6 +284,11 @@ const AgentWorkspace = ({
                   {latestCandidate?.instruction && (
                     <p className="image-edit-preview__instruction">{latestCandidate.instruction}</p>
                   )}
+                  {isImageEditCandidateApplied(latestCandidate) && selectedPreviewType !== 'preview' && (
+                    <p className="image-edit-preview__instruction">
+                      已替换{activePreviewLabel}，系统会自动继续处理后续 PPT 输出。
+                    </p>
+                  )}
                 </div>
 
                 <div className="edit-actions">
@@ -296,7 +306,7 @@ const AgentWorkspace = ({
                     disabled={imageEditPending !== '' || !latestCandidate || isImageEditCandidateApplied(latestCandidate)}
                   >
                     {imageEditPending === 'apply' ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
-                    替换原图
+                    {imageEditPending === 'apply' ? '替换并提交中...' : applyCandidateLabel}
                   </ScaleButton>
                 </div>
                 {imageEditError && <div className="form-error">{imageEditError}</div>}

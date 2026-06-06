@@ -622,11 +622,15 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(payload["operations"][-1]["type"], "image_edit_apply")
         self.assertEqual(payload["result"], {"deliveries": {}, "editable_delivery_bundle": {}})
         self.assertTrue((job_dir / "versions" / "page_02" / applied_candidate["version_id"] / "reference.png").exists())
-        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["status"], "running")
         self.assertEqual(payload["current_stage"], "elements_generation")
         stages_by_key = {stage["key"]: stage for stage in payload["stages"]}
-        self.assertEqual(stages_by_key["elements_generation"]["status"], "pending")
+        self.assertEqual(stages_by_key["elements_generation"]["status"], "running")
         self.assertEqual(stages_by_key["ppt_export"]["status"], "pending")
+        record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["status"], "running")
+        self.assertEqual(record["current_stage"], "elements_generation")
         self.assertEqual(len(self.executor.calls), 2)
 
     def test_apply_image_edit_candidate_replaces_element_and_requeues_export_only(self) -> None:
@@ -680,12 +684,16 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(page_two["element_image"], candidate_image)
         self.assertEqual([item["page_no"] for item in payload["reference_pages"]], [1, 2])
         self.assertEqual([item["page_no"] for item in payload["element_pages"]], [1, 2])
-        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(payload["status"], "running")
         self.assertEqual(payload["current_stage"], "ppt_export")
         stages_by_key = {stage["key"]: stage for stage in payload["stages"]}
         self.assertEqual(stages_by_key["reference_generation"]["status"], "completed")
         self.assertEqual(stages_by_key["elements_generation"]["status"], "completed")
-        self.assertEqual(stages_by_key["ppt_export"]["status"], "pending")
+        self.assertEqual(stages_by_key["ppt_export"]["status"], "running")
+        record = get_job_record(self.jobs_db_path, job_id)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["status"], "running")
+        self.assertEqual(record["current_stage"], "ppt_export")
         self.assertEqual(len(self.executor.calls), 2)
 
     def test_restore_page_version_restores_artifacts_and_requeues_export(self) -> None:

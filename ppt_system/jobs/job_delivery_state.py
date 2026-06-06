@@ -44,14 +44,23 @@ def normalize_job_result_payload(payload: Any) -> dict[str, Any]:
 
 def merge_job_result(existing_payload: Any, next_payload: Any) -> dict[str, Any]:
     existing = normalize_job_result_payload(existing_payload)
+    next_has_deliveries = _has_payload_key(next_payload, "deliveries")
+    next_has_editable_bundle = _has_payload_key(next_payload, "editable_delivery_bundle")
     next_result = normalize_job_result_payload(next_payload)
     merged = clone_payload(existing)
     merged.update(next_result)
-    merged["deliveries"] = _merge_delivery_store(
-        existing.get("deliveries"),
-        next_result.get("deliveries"),
-    )
-    if not merged.get("editable_delivery_bundle") and isinstance(existing.get("editable_delivery_bundle"), dict):
+    if next_has_deliveries:
+        merged["deliveries"] = _merge_delivery_store(
+            existing.get("deliveries"),
+            next_result.get("deliveries"),
+        )
+    elif isinstance(existing.get("deliveries"), dict):
+        merged["deliveries"] = clone_payload(existing["deliveries"])
+    if (
+        not next_has_editable_bundle
+        and not merged.get("editable_delivery_bundle")
+        and isinstance(existing.get("editable_delivery_bundle"), dict)
+    ):
         merged["editable_delivery_bundle"] = clone_payload(existing["editable_delivery_bundle"])
     return merged
 
@@ -228,20 +237,31 @@ def build_generated_timestamp() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _has_payload_key(payload: Any, key: str) -> bool:
+    return isinstance(payload, dict) and key in payload
+
+
 def _merge_delivery_store(existing_payload: Any, next_payload: Any) -> dict[str, Any]:
     existing = clone_payload(existing_payload) if isinstance(existing_payload, dict) else {}
     next_deliveries = clone_payload(next_payload) if isinstance(next_payload, dict) else {}
+    if next_deliveries == {}:
+        return {}
     merged = existing
     merged.update(next_deliveries)
     existing_editable = existing.get(EDITABLE_PPT_DELIVERY_KEY)
     next_editable = next_deliveries.get(EDITABLE_PPT_DELIVERY_KEY)
-    merged[EDITABLE_PPT_DELIVERY_KEY] = _merge_editable_delivery_store(existing_editable, next_editable)
+    if EDITABLE_PPT_DELIVERY_KEY in next_deliveries:
+        merged[EDITABLE_PPT_DELIVERY_KEY] = _merge_editable_delivery_store(existing_editable, next_editable)
+    elif isinstance(existing_editable, dict):
+        merged[EDITABLE_PPT_DELIVERY_KEY] = clone_payload(existing_editable)
     return merged
 
 
 def _merge_editable_delivery_store(existing_payload: Any, next_payload: Any) -> dict[str, Any]:
     existing = clone_payload(existing_payload) if isinstance(existing_payload, dict) else {}
     next_store = clone_payload(next_payload) if isinstance(next_payload, dict) else {}
+    if next_store == {}:
+        return {}
     merged = existing
     merged.update(next_store)
     existing_by_mode = existing.get("by_layer_mode")

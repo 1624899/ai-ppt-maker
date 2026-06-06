@@ -12,6 +12,31 @@ const mergeObjectField = (currentValue, incomingValue) => {
   return currentValue;
 };
 
+const mergeResultField = (currentValue, incomingValue) => {
+  if (incomingValue === undefined) return currentValue;
+  if (!isObjectRecord(incomingValue)) return incomingValue;
+  if (!isObjectRecord(currentValue)) return incomingValue;
+
+  const merged = { ...currentValue, ...incomingValue };
+  if (hasOwn(incomingValue, 'deliveries')) {
+    merged.deliveries = incomingValue.deliveries;
+  }
+  if (hasOwn(incomingValue, 'editable_delivery_bundle')) {
+    merged.editable_delivery_bundle = incomingValue.editable_delivery_bundle;
+  }
+  return merged;
+};
+
+const isEmptyObject = (value) => isObjectRecord(value) && Object.keys(value).length === 0;
+
+const resultClearsDeliveryState = (result) => (
+  isObjectRecord(result)
+  && (
+    (hasOwn(result, 'deliveries') && isEmptyObject(result.deliveries))
+    || (hasOwn(result, 'editable_delivery_bundle') && isEmptyObject(result.editable_delivery_bundle))
+  )
+);
+
 const normalizeKey = (value) => String(value || '').trim();
 
 function mergeStages(currentStages, incomingStages) {
@@ -71,7 +96,12 @@ export function mergeJobState(currentJob, incomingJob) {
     merged.job_meta = mergeObjectField(currentJob.job_meta, incomingJob.job_meta);
   }
   if (hasOwn(incomingJob, 'result') || hasOwn(currentJob, 'result')) {
-    merged.result = mergeObjectField(currentJob.result, incomingJob.result);
+    merged.result = mergeResultField(currentJob.result, incomingJob.result);
+  }
+  if (hasOwn(incomingJob, 'delivery_actions')) {
+    merged.delivery_actions = incomingJob.delivery_actions;
+  } else if (resultClearsDeliveryState(incomingJob.result)) {
+    merged.delivery_actions = [];
   }
   if (hasOwn(incomingJob, 'stages') || hasOwn(currentJob, 'stages')) {
     merged.stages = mergeStages(currentJob.stages, incomingJob.stages);
