@@ -31,6 +31,7 @@ from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_ME
 from ppt_system.jobs.job_store import update_job as update_job_record
 from ppt_system.jobs.job_targets import get_terminal_stage, should_continue_after_stage
 from ppt_system.web.runtime import get_runtime_module
+from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.app_config_runtime import build_export_options
 from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
 from ppt_system.web.services.job_snapshot_runtime import build_job_payload, write_job_snapshot
@@ -408,15 +409,24 @@ def run_job_pipeline(
             )
             return future, (page, page_no, prompt, image_path)
 
+        def resolve_reference_input_path(page_no: int) -> Path:
+            reference_item = next((item for item in references if int(item["page_no"]) == int(page_no)), None)
+            reference_ref = str((reference_item or {}).get("image") or "").strip()
+            reference_path = resolve_job_artifact_path(job_dir, job_id, reference_ref)
+            if reference_path is None:
+                raise FileNotFoundError(f"第 {page_no} 页缺少可用于生成元素图的原稿图文件。")
+            return reference_path
+
         def submit_elements(executor: ThreadPoolExecutor, page_no: int) -> tuple[Any, tuple[int, Path]]:
             per_page_prompt = str(page_prompt_map.get(page_no, "")) or fallback_elements_prompt
+            reference_input_path = resolve_reference_input_path(page_no)
             future, task_page_no, out_path = submit_elements_task(
                 executor,
                 job_dir,
                 job_id,
                 page_no,
                 per_page_prompt,
-                stage1_dir,
+                reference_input_path,
                 stage2_dir,
                 image_provider,
             )
@@ -552,6 +562,7 @@ def run_job_pipeline(
                 image_provider=image_provider,
                 image_profile=image_profile,
                 result_payload=job_result,
+                runtime_state=load_job_state(job_id, job_dir) or state,
             )
             write_job_snapshot(job_dir, job)
             finalize_job_completed(
@@ -579,6 +590,7 @@ def run_job_pipeline(
             image_provider=image_provider,
             image_profile=image_profile,
             result_payload=job_result,
+            runtime_state=load_job_state(job_id, job_dir) or state,
         )
         write_job_snapshot(job_dir, job)
         (job_dir / "config.snapshot.json").write_text(
@@ -686,6 +698,7 @@ def run_job_pipeline(
             image_provider=image_provider,
             image_profile=image_profile,
             result_payload=job_result,
+            runtime_state=load_job_state(job_id, job_dir) or state,
         )
         write_job_snapshot(job_dir, job)
 

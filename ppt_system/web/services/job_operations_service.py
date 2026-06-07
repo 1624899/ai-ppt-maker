@@ -11,6 +11,7 @@ from flask import jsonify, request
 
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services.api_response import api_error
+from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.job_edit_planner import (
     apply_job_style_edit,
     apply_page_layout_edit,
@@ -521,8 +522,8 @@ def _copy_artifact(
     source_ref = str(image_ref or "").strip()
     if not source_ref:
         return {"source_image": "", "image": "", "exists": False}
-    source = _resolve_artifact_path(job_dir, source_ref)
-    if not source.exists() or not source.is_file():
+    source = resolve_job_artifact_path(job_dir, job_id, source_ref)
+    if source is None:
         return {"source_image": source_ref, "image": "", "exists": False}
     suffix = source.suffix or ".png"
     target = version_dir / f"{slot}{suffix}"
@@ -533,17 +534,6 @@ def _copy_artifact(
         "path": str(target),
         "exists": True,
     }
-
-
-def _resolve_artifact_path(job_dir: Path, image_ref: str) -> Path:
-    candidate = Path(str(image_ref).strip())
-    if candidate.is_absolute():
-        return candidate
-    normalized = str(image_ref).lstrip("/\\")
-    parts = Path(normalized).parts
-    if len(parts) >= 3 and parts[0] == "runs":
-        return job_dir / Path(*parts[2:])
-    return job_dir / normalized
 
 
 def _restored_artifact_image(artifact_copy: Any, original_artifact: Any) -> str:

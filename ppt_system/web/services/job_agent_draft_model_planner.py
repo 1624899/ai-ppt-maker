@@ -7,6 +7,7 @@ from typing import Any
 
 from ppt_system.integrations.model_config import get_active_model_config
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
+from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.job_agent_draft_models import AgentDraft
 from ppt_system.web.services.job_edit_planner import WHOLE_DECK_KEYWORDS, parse_target_page_numbers
 
@@ -331,24 +332,6 @@ def resolve_selected_preview_image(
                 image_value = _normalize_text(item.get("image"))
                 break
     return resolve_job_artifact_path(job_dir, job_id, image_value)
-
-
-def resolve_job_artifact_path(job_dir: Path, job_id: str, value: str) -> Path | None:
-    raw_value = _normalize_text(value)
-    if not raw_value:
-        return None
-    path: Path
-    run_prefix = f"/runs/{job_id}/"
-    if raw_value.startswith(run_prefix):
-        path = job_dir / raw_value[len(run_prefix):]
-    elif raw_value.startswith(f"runs/{job_id}/"):
-        path = job_dir / raw_value[len(f"runs/{job_id}/"):]
-    else:
-        candidate = Path(raw_value)
-        path = candidate if candidate.is_absolute() else job_dir / raw_value.lstrip("/\\")
-    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-        return None
-    return path if path.exists() else None
 
 
 def append_annotation_labels(instruction: str, annotations: list[dict[str, Any]]) -> str:

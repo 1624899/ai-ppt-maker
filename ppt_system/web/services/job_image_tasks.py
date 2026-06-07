@@ -42,15 +42,14 @@ def submit_elements_task(
     job_id: str,
     page_no: int,
     elements_prompt: str,
-    stage1_dir: Path,
+    reference_page_path: Path,
     stage2_dir: Path,
     image_provider: Any,
 ) -> tuple[Any, int, Path]:
-    ref_path = stage1_dir / f"page_{page_no:02d}_reference.png"
     out_path = stage2_dir / f"page_{page_no:02d}_elements.png"
     prompt_path = stage2_dir / f"page_{page_no:02d}_elements_prompt.txt"
     prompt_path.write_text(elements_prompt, encoding="utf-8")
     update_page_state(job_dir, job_id, page_no, status="rendering_elements", elements_prompt=elements_prompt)
     append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图已进入并发队列")
-    future = executor.submit(image_provider.generate_elements_page, elements_prompt, ref_path, out_path)
+    future = executor.submit(image_provider.generate_elements_page, elements_prompt, reference_page_path, out_path)
     return future, page_no, out_path

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -632,6 +633,109 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(record["status"], "running")
         self.assertEqual(record["current_stage"], "elements_generation")
         self.assertEqual(len(self.executor.calls), 2)
+
+    def test_image_edit_candidate_after_apply_uses_applied_image_as_source(self) -> None:
+        job_id, job_dir = self._seed_completed_pages()
+        config = {
+            **self.config,
+            "model_configs": {
+                "chat": [],
+                "image": [
+                    {
+                        "id": "image_editor",
+                        "name": "图片编辑模型",
+                        "base_url": "https://example.com/v1",
+                        "api_key": "sk-test",
+                        "model": "image-model",
+                    }
+                ],
+            },
+            "active_image_config_id": "image_editor",
+        }
+        captured: dict[str, list[list[Path]]] = {"image_paths": []}
+
+        class FakeImageProvider:
+            def __init__(self, provider_config, profile) -> None:
+                self.model = str(profile.get("model") or "image-model")
+                self.api_base_url = str(profile.get("base_url") or "https://example.com/v1")
+                self.size = str(provider_config.get("active_image_size") or provider_config.get("image_size") or "")
+                self.pixel_size = f"{provider_config.get('image_width')}x{provider_config.get('image_height')}"
+                self.resolution = str(provider_config.get("active_image_resolution") or "")
+                self.quality = str(provider_config.get("image_quality") or "")
+                self.background = str(provider_config.get("image_background") or "")
+                self.output_format = str(provider_config.get("image_output_format") or "png")
+                self.response_format = str(provider_config.get("image_response_format") or "url")
+                self.moderation = str(provider_config.get("image_moderation") or "")
+                self.n = int(provider_config.get("image_n") or 1)
+
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+                captured["image_paths"].append(list(image_paths))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(f"candidate-image-{len(captured['image_paths'])}".encode("utf-8"))
+                return {"provider": "fake", "call_index": len(captured["image_paths"])}
+
+        with patch.object(main, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_image_edit_service.OpenAIImageProvider",
+            FakeImageProvider,
+        ):
+            first_response = self.client.post(
+                f"/api/jobs/{job_id}/image-edit-candidates",
+                json={"page_no": 2, "preview_type": "reference", "instruction": "第一次调整"},
+            )
+        self.assertEqual(first_response.status_code, 200)
+        first_payload = first_response.get_json()
+        self.assertIsNotNone(first_payload)
+        first_candidate = first_payload["image_edit_candidates"][0]
+        first_candidate_image = first_candidate["image"]
+
+        apply_response = self.client.post(f"/api/jobs/{job_id}/image-edit-candidates/{first_candidate['candidate_id']}/apply")
+        self.assertEqual(apply_response.status_code, 200)
+
+        mutate_job_state(
+            job_dir,
+            job_id,
+            lambda state: state.update({"status": "completed", "current_stage": "ppt_export", "stop_requested": False}),
+        )
+
+        with patch.object(main, "read_config", return_value=config), patch(
+            "ppt_system.web.services.job_image_edit_service.OpenAIImageProvider",
+            FakeImageProvider,
+        ):
+            second_response = self.client.post(
+                f"/api/jobs/{job_id}/image-edit-candidates",
+                json={
+                    "page_no": 2,
+                    "preview_type": "reference",
+                    "instruction": "第二次调整",
+                    "annotations": [
+                        {
+                            "id": "box-2",
+                            "label": "当前替换图上的模块",
+                            "box": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(second_response.status_code, 200)
+        payload = second_response.get_json()
+        self.assertIsNotNone(payload)
+        second_candidate = next(item for item in payload["image_edit_candidates"] if item["instruction"] == "第二次调整")
+        expected_source_path = job_dir / first_candidate_image[len(f"/runs/{job_id}/"):]
+        self.assertEqual(Path(captured["image_paths"][0][0]).name, "page_02_reference.png")
+        self.assertEqual(captured["image_paths"][1][0], expected_source_path)
+        self.assertEqual(second_candidate["source_image"], first_candidate_image)
+        self.assertIn("prompt_file", second_candidate)
+        self.assertIn("metadata_file", second_candidate)
+
+        metadata_path = job_dir / second_candidate["metadata_file"][len(f"/runs/{job_id}/"):]
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        self.assertEqual(metadata["status"], "generated")
+        self.assertEqual(metadata["instruction"], "第二次调整")
+        self.assertEqual(metadata["source_image"], first_candidate_image)
+        self.assertEqual(Path(metadata["source_path"]), expected_source_path)
+        self.assertIn("当前替换图上的模块", metadata["prompt"])
+        self.assertEqual(metadata["generation"]["call_index"], 2)
 
     def test_apply_image_edit_candidate_replaces_element_and_requeues_export_only(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()

@@ -8,13 +8,19 @@ export function getImageEditCandidates(job, pageNo, previewType = '') {
   if (!targetPageNo || !Array.isArray(job?.image_edit_candidates)) return [];
   const targetPreviewType = String(previewType || '').trim();
   return job.image_edit_candidates
+    .map((candidate, index) => ({ candidate, index }))
     .filter((candidate) => {
-      if (!candidate || typeof candidate !== 'object') return false;
-      if (normalizePageNo(candidate.page_no) !== targetPageNo) return false;
-      return !targetPreviewType || String(candidate.preview_type || '') === targetPreviewType;
+      if (!candidate.candidate || typeof candidate.candidate !== 'object') return false;
+      if (normalizePageNo(candidate.candidate.page_no) !== targetPageNo) return false;
+      return !targetPreviewType || String(candidate.candidate.preview_type || '') === targetPreviewType;
     })
     .slice()
-    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    .sort((a, b) => {
+      const createdAtDiff = parseCandidateTime(b.candidate.created_at) - parseCandidateTime(a.candidate.created_at);
+      if (createdAtDiff !== 0) return createdAtDiff;
+      return b.index - a.index;
+    })
+    .map((item) => item.candidate);
 }
 
 export function getLatestImageEditCandidate(job, pageNo, previewType = '') {
@@ -23,4 +29,9 @@ export function getLatestImageEditCandidate(job, pageNo, previewType = '') {
 
 export function isImageEditCandidateApplied(candidate) {
   return String(candidate?.status || '') === 'applied';
+}
+
+function parseCandidateTime(value) {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
 }

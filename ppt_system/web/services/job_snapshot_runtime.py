@@ -19,6 +19,9 @@ from ppt_system.web.services.job_state_runtime import (
 )
 
 
+RUNTIME_SNAPSHOT_EXTENSION_FIELDS = ("image_edit_candidates",)
+
+
 def build_job_payload(
     *,
     job_id: str,
@@ -33,8 +36,10 @@ def build_job_payload(
     image_provider: Any,
     image_profile: dict[str, Any],
     result_payload: dict[str, Any] | None = None,
+    runtime_state: dict[str, Any] | None = None,
+    snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "job_id": job_id,
         "mode": config["generation_mode"],
         "content": content,
@@ -58,11 +63,14 @@ def build_job_payload(
         "element_pages": element_pages,
         "result": normalize_job_result_payload(result_payload),
     }
+    return merge_runtime_snapshot_extensions(payload, runtime_state, snapshot)
 
 
 def write_job_snapshot(job_dir: Path, job_payload: dict[str, Any]) -> None:
+    snapshot = load_job_snapshot(job_dir)
+    payload = merge_runtime_snapshot_extensions(job_payload, snapshot)
     (job_dir / "job.json").write_text(
-        json.dumps(job_payload, ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -86,17 +94,36 @@ def build_job_payload_from_state(
     if isinstance(snapshot, dict) and snapshot:
         result_payload = merge_job_result(snapshot.get("result", {}), result_payload)
     source = snapshot if isinstance(snapshot, dict) and snapshot else {}
-    return {
+    state_plan = state.get("plan", {})
+    plan = state_plan if isinstance(state_plan, dict) and state_plan else source.get("plan", {})
+    payload = {
         "job_id": str(state.get("job_id") or source.get("job_id") or ""),
         "mode": str(source.get("mode") or ""),
         "content": str(source.get("content") or state.get("job_meta", {}).get("content") or ""),
-        "plan": source.get("plan", state.get("plan", {})),
-        "pages": source.get("pages", extract_pages_from_state(state)),
+        "plan": plan,
+        "pages": extract_pages_from_state(state),
         "model_profiles": source.get("model_profiles", {}),
-        "reference_pages": source.get("reference_pages", extract_reference_pages_from_state(state)),
-        "element_pages": source.get("element_pages", extract_element_pages_from_state(state)),
+        "reference_pages": extract_reference_pages_from_state(state),
+        "element_pages": extract_element_pages_from_state(state),
         "result": result_payload,
     }
+    return merge_runtime_snapshot_extensions(payload, state, source)
+
+
+def merge_runtime_snapshot_extensions(
+    payload: dict[str, Any],
+    *sources: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """保留不参与核心生成流程、但用户操作历史需要展示的运行态扩展字段。"""
+    result = dict(payload)
+    for field in RUNTIME_SNAPSHOT_EXTENSION_FIELDS:
+        if field in result:
+            continue
+        for source in sources:
+            if isinstance(source, dict) and field in source:
+                result[field] = json.loads(json.dumps(source[field], ensure_ascii=False))
+                break
+    return result
 
 
 def resolve_delivery_action_layer_mode(delivery_key: str, payload: dict[str, Any]) -> str:

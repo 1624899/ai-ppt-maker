@@ -55,6 +55,10 @@ const AgentWorkspace = ({
     : selectedPreviewType === 'reference'
       ? '替换原稿图并重建后续'
       : `替换${activePreviewLabel}`;
+  const latestCandidateApplied = isImageEditCandidateApplied(latestCandidate);
+  const generateCandidateLabel = latestCandidateApplied
+    ? `基于当前${activePreviewLabel}再生成`
+    : '重新生成预览';
   const forcedPlanningMode = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const activeMode = forcedPlanningMode ? 'planning' : mode;
 
@@ -277,7 +281,7 @@ const AgentWorkspace = ({
                   <div className="image-edit-preview__head">
                     <span>编辑生成预览</span>
                     {latestCandidate && (
-                      <strong>{isImageEditCandidateApplied(latestCandidate) ? '已替换' : '待确认替换'}</strong>
+                      <strong>{latestCandidateApplied ? '已替换' : '待确认替换'}</strong>
                     )}
                   </div>
                   <SlideImage
@@ -292,9 +296,9 @@ const AgentWorkspace = ({
                   {latestCandidate?.instruction && (
                     <p className="image-edit-preview__instruction">{latestCandidate.instruction}</p>
                   )}
-                  {isImageEditCandidateApplied(latestCandidate) && selectedPreviewType !== 'preview' && (
+                  {latestCandidateApplied && selectedPreviewType !== 'preview' && (
                     <p className="image-edit-preview__instruction">
-                      已替换{activePreviewLabel}，系统会自动继续处理后续 PPT 输出。
+                      已替换{activePreviewLabel}。继续生成预览时，会基于当前替换后的图片重新编辑。
                     </p>
                   )}
                 </div>
@@ -306,12 +310,12 @@ const AgentWorkspace = ({
                     disabled={imageEditPending !== '' || isRunning || !draftInstruction.trim()}
                   >
                     {imageEditPending === 'generate' ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}
-                    重新生成预览
+                    {imageEditPending === 'generate' ? '正在生成预览' : generateCandidateLabel}
                   </ScaleButton>
                   <ScaleButton
                     className="btn btn-secondary"
                     onClick={applyLatestCandidate}
-                    disabled={imageEditPending !== '' || !latestCandidate || isImageEditCandidateApplied(latestCandidate)}
+                    disabled={imageEditPending !== '' || !latestCandidate || latestCandidateApplied}
                   >
                     {imageEditPending === 'apply' ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
                     {imageEditPending === 'apply' ? '替换并提交中...' : applyCandidateLabel}

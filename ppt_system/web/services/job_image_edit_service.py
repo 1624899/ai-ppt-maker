@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,7 @@ from ppt_system.runtime.time_utils import utc_iso_timestamp
 from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services.api_response import api_error
+from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.job_stage_requeue import activate_requeued_stage, reset_stages_after_artifact_change
 from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
@@ -82,7 +82,7 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
 
     page = job_operations_service._find_page(state, page_no)
     source_image = _resolve_source_image(page, state, page_no, preview_type)
-    source_path = _resolve_job_artifact_path(job_dir, job_id, source_image)
+    source_path = resolve_job_artifact_path(job_dir, job_id, source_image)
     if source_path is None:
         slot_label = IMAGE_SLOTS[preview_type]["label"]
         raise FileNotFoundError(f"第 {page_no} 页还没有可编辑的{slot_label}。")
@@ -96,6 +96,8 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
     candidate_id = uuid.uuid4().hex[:12]
     output_dir = job_dir / "04_image_edits" / f"page_{page_no:02d}"
     output_path = output_dir / f"{candidate_id}_{preview_type}.png"
+    prompt_path = output_dir / f"{candidate_id}_prompt.txt"
+    metadata_path = output_dir / f"{candidate_id}_metadata.json"
     output_dir.mkdir(parents=True, exist_ok=True)
     prompt = build_image_edit_prompt(
         page=page,
@@ -105,8 +107,47 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
         image_width=int(active_config.get("image_width", 2048)),
         image_height=int(active_config.get("image_height", 1152)),
     )
-    (output_dir / f"{candidate_id}_prompt.txt").write_text(prompt, encoding="utf-8")
-    generation_meta = image_provider.generate_edited_image(prompt, output_path, [source_path])
+    prompt_path.write_text(prompt, encoding="utf-8")
+    request_meta = _build_image_edit_request_metadata(
+        candidate_id=candidate_id,
+        job_id=job_id,
+        page_no=page_no,
+        preview_type=preview_type,
+        instruction=instruction,
+        annotations=annotations,
+        prompt=prompt,
+        prompt_path=prompt_path,
+        metadata_path=metadata_path,
+        source_image=source_image,
+        source_path=source_path,
+        output_path=output_path,
+        active_config=active_config,
+        image_profile=image_profile,
+        image_provider=image_provider,
+    )
+    _write_image_edit_metadata(metadata_path, {**request_meta, "status": "submitting"})
+    try:
+        generation_meta = image_provider.generate_edited_image(prompt, output_path, [source_path])
+    except Exception as exc:
+        _write_image_edit_metadata(
+            metadata_path,
+            {
+                **request_meta,
+                "status": "error",
+                "error": str(exc),
+                "updated_at": _timestamp(),
+            },
+        )
+        raise
+    _write_image_edit_metadata(
+        metadata_path,
+        {
+            **request_meta,
+            "status": "generated",
+            "generation": generation_meta,
+            "updated_at": _timestamp(),
+        },
+    )
 
     candidate = {
         "candidate_id": candidate_id,
@@ -118,6 +159,8 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
         "annotations": annotations,
         "source_image": source_image,
         "image": f"/runs/{job_id}/04_image_edits/page_{page_no:02d}/{output_path.name}",
+        "prompt_file": f"/runs/{job_id}/04_image_edits/page_{page_no:02d}/{prompt_path.name}",
+        "metadata_file": f"/runs/{job_id}/04_image_edits/page_{page_no:02d}/{metadata_path.name}",
         "generation": generation_meta,
         "status": "generated",
         "created_at": _timestamp(),
@@ -148,7 +191,7 @@ def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]
 
     page_no = _coerce_page_no(candidate.get("page_no"))
     preview_type = _normalize_preview_type(candidate.get("preview_type"))
-    candidate_path = _resolve_job_artifact_path(job_dir, job_id, str(candidate.get("image", "")))
+    candidate_path = resolve_job_artifact_path(job_dir, job_id, str(candidate.get("image", "")))
     if candidate_path is None:
         raise FileNotFoundError("编辑预览图文件不存在，无法替换。")
 
@@ -298,23 +341,6 @@ def _resolve_source_image(
         if image:
             return image
     return ""
-
-
-def _resolve_job_artifact_path(job_dir: Path, job_id: str, value: str) -> Path | None:
-    raw_value = _normalize_instruction(value)
-    if not raw_value:
-        return None
-    run_prefix = f"/runs/{job_id}/"
-    if raw_value.startswith(run_prefix):
-        path = job_dir / raw_value[len(run_prefix):]
-    elif raw_value.startswith(f"runs/{job_id}/"):
-        path = job_dir / raw_value[len(f"runs/{job_id}/"):]
-    else:
-        candidate = Path(raw_value)
-        path = candidate if candidate.is_absolute() else job_dir / raw_value.lstrip("/\\")
-    if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-        return None
-    return path if path.exists() else None
 
 
 def _find_candidate(state: dict[str, Any], candidate_id: str) -> dict[str, Any]:
@@ -479,6 +505,8 @@ def _sync_job_snapshot(runtime: Any, job_dir: Path, state: dict[str, Any]) -> No
     snapshot = runtime.load_job_snapshot(job_dir)
     if not snapshot:
         snapshot = runtime.build_job_payload_from_state(state, {})
+    else:
+        snapshot = runtime.build_job_payload_from_state(state, snapshot)
     snapshot["pages"] = state.get("pages", [])
     snapshot["reference_pages"] = state.get("reference_pages", [])
     snapshot["element_pages"] = state.get("element_pages", [])
@@ -552,5 +580,78 @@ def _format_ratio(value: Any) -> str:
     return f"{_clamp_ratio(value):.4f}"
 
 
+def _build_image_edit_request_metadata(
+    *,
+    candidate_id: str,
+    job_id: str,
+    page_no: int,
+    preview_type: str,
+    instruction: str,
+    annotations: list[dict[str, Any]],
+    prompt: str,
+    prompt_path: Path,
+    metadata_path: Path,
+    source_image: str,
+    source_path: Path,
+    output_path: Path,
+    active_config: dict[str, Any],
+    image_profile: dict[str, Any],
+    image_provider: OpenAIImageProvider,
+) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "job_id": job_id,
+        "page_no": page_no,
+        "preview_type": preview_type,
+        "preview_label": IMAGE_SLOTS[_normalize_preview_type(preview_type)]["label"],
+        "instruction": instruction,
+        "annotations": annotations,
+        "prompt": prompt,
+        "source_image": source_image,
+        "source_path": str(source_path),
+        "output_path": str(output_path),
+        "prompt_path": str(prompt_path),
+        "metadata_path": str(metadata_path),
+        "image_size": {
+            "width": int(active_config.get("image_width", 2048)),
+            "height": int(active_config.get("image_height", 1152)),
+            "size": str(active_config.get("active_image_size") or active_config.get("image_size") or ""),
+        },
+        "model_profile": _public_model_profile(image_profile),
+        "request_options": _public_image_request_options(image_provider),
+        "created_at": _timestamp(),
+        "updated_at": _timestamp(),
+    }
+
+
+def _write_image_edit_metadata(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _public_model_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(profile.get("id") or ""),
+        "name": str(profile.get("name") or ""),
+        "model": str(profile.get("model") or ""),
+        "base_url": str(profile.get("base_url") or ""),
+    }
+
+
+def _public_image_request_options(image_provider: OpenAIImageProvider) -> dict[str, Any]:
+    return {
+        "model": str(getattr(image_provider, "model", "")),
+        "base_url": str(getattr(image_provider, "api_base_url", "")),
+        "size": str(getattr(image_provider, "size", "")),
+        "pixel_size": str(getattr(image_provider, "pixel_size", "")),
+        "resolution": str(getattr(image_provider, "resolution", "")),
+        "quality": str(getattr(image_provider, "quality", "")),
+        "background": str(getattr(image_provider, "background", "")),
+        "output_format": str(getattr(image_provider, "output_format", "")),
+        "response_format": str(getattr(image_provider, "response_format", "")),
+        "moderation": str(getattr(image_provider, "moderation", "")),
+        "n": int(getattr(image_provider, "n", 1) or 1),
+    }
+
+
 def _timestamp() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return utc_iso_timestamp(timespec="milliseconds")

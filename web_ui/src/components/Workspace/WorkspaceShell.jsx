@@ -15,8 +15,8 @@ import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from
 import { mergeJobState } from '../../utils/jobStateMerge';
 import { getWorkflowModeFromJob, isAwaitingPlanConfirmation, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
 
-const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
-  jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}` : ''
+const buildAnnotationScopeKey = (jobId, pageNo, previewType, imageRef) => (
+  jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}:${imageRef || ''}` : ''
 );
 
 const WorkspaceShell = () => {
@@ -52,7 +52,12 @@ const WorkspaceShell = () => {
     || null;
   const activeImage = selectedPreview?.src || getPageImage(activePage);
   const activeImageKind = selectedPreview?.label || getPageImageKind(activePage);
-  const annotationScopeKey = buildAnnotationScopeKey(currentJob?.job_id, activePage?.page_no, selectedPreview?.key || selectedPreviewType);
+  const annotationScopeKey = buildAnnotationScopeKey(
+    currentJob?.job_id,
+    activePage?.page_no,
+    selectedPreview?.key || selectedPreviewType,
+    activeImage,
+  );
   const imageAnnotations = annotationScopeKey ? (annotationsByScope[annotationScopeKey] || []) : [];
   const planConfirmPending = unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id
     ? unsavedPlanPending
