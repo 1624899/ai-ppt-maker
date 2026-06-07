@@ -4,6 +4,7 @@ import { useConfig } from '../../hooks/useConfig';
 import { resolveIncludeCoverPage } from '../../utils/generationOptions';
 import { getJobMeta } from '../../utils/jobPresentation';
 import { getWorkflowSubmitLabel, getWorkflowModeFromJob, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
+import ContentEditorDialog from './ContentEditorDialog';
 import ImageUploadPreviewList from './ImageUploadPreviewList';
 import WorkflowModeSwitch from './WorkflowModeSwitch';
 
@@ -54,10 +55,13 @@ const createInitialValues = (config, currentJob, workflowMode) => {
   const generationOptions = meta.generation_options || {};
   const richnessMap = generationOptions.page_richness_map || {};
   const pageCount = Number(meta.page_count || currentJob?.page_count || config.default_pages || 4);
+  const sourceMode = String(meta.source_mode || currentJob?.source_mode || '');
+  const existingContent = String(meta.content || currentJob?.content || '');
 
   return {
     sourceMode: SOURCE_MODES.PROMPT,
-    content: String(meta.content || currentJob?.content || ''),
+    content: sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE ? '' : existingContent,
+    externalReferenceTitle: sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE ? existingContent : '',
     pageCount,
     imagePreset: String(meta.image_preset?.name || currentJob?.image_preset || config.default_image_preset || ''),
     styleNotes: String(meta.style_notes || currentJob?.style_notes || ''),
@@ -101,6 +105,17 @@ const CreationFormFields = ({
     }
   };
 
+  const applyRecommendedPageCount = (recommendedPageCount) => {
+    setForm((prev) => {
+      const pageCount = clampPageCount(recommendedPageCount, maxPages);
+      return {
+        ...prev,
+        pageCount,
+        pageRichnessList: resizeRichnessList(prev.pageRichnessList, pageCount),
+      };
+    });
+  };
+
   useEffect(() => {
     emitParamsChange(form);
   }, [form]);
@@ -113,7 +128,6 @@ const CreationFormFields = ({
 
     const formData = new FormData();
     formData.append('source_mode', form.sourceMode);
-    formData.append('content', form.content);
     formData.append('image_preset', form.imagePreset);
     formData.append('image_quality', form.imageQuality);
     if (form.sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE) {
@@ -122,11 +136,18 @@ const CreationFormFields = ({
         setSubmitting(false);
         return;
       }
+      formData.append('content', String(form.externalReferenceTitle || '').trim());
       formData.append('job_target', form.externalReferenceCreateOnly ? 'reference_only' : 'editable_ppt');
       formData.append('external_reference_resize_mode', form.externalReferenceResizeMode);
       formData.append('external_reference_create_only', String(form.externalReferenceCreateOnly));
       referenceFiles.forEach((file) => formData.append('reference_images', file));
     } else {
+      if (!String(form.content || '').trim()) {
+        setError('请先填写任务内容。');
+        setSubmitting(false);
+        return;
+      }
+      formData.append('content', form.content);
       formData.append('page_count', String(form.pageCount));
       formData.append('style_notes', form.styleNotes);
       formData.append('job_target', form.jobTarget);
@@ -217,16 +238,33 @@ const CreationFormFields = ({
           </div>
         )}
 
-        <label className={compact ? 'field field--wide' : 'field field--full'}>
-          <span>任务内容</span>
-          <textarea
-            value={form.content}
-            onChange={(event) => updateForm('content', event.target.value)}
-            placeholder={isExternalReferenceMode ? '可选，用于任务命名和记录，例如：外部设计稿转可编辑 PPT...' : '粘贴汇报大纲、会议纪要或你想表达的 PPT 内容...'}
-            required={!isExternalReferenceMode}
-            rows={isExternalReferenceMode ? 3 : compact ? 5 : 7}
-          />
-        </label>
+        {isExternalReferenceMode ? (
+          <label className={compact ? 'field field--wide' : 'field field--full'}>
+            <span>任务标题</span>
+            <input
+              type="text"
+              value={form.externalReferenceTitle}
+              onChange={(event) => updateForm('externalReferenceTitle', event.target.value)}
+              placeholder="例如：产品介绍页转可编辑 PPT..."
+              maxLength={60}
+              disabled={submitting}
+            />
+          </label>
+        ) : (
+          <div className={compact ? 'field field--wide' : 'field field--full'}>
+            <ContentEditorDialog
+              value={form.content}
+              onChange={(value) => updateForm('content', value)}
+              placeholder="粘贴汇报大纲、会议纪要或你想表达的 PPT 内容..."
+              required
+              rows={compact ? 5 : 7}
+              pageCount={form.pageCount}
+              maxPages={maxPages}
+              disabled={submitting}
+              onUseRecommendedPageCount={applyRecommendedPageCount}
+            />
+          </div>
+        )}
 
         {isExternalReferenceMode ? (
           <div className="field field--full">
