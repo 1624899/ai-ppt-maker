@@ -29,9 +29,11 @@ const AgentWorkspace = ({
   selectedPageIndex,
   selectedPreviewType,
   imageAnnotations,
+  planningDraft,
   onSelectPage,
   onJobUpdated,
   onCreateTask,
+  onConfirmCurrentPlan,
   onOpenImageMarkup,
 }) => {
   const [mode, setMode] = useState('chat');
@@ -208,7 +210,13 @@ const AgentWorkspace = ({
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className="planning-stage"
             >
-              <PlanningEditor currentJob={currentJob} config={config} onJobUpdated={onJobUpdated} />
+              <PlanningEditor
+                currentJob={currentJob}
+                config={config}
+                planningDraft={planningDraft}
+                onJobUpdated={onJobUpdated}
+                onConfirmCurrentPlan={onConfirmCurrentPlan}
+              />
             </motion.section>
           ) : (
             <motion.section 

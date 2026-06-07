@@ -77,6 +77,7 @@ def build_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页"))
     summary = str(page.get("summary", ""))
+    visual_suggestion = collect_visual_suggestion(page)
     texts = page.get("texts", [])
     layout_family = page.get("layout_family", "grid_n_x_m")
     raw_element_plan = page.get("element_plan", {})
@@ -124,6 +125,7 @@ def build_reference_prompt(
             style_section,
             f"页面标题：{title}",
             f"页面摘要：{summary}",
+            f"本页视觉建议：{visual_suggestion}" if visual_suggestion else "",
             f"参考风格要求：{style_notes}",
             *adherence_lines,
             element_section,
@@ -151,6 +153,7 @@ def build_reference_prompt(
             compressed_style,
             f"页面标题：{title}",
             f"页面摘要：{summary}",
+            f"本页视觉建议：{visual_suggestion}" if visual_suggestion else "",
             *adherence_lines,
             element_section,
             negative_section,
@@ -172,6 +175,7 @@ def build_compact_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
+    visual_suggestion = collect_visual_suggestion(page)
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
@@ -200,6 +204,8 @@ def build_compact_reference_prompt(
     lines.append(f"页面主题：{title}")
     if summary:
         lines.append(f"核心表达：{summary}")
+    if visual_suggestion:
+        lines.append(f"本页视觉建议：{visual_suggestion}")
     if bullets:
         lines.append("必须体现的要点：")
         lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
@@ -234,6 +240,7 @@ def build_slot_brief_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
+    visual_suggestion = collect_visual_suggestion(page)
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
@@ -256,6 +263,8 @@ def build_slot_brief_reference_prompt(
     lines.append(f"页面标题：{title}")
     if summary:
         lines.append(f"页面任务：{summary}")
+    if visual_suggestion:
+        lines.append(f"本页视觉建议：{visual_suggestion}")
     if bullets:
         lines.append("页面必须覆盖这些信息：")
         lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
@@ -451,6 +460,10 @@ def collect_page_slots(page: dict[str, Any]) -> list[str]:
     if not isinstance(slots, list):
         return []
     return [str(slot).strip() for slot in slots if str(slot).strip()]
+
+
+def collect_visual_suggestion(page: dict[str, Any]) -> str:
+    return str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip()
 
 
 def build_style_anchor(style_guide: dict[str, Any] | None = None) -> str:

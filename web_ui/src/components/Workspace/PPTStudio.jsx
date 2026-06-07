@@ -26,9 +26,12 @@ const PPTStudio = ({
   selectedPageIndex,
   previewType,
   imageAnnotations,
+  planDraftDirty = false,
+  planActionPending = false,
   onSelectPage,
   onPreviewTypeChange,
   onJobUpdated,
+  onConfirmCurrentPlan,
   onOpenImageMarkup,
 }) => {
   const pages = getJobPages(currentJob);
@@ -49,6 +52,7 @@ const PPTStudio = ({
     currentJob,
     onJobUpdated,
   });
+  const confirmPlanPending = planActionPending || pendingKey === 'confirm-plan';
 
   return (
     <aside className="workspace-panel ppt-studio">
@@ -166,9 +170,9 @@ const PPTStudio = ({
               </button>
             )}
             {awaitingPlanConfirmation && (
-              <button type="button" className="btn btn-primary" onClick={() => runAction('plan/confirm', undefined, { key: 'confirm-plan' })} disabled={pendingKey !== ''}>
+              <button type="button" className="btn btn-primary" onClick={onConfirmCurrentPlan} disabled={pendingKey !== '' || confirmPlanPending}>
                 <Play size={16} />
-                {pendingKey === 'confirm-plan' ? '确认中...' : '确认规划并继续'}
+                {confirmPlanPending ? '确认中...' : planDraftDirty ? '用当前修改继续生成' : '确认规划并继续'}
               </button>
             )}
           </div>

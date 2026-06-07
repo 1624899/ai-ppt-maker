@@ -26,13 +26,16 @@ const Header = ({
   onCloseTaskLaunch,
   onJobUpdated,
   onJobsRefresh,
+  onConfirmCurrentPlan,
+  planDraftDirty = false,
+  planActionPending = false,
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { pendingKey, runAction } = useJobActions({
     currentJob,
     onJobUpdated,
   });
-  const taskAction = getTopbarTaskAction(currentJob, pendingKey);
+  const taskAction = getTopbarTaskAction(currentJob, planActionPending ? 'confirm-plan' : pendingKey);
   const TaskActionIcon = ACTION_ICONS[taskAction.icon] || Plus;
   const hasCurrentJob = Boolean(currentJob?.job_id);
   const launchSummary = hasCurrentJob ? getTaskLaunchSummaryText(currentJob) : '填写内容、页数、风格与工作流';
@@ -47,6 +50,13 @@ const Header = ({
     if (taskAction.disabled) return;
     if (taskAction.type === 'create') {
       onCreateTask?.();
+      return;
+    }
+    if (taskAction.type === 'confirm-plan') {
+      const data = await onConfirmCurrentPlan?.();
+      if (data) {
+        onJobsRefresh?.();
+      }
       return;
     }
 
@@ -107,7 +117,7 @@ const Header = ({
             disabled={taskAction.disabled}
           >
             <TaskActionIcon size={18} className={taskAction.icon === 'loader' ? 'spin' : undefined} />
-            <span>{taskAction.label}</span>
+            <span>{taskAction.type === 'confirm-plan' && planDraftDirty && !planActionPending ? '用当前修改继续' : taskAction.label}</span>
           </button>
         </div>
       </header>

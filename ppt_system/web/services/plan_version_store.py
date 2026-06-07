@@ -6,6 +6,7 @@ from typing import Any, Mapping
 from ppt_system.runtime.time_utils import utc_iso_timestamp
 
 from ppt_system.generation.design_grammar import normalize_layout_family_name
+from ppt_system.generation.generation_prompts import build_elements_prompt, build_reference_prompt_by_mode
 from ppt_system.generation.title_extraction import resolve_plan_title
 
 
@@ -28,6 +29,7 @@ def get_active_plan_payload(state: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
+    visual_suggestion = str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip()
     return {
         "page_no": int(page.get("page_no", 0) or 0),
         "title": str(page.get("title") or "").strip(),
@@ -36,11 +38,16 @@ def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
         "layout_intent": str(page.get("layout_intent") or "").strip(),
         "layout_family": normalize_layout_family_name(str(page.get("layout_family") or "").strip()),
         "page_richness": str(page.get("page_richness") or "").strip(),
-        "visual_suggestion": str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip(),
+        "visual_suggestion": visual_suggestion,
+        "style_constraints": visual_suggestion,
         "reference_mode": str(page.get("reference_mode") or "generation").strip(),
         "prompt_profile": str(page.get("prompt_profile") or "compressed").strip(),
         "reference_prompt": str(page.get("reference_prompt") or page.get("image_prompt") or "").strip(),
         "elements_prompt": str(page.get("elements_prompt") or "").strip(),
+        "reference_prompt_manual": _as_bool(page.get("reference_prompt_manual")),
+        "elements_prompt_manual": _as_bool(page.get("elements_prompt_manual")),
+        "reference_prompt_stale": _as_bool(page.get("reference_prompt_stale")),
+        "elements_prompt_stale": _as_bool(page.get("elements_prompt_stale")),
         "layout_slots": normalize_string_list(page.get("layout_slots")),
         "texts": copy.deepcopy(page.get("texts", [])) if isinstance(page.get("texts"), list) else [],
         "element_plan": copy.deepcopy(page.get("element_plan", {})),
@@ -112,6 +119,7 @@ def save_plan_version(
 def apply_plan_to_state(state: dict[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
     """把编辑后的规划写回运行态，保留已有产物字段用于后续恢复。"""
     normalized_plan = normalize_plan_payload(plan)
+    sync_stale_prompts(state, normalized_plan)
     explicit_fields_by_page = collect_explicit_page_fields(plan)
     old_pages = {
         int(page.get("page_no", 0) or 0): page
@@ -188,11 +196,89 @@ def normalize_string_list(value: Any) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def sync_stale_prompts(state: Mapping[str, Any], plan: dict[str, Any]) -> None:
+    """按页面状态同步最终生图提示词，保留用户手动覆盖的 Prompt。"""
+    pages = plan.get("pages", [])
+    if not isinstance(pages, list):
+        return
+
+    job_meta = state.get("job_meta", {}) if isinstance(state.get("job_meta"), Mapping) else {}
+    style_guide = plan.get("style_guide", {}) if isinstance(plan.get("style_guide"), dict) else {}
+    style_notes = str(plan.get("style_notes") or job_meta.get("style_notes") or "").strip()
+    image_width, image_height = _resolve_image_size(job_meta, plan)
+    generation_options = _resolve_generation_options(job_meta, plan)
+    reference_style_adherence = str(generation_options.get("reference_style_adherence") or "balanced")
+    has_reference_images = bool(job_meta.get("style_reference_images"))
+
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        if not page.get("style_constraints"):
+            page["style_constraints"] = str(page.get("visual_suggestion") or "").strip()
+        should_sync_reference = (
+            not page.get("reference_prompt_manual")
+            and (page.get("reference_prompt_stale") or not str(page.get("reference_prompt") or "").strip())
+        )
+        should_sync_elements = (
+            not page.get("elements_prompt_manual")
+            and (page.get("elements_prompt_stale") or not str(page.get("elements_prompt") or "").strip())
+        )
+        if should_sync_reference:
+            page["reference_prompt"] = build_reference_prompt_by_mode(
+                page,
+                style_notes,
+                image_width,
+                image_height,
+                prompt_mode=_resolve_reference_prompt_mode(page, has_reference_images),
+                style_guide=style_guide,
+                has_reference_images=has_reference_images,
+                reference_style_adherence=reference_style_adherence,
+            )
+            page["reference_prompt_stale"] = False
+        if should_sync_elements:
+            page["elements_prompt"] = build_elements_prompt(page, style_guide)
+            page["elements_prompt_stale"] = False
+
+
 def renumber_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     sorted_pages = sorted(pages, key=lambda item: int(item.get("page_no", 0) or 0))
     for index, page in enumerate(sorted_pages, start=1):
         page["page_no"] = index
     return sorted_pages
+
+
+def _as_bool(value: Any) -> bool:
+    return value is True or str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_image_size(job_meta: Mapping[str, Any], plan: Mapping[str, Any]) -> tuple[int, int]:
+    for source in (job_meta.get("image_preset"), plan.get("image_preset")):
+        if not isinstance(source, Mapping):
+            continue
+        try:
+            width = int(source.get("width") or 0)
+            height = int(source.get("height") or 0)
+        except (TypeError, ValueError):
+            width = 0
+            height = 0
+        if width > 0 and height > 0:
+            return width, height
+    return 2048, 1152
+
+
+def _resolve_generation_options(job_meta: Mapping[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(plan.get("generation_options"), Mapping):
+        return dict(plan["generation_options"])
+    if isinstance(job_meta.get("generation_options"), Mapping):
+        return dict(job_meta["generation_options"])
+    return {}
+
+
+def _resolve_reference_prompt_mode(page: Mapping[str, Any], has_reference_images: bool) -> str:
+    raw_mode = str(page.get("reference_prompt_mode") or page.get("prompt_mode") or "").strip().lower()
+    if raw_mode in {"baseline", "compact", "slot_brief"}:
+        return raw_mode
+    return "slot_brief" if has_reference_images else "compact"
 
 
 def collect_explicit_page_fields(plan: Mapping[str, Any]) -> dict[int, set[str]]:

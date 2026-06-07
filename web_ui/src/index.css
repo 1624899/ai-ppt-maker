@@ -1303,8 +1303,7 @@ a {
 .planning-editor__toolbar,
 .page-plan-editor__head,
 .planning-editor__actions,
-.page-plan-editor__actions,
-.planning-editor__versions {
+.page-plan-editor__actions {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -1321,14 +1320,12 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
-.planning-editor__toolbar > div:first-child,
-.planning-editor__versions {
+.planning-editor__toolbar > div:first-child {
   display: grid;
   min-width: 0;
 }
 
-.planning-editor__toolbar span,
-.planning-editor__versions span {
+.planning-editor__toolbar span {
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -1386,18 +1383,17 @@ a {
   gap: 12px;
 }
 
-.planning-editor__versions {
-  align-items: start;
-  padding: 12px 14px;
-  background: rgba(245, 248, 252, 0.72);
-  border: 1px solid rgba(198, 211, 231, 0.52);
-  border-radius: var(--radius-md);
-}
-
-.planning-editor__versions strong {
-  color: var(--text-muted);
+.field em {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  color: var(--primary-strong);
   font-size: 12px;
-  font-weight: 600;
+  font-style: normal;
+  font-weight: 700;
+  background: var(--primary-soft);
+  border: 1px solid rgba(31, 94, 255, 0.12);
+  border-radius: 999px;
 }
 
 .form-success {
@@ -2762,6 +2758,60 @@ a {
   display: grid;
   place-items: center;
   padding: 24px;
+}
+
+.unsaved-plan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.unsaved-plan-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 19, 36, 0.42);
+  backdrop-filter: blur(8px);
+}
+
+.unsaved-plan-modal__shell {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  width: min(520px, 100%);
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(215, 223, 239, 0.92);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(31, 45, 78, 0.24);
+}
+
+.unsaved-plan-modal__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.unsaved-plan-modal__head h2 {
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.unsaved-plan-modal__head p {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.unsaved-plan-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .task-launch-panel {

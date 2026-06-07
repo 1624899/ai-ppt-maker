@@ -49,9 +49,34 @@ const PagePlanEditor = ({
   onDelete,
   onMove,
 }) => {
-  const updateField = (field, value) => {
-    onChange?.({ ...page, [field]: value });
+  const markPromptStale = (nextPage) => ({
+    ...nextPage,
+    reference_prompt_stale: nextPage.reference_prompt_manual ? false : true,
+    elements_prompt_stale: nextPage.elements_prompt_manual ? false : true,
+  });
+
+  const updateContentField = (field, value) => {
+    onChange?.(markPromptStale({ ...page, [field]: value }));
   };
+
+  const updateReferencePrompt = (value) => {
+    onChange?.({
+      ...page,
+      reference_prompt: value,
+      reference_prompt_manual: true,
+      reference_prompt_stale: false,
+    });
+  };
+
+  const updateElementsPrompt = (value) => {
+    onChange?.({
+      ...page,
+      elements_prompt: value,
+      elements_prompt_manual: true,
+      elements_prompt_stale: false,
+    });
+  };
+
   const resolvedLayoutFamilyOptions = buildLayoutFamilyOptions(layoutFamilyOptions, page.layout_family);
 
   return (
@@ -77,13 +102,13 @@ const PagePlanEditor = ({
       <div className="page-plan-editor__grid">
         <label className="field">
           <span>页面标题</span>
-          <input value={page.title} onChange={(event) => updateField('title', event.target.value)} />
+          <input value={page.title} onChange={(event) => updateContentField('title', event.target.value)} />
         </label>
         <label className="field">
           <span>版式方向</span>
           <select
             value={normalizeOptionValue(page.layout_family)}
-            onChange={(event) => updateField('layout_family', event.target.value)}
+            onChange={(event) => updateContentField('layout_family', event.target.value)}
           >
             {resolvedLayoutFamilyOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -92,19 +117,29 @@ const PagePlanEditor = ({
         </label>
         <label className="field field--full">
           <span>页面摘要</span>
-          <textarea value={page.summary} onChange={(event) => updateField('summary', event.target.value)} rows={3} />
+          <textarea value={page.summary} onChange={(event) => updateContentField('summary', event.target.value)} rows={3} />
         </label>
         <label className="field">
           <span>要点</span>
-          <textarea value={joinLines(page.bullets)} onChange={(event) => updateField('bullets', splitLines(event.target.value))} rows={5} />
+          <textarea value={joinLines(page.bullets)} onChange={(event) => updateContentField('bullets', splitLines(event.target.value))} rows={5} />
         </label>
         <label className="field">
           <span>视觉建议</span>
-          <textarea value={page.visual_suggestion} onChange={(event) => updateField('visual_suggestion', event.target.value)} rows={5} />
+          <textarea value={page.visual_suggestion} onChange={(event) => updateContentField('visual_suggestion', event.target.value)} rows={5} />
         </label>
         <label className="field field--full">
-          <span>原稿图提示词</span>
-          <textarea value={page.reference_prompt} onChange={(event) => updateField('reference_prompt', event.target.value)} rows={4} />
+          <span>原稿图最终提示词</span>
+          <small>第一阶段生成页面原稿图时实际使用。</small>
+          {page.reference_prompt_stale && !page.reference_prompt_manual && <em>页面内容已修改，保存或生成时会自动同步。</em>}
+          {page.reference_prompt_manual && <em>已手动覆盖，保存或生成时会按这里的内容使用。</em>}
+          <textarea value={page.reference_prompt} onChange={(event) => updateReferencePrompt(event.target.value)} rows={4} />
+        </label>
+        <label className="field field--full">
+          <span>元素图提示词</span>
+          <small>第二阶段基于原稿图生成去文字元素图时实际使用。</small>
+          {page.elements_prompt_stale && !page.elements_prompt_manual && <em>页面内容已修改，保存或生成时会自动同步。</em>}
+          {page.elements_prompt_manual && <em>已手动覆盖，保存或生成时会按这里的内容使用。</em>}
+          <textarea value={page.elements_prompt} onChange={(event) => updateElementsPrompt(event.target.value)} rows={4} />
         </label>
       </div>
     </article>

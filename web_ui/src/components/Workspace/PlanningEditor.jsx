@@ -1,79 +1,74 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { CheckCircle2, FilePlus2, LoaderCircle, Save } from 'lucide-react';
-import { confirmJobPlan, getJobPlan, putJobPlan } from '../../utils/jobActions';
+import { PLAN_CONFIRM_PENDING_KEY, PLAN_SAVE_PENDING_KEY } from '../../hooks/usePlanningDraft';
 import { createBlankPagePlan, normalizePlan, renumberPlanPages } from '../../utils/planningDraft';
-import { getJobMeta } from '../../utils/jobPresentation';
-import { resolvePlanTitle } from '../../utils/titleExtraction';
 import { getWorkflowModeLabel, isAwaitingPlanConfirmation } from '../../utils/workflowMode';
 import PagePlanEditor from './PagePlanEditor';
 
-const buildPlanFromJob = (job) => normalizePlan({
-  ...(job?.plan || {}),
-  title: resolvePlanTitle([job?.plan?.title, job?.title], getJobMeta(job).content),
-  style_notes: job?.plan?.style_notes || getJobMeta(job).style_notes || '',
-  pages: Array.isArray(job?.pages) ? job.pages : [],
-});
+const EMPTY_PLAN = normalizePlan({ pages: [] });
 
-const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
-  const jobId = currentJob.job_id;
-  const [plan, setPlan] = useState(() => buildPlanFromJob(currentJob));
-  const [versions, setVersions] = useState(() => (Array.isArray(currentJob?.plan_versions) ? currentJob.plan_versions : []));
-  const [confirmation, setConfirmation] = useState(() => getJobMeta(currentJob).plan_confirmation || {});
-  const [loading, setLoading] = useState(Boolean(jobId));
-  const [pending, setPending] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let alive = true;
-    getJobPlan(jobId)
-      .then((payload) => {
-        if (!alive) return;
-        setPlan(normalizePlan(payload.plan));
-        setVersions(Array.isArray(payload.plan_versions) ? payload.plan_versions : []);
-        setConfirmation(payload.plan_confirmation || {});
-      })
-      .catch((err) => {
-        if (alive) setError(err.message || '读取规划失败');
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [jobId]);
+const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCurrentPlan }) => {
+  const plan = planningDraft?.draft || EMPTY_PLAN;
+  const confirmation = planningDraft?.confirmation || {};
+  const loading = Boolean(planningDraft?.loading);
+  const pending = planningDraft?.pending || '';
+  const message = planningDraft?.message || '';
+  const error = planningDraft?.error || '';
+  const dirty = Boolean(planningDraft?.dirty);
+  const updateDraft = planningDraft?.updateDraft;
 
   const planMeta = useMemo(() => {
     const modeLabel = getWorkflowModeLabel(currentJob?.job_meta?.workflow_mode || currentJob?.workflow_mode);
+    const dirtyLabel = dirty ? '有未保存修改' : '';
     const status = isAwaitingPlanConfirmation(currentJob) ? '等待确认' : confirmation.status === 'confirmed' ? '已确认' : '草案';
-    return { modeLabel, status };
-  }, [currentJob, confirmation.status]);
+    const combinedStatus = [status, dirtyLabel].filter(Boolean).join(' · ');
+    return { modeLabel, status: combinedStatus };
+  }, [currentJob, confirmation.status, dirty]);
 
   const updatePlanField = (field, value) => {
-    setPlan((current) => ({ ...current, [field]: value }));
+    updateDraft?.((current) => {
+      const nextPlan = { ...current, [field]: value };
+      if (!['style_type', 'style_notes'].includes(field)) {
+        return nextPlan;
+      }
+      return {
+        ...nextPlan,
+        pages: current.pages.map((page) => ({
+          ...page,
+          reference_prompt_stale: page.reference_prompt_manual ? false : true,
+          elements_prompt_stale: page.elements_prompt_manual ? false : true,
+        })),
+      };
+    });
   };
 
   const updatePage = (index, nextPage) => {
-    setPlan((current) => ({
+    updateDraft?.((current) => ({
       ...current,
       pages: current.pages.map((page, pageIndex) => (pageIndex === index ? nextPage : page)),
     }));
   };
 
   const addPage = () => {
-    setPlan((current) => ({
+    updateDraft?.((current) => ({
       ...current,
       pages: [...current.pages, createBlankPagePlan(current.pages.length + 1)],
     }));
   };
 
   const duplicatePage = (index) => {
-    setPlan((current) => {
+    updateDraft?.((current) => {
       const source = current.pages[index] || createBlankPagePlan(index + 1);
       const pages = [
         ...current.pages.slice(0, index + 1),
-        { ...source, title: `${source.title} 副本` },
+        {
+          ...source,
+          title: `${source.title} 副本`,
+          reference_prompt_manual: false,
+          elements_prompt_manual: false,
+          reference_prompt_stale: true,
+          elements_prompt_stale: true,
+        },
         ...current.pages.slice(index + 1),
       ];
       return { ...current, pages: renumberPlanPages(pages) };
@@ -81,14 +76,14 @@ const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
   };
 
   const deletePage = (index) => {
-    setPlan((current) => ({
+    updateDraft?.((current) => ({
       ...current,
       pages: renumberPlanPages(current.pages.filter((_, pageIndex) => pageIndex !== index)),
     }));
   };
 
   const movePage = (index, offset) => {
-    setPlan((current) => {
+    updateDraft?.((current) => {
       const target = index + offset;
       if (target < 0 || target >= current.pages.length) return current;
       const pages = [...current.pages];
@@ -99,37 +94,11 @@ const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
   };
 
   const saveDraft = async () => {
-    if (!jobId || pending) return;
-    setPending('save');
-    setError('');
-    setMessage('');
-    try {
-      const payload = await putJobPlan(jobId, { plan, summary: '用户保存规划草案' });
-      setPlan(normalizePlan(payload.plan));
-      setVersions(Array.isArray(payload.plan_versions) ? payload.plan_versions : []);
-      setConfirmation(payload.plan_confirmation || {});
-      setMessage('规划草案已保存');
-    } catch (err) {
-      setError(err.message || '保存规划失败');
-    } finally {
-      setPending('');
-    }
+    await planningDraft?.saveDraft?.();
   };
 
   const confirmPlan = async () => {
-    if (!jobId || pending) return;
-    setPending('confirm');
-    setError('');
-    setMessage('');
-    try {
-      const updatedJob = await confirmJobPlan(jobId, { plan, summary: '用户确认规划并继续生成' });
-      onJobUpdated?.(updatedJob);
-      setMessage('规划已确认，任务已继续生成');
-    } catch (err) {
-      setError(err.message || '确认规划失败');
-    } finally {
-      setPending('');
-    }
+    await onConfirmCurrentPlan?.();
   };
 
   return (
@@ -140,17 +109,17 @@ const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
           <strong>{plan.pages.length} 页规划</strong>
         </div>
         <div className="planning-editor__actions">
-          <button type="button" className="btn btn-secondary" onClick={addPage} disabled={pending !== ''}>
+          <button type="button" className="btn btn-secondary" onClick={addPage} disabled={pending !== '' || loading}>
             <FilePlus2 size={16} />
             新增页面
           </button>
           <button type="button" className="btn btn-secondary" onClick={saveDraft} disabled={pending !== '' || loading}>
-            {pending === 'save' ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}
-            保存草案
+            {pending === PLAN_SAVE_PENDING_KEY ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}
+            {pending === PLAN_SAVE_PENDING_KEY ? '保存中...' : '保存修改'}
           </button>
           <button type="button" className="btn btn-primary" onClick={confirmPlan} disabled={pending !== '' || loading || plan.pages.length === 0}>
-            {pending === 'confirm' ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
-            确认规划并继续生成
+            {pending === PLAN_CONFIRM_PENDING_KEY ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
+            {pending === PLAN_CONFIRM_PENDING_KEY ? '确认中...' : dirty ? '用当前修改继续生成' : '确认规划并继续生成'}
           </button>
         </div>
       </div>
@@ -201,19 +170,11 @@ const PlanningEditorSession = ({ currentJob, config, onJobUpdated }) => {
         )}
       </div>
 
-      {versions.length > 0 && (
-        <div className="planning-editor__versions">
-          <span>规划版本</span>
-          {versions.slice().reverse().slice(0, 4).map((version) => (
-            <strong key={version.version_id}>{version.version_id} · {version.summary || version.source}</strong>
-          ))}
-        </div>
-      )}
     </section>
   );
 };
 
-const PlanningEditor = ({ currentJob, config, onJobUpdated }) => {
+const PlanningEditor = ({ currentJob, config, planningDraft, onConfirmCurrentPlan }) => {
   if (!currentJob?.job_id) {
     return <div className="empty-state">创建任务后，这里会显示可编辑规划。</div>;
   }
@@ -224,7 +185,15 @@ const PlanningEditor = ({ currentJob, config, onJobUpdated }) => {
     currentJob.status || '',
   ].join(':');
 
-  return <PlanningEditorSession key={sessionKey} currentJob={currentJob} config={config} onJobUpdated={onJobUpdated} />;
+  return (
+    <PlanningEditorSession
+      key={sessionKey}
+      currentJob={currentJob}
+      config={config}
+      planningDraft={planningDraft}
+      onConfirmCurrentPlan={onConfirmCurrentPlan}
+    />
+  );
 };
 
 export default PlanningEditor;

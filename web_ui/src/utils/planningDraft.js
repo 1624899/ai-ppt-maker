@@ -1,4 +1,5 @@
 const asText = (value) => String(value || '').trim();
+const asBoolean = (value) => value === true || ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 
 const asList = (value) => {
   if (Array.isArray(value)) {
@@ -22,6 +23,10 @@ export function normalizePagePlan(page = {}, index = 0) {
     prompt_profile: asText(page.prompt_profile) || 'compressed',
     reference_prompt: asText(page.reference_prompt || page.image_prompt),
     elements_prompt: asText(page.elements_prompt),
+    reference_prompt_manual: asBoolean(page.reference_prompt_manual),
+    elements_prompt_manual: asBoolean(page.elements_prompt_manual),
+    reference_prompt_stale: asBoolean(page.reference_prompt_stale),
+    elements_prompt_stale: asBoolean(page.elements_prompt_stale),
     layout_slots: asList(page.layout_slots),
     texts: Array.isArray(page.texts) ? page.texts : [],
     element_plan: page.element_plan && typeof page.element_plan === 'object' ? page.element_plan : {},

@@ -6,12 +6,14 @@ import ImageMarkupPanel from './ImageMarkupPanel';
 import PPTStudio from './PPTStudio';
 import TaskCenter from './TaskCenter';
 import TaskLaunchPanel from './TaskLaunchPanel';
+import UnsavedPlanConfirmModal from './UnsavedPlanConfirmModal';
 import { useConfig } from '../../hooks/useConfig';
 import { useJobDetail } from '../../hooks/useJobDetail';
 import { useJobs } from '../../hooks/useJobs';
+import { PLAN_CONFIRM_PENDING_KEY, usePlanningDraft } from '../../hooks/usePlanningDraft';
 import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from '../../utils/jobPresentation';
 import { mergeJobState } from '../../utils/jobStateMerge';
-import { getWorkflowModeFromJob, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
+import { getWorkflowModeFromJob, isAwaitingPlanConfirmation, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
 
 const buildAnnotationScopeKey = (jobId, pageNo, previewType) => (
   jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}` : ''
@@ -27,6 +29,9 @@ const WorkspaceShell = () => {
   const [taskLaunchOpen, setTaskLaunchOpen] = useState(false);
   const [taskLaunchSourceJob, setTaskLaunchSourceJob] = useState(null);
   const [imageMarkupOpen, setImageMarkupOpen] = useState(false);
+  const [unsavedPlanConfirmOpen, setUnsavedPlanConfirmOpen] = useState(false);
+  const [unsavedPlanConfirmJobId, setUnsavedPlanConfirmJobId] = useState('');
+  const [unsavedPlanPending, setUnsavedPlanPending] = useState('');
   const [annotationsByScope, setAnnotationsByScope] = useState({});
   const { job: currentJob, loading: jobLoading, setJob: setCurrentJob } = useJobDetail(currentJobId);
   const mergeCurrentJob = (jobOrUpdater) => {
@@ -35,6 +40,7 @@ const WorkspaceShell = () => {
       return mergeJobState(current, incoming);
     });
   };
+  const planningDraft = usePlanningDraft(currentJob, mergeCurrentJob);
   const autoSelectedRef = useRef(false);
   const initialLaunchShownRef = useRef(false);
   const pages = getJobPages(currentJob);
@@ -48,6 +54,9 @@ const WorkspaceShell = () => {
   const activeImageKind = selectedPreview?.label || getPageImageKind(activePage);
   const annotationScopeKey = buildAnnotationScopeKey(currentJob?.job_id, activePage?.page_no, selectedPreview?.key || selectedPreviewType);
   const imageAnnotations = annotationScopeKey ? (annotationsByScope[annotationScopeKey] || []) : [];
+  const planConfirmPending = unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id
+    ? unsavedPlanPending
+    : '';
 
   useEffect(() => {
     if (!autoSelectedRef.current && !currentJobId && jobs.length > 0) {
@@ -80,6 +89,54 @@ const WorkspaceShell = () => {
 
   const updateWorkflowMode = (value) => {
     setWorkflowMode(normalizeWorkflowMode(value));
+  };
+
+  const refreshJobsQuietly = () => {
+    refreshJobs().catch(console.error);
+  };
+
+  const confirmCurrentPlan = async () => {
+    if (!isAwaitingPlanConfirmation(currentJob) || planningDraft.pending || planConfirmPending) {
+      return null;
+    }
+    if (planningDraft.dirty) {
+      setUnsavedPlanConfirmJobId(currentJob?.job_id || '');
+      setUnsavedPlanConfirmOpen(true);
+      return null;
+    }
+    const updatedJob = await planningDraft.confirmPlan();
+    if (updatedJob) refreshJobsQuietly();
+    return updatedJob;
+  };
+
+  const confirmDirtyPlan = async () => {
+    if (unsavedPlanConfirmJobId !== currentJob?.job_id || planningDraft.pending || planConfirmPending) return null;
+    setUnsavedPlanPending('save');
+    const updatedJob = await planningDraft.confirmPlan();
+    if (updatedJob) {
+      setUnsavedPlanConfirmOpen(false);
+      refreshJobsQuietly();
+    }
+    setUnsavedPlanPending('');
+    return updatedJob;
+  };
+
+  const confirmSavedPlan = async () => {
+    if (unsavedPlanConfirmJobId !== currentJob?.job_id || planningDraft.pending || planConfirmPending) return null;
+    setUnsavedPlanPending('discard');
+    const updatedJob = await planningDraft.confirmPlan({ useSavedPlan: true });
+    if (updatedJob) {
+      setUnsavedPlanConfirmOpen(false);
+      refreshJobsQuietly();
+    }
+    setUnsavedPlanPending('');
+    return updatedJob;
+  };
+
+  const cancelPlanConfirm = () => {
+    if (planConfirmPending) return;
+    setUnsavedPlanConfirmOpen(false);
+    setUnsavedPlanConfirmJobId('');
   };
 
   const handleJobCreated = (job) => {
@@ -168,6 +225,9 @@ const WorkspaceShell = () => {
         onCloseTaskLaunch={() => setTaskLaunchOpen(false)}
         onJobUpdated={mergeCurrentJob}
         onJobsRefresh={refreshJobs}
+        onConfirmCurrentPlan={confirmCurrentPlan}
+        planDraftDirty={planningDraft.dirty}
+        planActionPending={planningDraft.pending === PLAN_CONFIRM_PENDING_KEY || planConfirmPending !== ''}
       />
       <div className="workspace-shell">
         <TaskCenter
@@ -198,9 +258,11 @@ const WorkspaceShell = () => {
             selectedPageIndex={safeSelectedPageIndex}
             selectedPreviewType={selectedPreview?.key || selectedPreviewType}
             imageAnnotations={imageAnnotations}
+            planningDraft={planningDraft}
             onSelectPage={setSelectedPageIndex}
             onJobUpdated={mergeCurrentJob}
             onCreateTask={createTask}
+            onConfirmCurrentPlan={confirmCurrentPlan}
             onOpenImageMarkup={() => setImageMarkupOpen(true)}
           />
         )}
@@ -211,12 +273,22 @@ const WorkspaceShell = () => {
           selectedPageIndex={safeSelectedPageIndex}
           previewType={selectedPreviewType}
           imageAnnotations={imageAnnotations}
+          planDraftDirty={planningDraft.dirty}
+          planActionPending={planningDraft.pending === PLAN_CONFIRM_PENDING_KEY || planConfirmPending !== ''}
           onSelectPage={setSelectedPageIndex}
           onPreviewTypeChange={setSelectedPreviewType}
           onJobUpdated={mergeCurrentJob}
+          onConfirmCurrentPlan={confirmCurrentPlan}
           onOpenImageMarkup={() => setImageMarkupOpen(true)}
         />
       </div>
+      <UnsavedPlanConfirmModal
+        open={unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id}
+        pending={planConfirmPending}
+        onSaveAndConfirm={confirmDirtyPlan}
+        onDiscardAndConfirm={confirmSavedPlan}
+        onCancel={cancelPlanConfirm}
+      />
       <ImageMarkupPanel
         open={imageMarkupOpen}
         image={activeImage}
