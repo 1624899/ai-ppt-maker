@@ -1351,6 +1351,12 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.page-plan-editor__sections,
+.page-plan-editor__section {
+  display: grid;
+  gap: 10px;
+}
+
 .page-plan-editor__head {
   justify-content: space-between;
 }
@@ -1375,6 +1381,54 @@ a {
 .page-plan-editor__actions button:hover:not(:disabled) {
   color: var(--primary);
   background: #fff;
+}
+
+.page-plan-editor__section-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 11px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+  background: rgba(245, 248, 252, 0.78);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.page-plan-editor__section-toggle svg {
+  flex: 0 0 auto;
+}
+
+.page-plan-editor__section-toggle span {
+  min-width: 0;
+}
+
+.page-plan-editor__section-toggle em {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 3px 7px;
+  color: var(--primary-strong);
+  font-size: 11px;
+  font-style: normal;
+  background: var(--primary-soft);
+  border: 1px solid rgba(31, 94, 255, 0.12);
+  border-radius: 999px;
+}
+
+.page-plan-editor__section-toggle:hover,
+.page-plan-editor__section-toggle.is-active {
+  color: var(--primary-strong);
+  background: #fff;
+  border-color: rgba(31, 94, 255, 0.22);
+}
+
+.page-plan-editor__section-toggle--advanced.is-active {
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .page-plan-editor__grid,
