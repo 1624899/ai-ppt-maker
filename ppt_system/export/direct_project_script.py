@@ -31,6 +31,7 @@ from ppt_system.export.export_step_checkpoint import (
     stable_hash_payload,
 )
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.preview_artifact_paths import build_round_preview_artifacts
 from ppt_system.export.export_asset_checkpoint import (
     build_export_asset_prepare_signature,
     load_export_asset_prepare_checkpoint,
@@ -659,26 +660,24 @@ def _generate_direct_project_page_script(
 
     for round_index in range(max(0, int(refine_rounds))):
         _ensure_not_stopped(stop_checker)
-        preview_pptx = page_dir / f"render_preview_round_{round_index + 1:02d}.pptx"
-        preview_script_path = page_dir / f"generated_text_layout_preview_round_{round_index + 1:02d}.py"
+        preview_artifacts = build_round_preview_artifacts(page_dir, round_index + 1)
         _write_page_preview_script(
             project=preview_project,
             work_dir=work_dir,
-            output_pptx=preview_pptx,
+            output_pptx=preview_artifacts.pptx_path,
             page_no=page_no,
             page_script=current_script,
-            script_path=preview_script_path,
+            script_path=preview_artifacts.script_path,
         )
         preview_script_started_at = time.perf_counter()
-        execute_generated_text_script(preview_script_path, stop_checker=stop_checker)
+        preview_pptx = execute_generated_text_script(preview_artifacts.script_path, stop_checker=stop_checker)
         _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"预览 PPT 脚本执行完成，耗时 {time.perf_counter() - preview_script_started_at:.1f}s")
 
-        preview_image_path = page_dir / f"office_preview_round_{round_index + 1:02d}.png"
         render_started_at = time.perf_counter()
         rendered_preview = render_pptx_first_slide_to_png(
             preview_pptx,
-            preview_image_path,
+            preview_artifacts.image_path,
             image_width=image_width,
             image_height=image_height,
             stop_checker=stop_checker,
@@ -691,13 +690,12 @@ def _generate_direct_project_page_script(
 
         page_result["office_render_available"] = True
         page_result["office_preview_paths"].append(str(rendered_preview))
-        comparison_path = page_dir / f"comparison_round_{round_index + 1:02d}.png"
         render_direct_comparison_image(
             reference_image=reference_image,
             preview_image=rendered_preview,
-            output_path=comparison_path,
+            output_path=preview_artifacts.comparison_path,
         )
-        page_result["comparison_paths"].append(str(comparison_path))
+        page_result["comparison_paths"].append(str(preview_artifacts.comparison_path))
         _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
         refine_started_at = time.perf_counter()
         candidate_script, candidate_adjustments = _revise_page_script_with_checkpoint(

@@ -341,3 +341,59 @@ def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failur
         assert len(second_run_provider.calls) == 0
         assert "修正文字" in final_script
         assert (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
+
+
+def test_preview_pptx_uses_unique_path_after_page_edit() -> None:
+    with TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        work_dir = root / "work"
+        output_pptx = root / "result.pptx"
+        visual_path = root / "visual_01.png"
+        reference_path = root / "reference_01.png"
+
+        _create_test_image(visual_path, alpha=True)
+        _create_test_image(reference_path, alpha=False)
+
+        project = _build_single_page_project(visual_path, reference_path)
+        edited_project = _build_single_page_project(visual_path, reference_path)
+        edited_project["pages"][0]["texts"] = [{"id": "headline", "text": "编辑后的标题"}]
+        rendered_pptx_paths: list[Path] = []
+
+        def capture_rendered_input(
+            pptx_path: Path,
+            output_path: Path,
+            *,
+            image_width: int,
+            image_height: int,
+            stop_checker=None,
+        ) -> None:
+            rendered_pptx_paths.append(Path(pptx_path))
+            return None
+
+        first_run_provider = FakeChatProvider(
+            [{"page_script": 'add_text(slide, "初版", 12, 14, 130, 36, size=20)'}]
+        )
+        second_run_provider = FakeChatProvider(
+            [{"page_script": 'add_text(slide, "编辑版", 12, 14, 130, 36, size=20)'}]
+        )
+
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", side_effect=capture_rendered_input):
+            export_project_to_pptx(
+                project,
+                work_dir,
+                output_pptx,
+                chat_provider=first_run_provider,  # type: ignore[arg-type]
+            )
+            export_project_to_pptx(
+                edited_project,
+                work_dir,
+                output_pptx,
+                chat_provider=second_run_provider,  # type: ignore[arg-type]
+            )
+
+        assert len(rendered_pptx_paths) == 2
+        assert rendered_pptx_paths[0] != rendered_pptx_paths[1]
+        assert all(path.exists() for path in rendered_pptx_paths)
+        assert all(path.parent.name == "preview_pptx" for path in rendered_pptx_paths)
+        assert all(path.name.startswith("render_preview_round_01_") for path in rendered_pptx_paths)
+        assert (work_dir / "page_01" / "generated_text_layout_preview_round_01.py").exists()

@@ -32,7 +32,7 @@ def execute_generated_text_script(
     *,
     timeout_seconds: int = 180,
     stop_checker: StopChecker | None = None,
-) -> None:
+) -> Path:
     worker_script = Path(__file__).with_name("text_script_worker.py")
     command = [sys.executable, str(worker_script), str(Path(script_path).resolve())]
     try:
@@ -81,6 +81,7 @@ def execute_generated_text_script(
     output_path = Path(str(payload.get("output_path", "")).strip())
     if not output_path.exists():
         raise RuntimeError(f"执行生成的文字脚本后未发现输出文件：{output_path}")
+    return output_path
 
 
 def _run_interruptible_subprocess(
