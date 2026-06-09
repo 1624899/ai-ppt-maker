@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, build_slide_layer_specs, normalize_layer_mode
+from ppt_system.export.export_artifact_policy import FINAL_PPTX_ARTIFACT_KIND
 from ppt_system.export.text_script_schema import normalize_page_script
 from ppt_system.runtime.interruptible_execution import run_interruptible_process
 
@@ -58,13 +59,16 @@ def execute_generated_text_script(
     if completed.returncode != 0:
         detail_parts = [f"生成脚本执行失败：{script_path}，退出码 {completed.returncode}"]
         if isinstance(payload, dict):
+            user_message = str(payload.get("user_message", "")).strip()
             error = str(payload.get("error", "")).strip()
             traceback_text = str(payload.get("traceback", "")).strip()
             script_stdout = str(payload.get("script_stdout", "")).strip()
             script_stderr = str(payload.get("script_stderr", "")).strip()
-            if error:
+            if user_message:
+                detail_parts.append(f"提示:\n{user_message}")
+            if error and error != user_message:
                 detail_parts.append(f"error:\n{error}")
-            if traceback_text:
+            if traceback_text and not user_message:
                 detail_parts.append(f"traceback:\n{traceback_text}")
             if script_stdout:
                 detail_parts.append(f"script_stdout:\n{script_stdout}")
@@ -139,6 +143,7 @@ def build_project_script_source(
     *,
     include_assets: bool = True,
     layer_mode: str = OVERLAY_LAYER_MODE,
+    output_artifact_kind: str = FINAL_PPTX_ARTIFACT_KIND,
 ) -> str:
     image_width = int(project.get("image_width", 2000))
     image_height = int(project.get("image_height", 1125))
@@ -179,6 +184,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
+from ppt_system.export.export_artifact_policy import save_presentation_artifact
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
@@ -189,6 +195,7 @@ SLIDE_W = {slide_width_inch}
 SLIDE_H = {slide_height_inch}
 WORK_DIR = Path(r"{work_dir.resolve()}")
 OUTPUT_PPTX = Path(r"{output_pptx.resolve()}")
+OUTPUT_ARTIFACT_KIND = {str(output_artifact_kind or FINAL_PPTX_ARTIFACT_KIND)!r}
 DEFAULT_FONT_NAME = {font_name!r}
 DEFAULT_FONT_COLOR = {font_color!r}
 INCLUDE_ASSETS = {bool(include_assets)!r}
@@ -436,9 +443,7 @@ def build_deck():
             slide.background.fill.solid()
             slide.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
             add_page_content(slide, page_no, builder, layer_spec)
-    OUTPUT_PPTX.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(OUTPUT_PPTX)
-    return OUTPUT_PPTX
+    return save_presentation_artifact(prs, OUTPUT_PPTX, kind=OUTPUT_ARTIFACT_KIND)
 
 
 if __name__ == "__main__":

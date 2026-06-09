@@ -81,11 +81,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     except Exception as exc:
+        user_message = str(getattr(exc, "user_message", "")).strip()
         print(
             json.dumps(
                 {
                     "ok": False,
                     "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "user_message": user_message,
                     "traceback": traceback.format_exc(),
                     "script_stdout": captured_stdout.getvalue() if "captured_stdout" in locals() else "",
                     "script_stderr": captured_stderr.getvalue() if "captured_stderr" in locals() else "",

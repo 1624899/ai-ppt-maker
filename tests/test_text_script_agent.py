@@ -293,6 +293,36 @@ def build_deck():
             self.assertTrue(output_path.exists())
             self.assertIn(output_path.read_text(encoding="utf-8"), {"True", "False"})
 
+    def test_execute_generated_script_reports_artifact_lock_message_without_traceback(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            script_path = root / "locked_generated_text_layout.py"
+            output_pptx = root / "result.pptx"
+            user_message = f"无法更新 PPT 文件：{output_pptx}\n请关闭该 PPT 文件后重新导出。"
+            script_path.write_text(
+                f"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from ppt_system.export.export_artifact_policy import ExportArtifactLockedError
+
+
+def build_deck():
+    raise ExportArtifactLockedError({user_message!r})
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RuntimeError) as context:
+                execute_generated_text_script(script_path)
+
+            message = str(context.exception)
+            self.assertIn("提示:", message)
+            self.assertIn("无法更新 PPT 文件", message)
+            self.assertIn("请关闭该 PPT 文件后重新导出", message)
+            self.assertNotIn("traceback:", message)
+
     def test_execute_generated_script_stops_running_worker(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

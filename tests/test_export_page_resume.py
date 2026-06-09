@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -301,12 +302,29 @@ def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failur
         )
         second_run_provider = FakeChatProvider([])
         failed_after_refine = {"value": False}
+        rendered_preview_paths: list[Path] = []
 
         def fail_after_refine_checkpoint(*args, **kwargs) -> dict[str, Any]:
             failed_after_refine["value"] = True
             raise RuntimeError("模拟修正后重叠检查失败")
 
-        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
+        def render_same_preview_to_unique_path(
+            pptx_path: Path,
+            output_path: Path,
+            *,
+            image_width: int,
+            image_height: int,
+            stop_checker=None,
+        ) -> Path:
+            rendered_preview_paths.append(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(reference_path, output_path)
+            return output_path
+
+        with patch(
+            "ppt_system.export.direct_project_script.render_pptx_first_slide_to_png",
+            side_effect=render_same_preview_to_unique_path,
+        ):
             with patch(
                 "ppt_system.export.direct_project_script.analyze_text_asset_overlaps",
                 side_effect=fail_after_refine_checkpoint,
@@ -329,7 +347,10 @@ def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failur
         assert list((work_dir / "page_01" / STEP_CHECKPOINT_DIR_NAME).glob("refine_round_01.*.json"))
         assert len(first_run_provider.calls) == 2
 
-        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
+        with patch(
+            "ppt_system.export.direct_project_script.render_pptx_first_slide_to_png",
+            side_effect=render_same_preview_to_unique_path,
+        ):
             result = export_project_to_pptx(
                 project,
                 work_dir,
@@ -338,6 +359,8 @@ def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failur
             )
 
         final_script = Path(result["text_script_path"]).read_text(encoding="utf-8")
+        assert len(rendered_preview_paths) == 2
+        assert rendered_preview_paths[0] != rendered_preview_paths[1]
         assert len(second_run_provider.calls) == 0
         assert "修正文字" in final_script
         assert (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
@@ -396,4 +419,79 @@ def test_preview_pptx_uses_unique_path_after_page_edit() -> None:
         assert all(path.exists() for path in rendered_pptx_paths)
         assert all(path.parent.name == "preview_pptx" for path in rendered_pptx_paths)
         assert all(path.name.startswith("render_preview_round_01_") for path in rendered_pptx_paths)
+        assert all(path.suffix == ".pptx" for path in rendered_pptx_paths)
         assert (work_dir / "page_01" / "generated_text_layout_preview_round_01.py").exists()
+
+
+def test_preview_artifacts_are_cleaned_when_refine_fails() -> None:
+    with TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        work_dir = root / "work"
+        output_pptx = root / "result.pptx"
+        visual_path = root / "visual_01.png"
+        reference_path = root / "reference_01.png"
+
+        _create_test_image(visual_path, alpha=True)
+        _create_test_image(reference_path, alpha=False)
+
+        page_dir = work_dir / "page_01"
+        old_pptx_paths = [page_dir / "preview_pptx" / f"render_preview_round_01_old_{index}.pptx" for index in range(9)]
+        old_image_paths = [page_dir / "preview_images" / f"office_preview_round_01_old_{index}.png" for index in range(9)]
+        old_comparison_paths = [
+            page_dir / "preview_comparisons" / f"comparison_round_01_old_{index}.png" for index in range(9)
+        ]
+        for old_path in [*old_pptx_paths, *old_image_paths, *old_comparison_paths]:
+            old_path.parent.mkdir(parents=True, exist_ok=True)
+            old_path.write_bytes(b"old")
+
+        project = _build_single_page_project(visual_path, reference_path)
+        provider = FakeChatProvider(
+            [{"page_script": 'add_text(slide, "初版", 12, 14, 130, 36, size=20)'}]
+        )
+        rendered_preview_paths: list[Path] = []
+
+        def render_preview(
+            pptx_path: Path,
+            output_path: Path,
+            *,
+            image_width: int,
+            image_height: int,
+            stop_checker=None,
+        ) -> Path:
+            rendered_preview_paths.append(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(reference_path, output_path)
+            return output_path
+
+        with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", side_effect=render_preview):
+            with patch(
+                "ppt_system.export.direct_project_script._revise_page_script_with_rendered_preview",
+                side_effect=RuntimeError("模拟修正失败"),
+            ):
+                try:
+                    export_project_to_pptx(
+                        project,
+                        work_dir,
+                        output_pptx,
+                        chat_provider=provider,  # type: ignore[arg-type]
+                    )
+                except RuntimeError as exc:
+                    assert "模拟修正失败" in str(exc)
+                else:
+                    raise AssertionError("预期修正失败，但任务未失败")
+
+        assert rendered_preview_paths
+        current_pptx = next(
+            path for path in (page_dir / "preview_pptx").glob("render_preview_round_01_*.pptx") if "_old_" not in path.name
+        )
+        current_comparison = next(
+            path
+            for path in (page_dir / "preview_comparisons").glob("comparison_round_01_*.png")
+            if "_old_" not in path.name
+        )
+        assert current_pptx.exists()
+        assert rendered_preview_paths[0].exists()
+        assert current_comparison.exists()
+        assert len([path for path in old_pptx_paths if path.exists()]) <= 8
+        assert len([path for path in old_image_paths if path.exists()]) <= 8
+        assert len([path for path in old_comparison_paths if path.exists()]) <= 8

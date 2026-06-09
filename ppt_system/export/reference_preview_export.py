@@ -6,6 +6,8 @@ from typing import Any
 from pptx import Presentation
 from pptx.util import Inches
 
+from ppt_system.export.export_artifact_policy import save_final_presentation_atomically
+
 
 def export_reference_images_to_pptx(
     reference_pages: list[dict[str, Any]],
@@ -40,8 +42,7 @@ def export_reference_images_to_pptx(
             height=prs.slide_height,
         )
 
-    output_pptx.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(output_pptx)
+    save_final_presentation_atomically(prs, output_pptx)
     return {
         "pptx_path": str(output_pptx),
         "page_count": len(reference_pages),

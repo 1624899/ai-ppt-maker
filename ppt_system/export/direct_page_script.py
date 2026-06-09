@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from PIL import Image
 
+from ppt_system.export.export_artifact_policy import PREVIEW_PPTX_ARTIFACT_KIND
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE
 from ppt_system.image.image_alpha_profile import inspect_image_alpha
 from ppt_system.image.image_ops import enhance_image, make_transparent
@@ -298,6 +299,7 @@ def _write_page_preview_script(
         ],
         include_assets=True,
         layer_mode=OVERLAY_LAYER_MODE,
+        output_artifact_kind=PREVIEW_PPTX_ARTIFACT_KIND,
     )
     script_path.write_text(script_source, encoding="utf-8")
     return script_path

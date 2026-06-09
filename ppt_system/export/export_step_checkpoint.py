@@ -120,18 +120,20 @@ def build_export_step_checkpoint_path(page_dir: Path, *, step_name: str, signatu
     return page_dir / STEP_CHECKPOINT_DIR_NAME / f"{normalized_step_name}.{signature_hash}.json"
 
 
-def build_file_content_signature(path: Path) -> dict[str, Any]:
+def build_file_content_signature(path: Path, *, include_path: bool = True) -> dict[str, Any]:
     resolved = path.resolve()
     stat = resolved.stat()
     digest = hashlib.sha1()
     with resolved.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
-    return {
-        "path": str(resolved),
+    signature = {
         "size": int(stat.st_size),
         "sha1": digest.hexdigest(),
     }
+    if include_path:
+        signature["path"] = str(resolved)
+    return signature
 
 
 def stable_hash_payload(payload: Any) -> str:

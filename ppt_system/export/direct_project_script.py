@@ -30,6 +30,7 @@ from ppt_system.export.export_step_checkpoint import (
     save_export_step_checkpoint,
     stable_hash_payload,
 )
+from ppt_system.export.export_artifact_policy import cleanup_round_preview_artifacts
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.export.preview_artifact_paths import build_round_preview_artifacts
 from ppt_system.export.export_asset_checkpoint import (
@@ -306,7 +307,7 @@ def _build_refine_script_step_inputs(
 ) -> dict[str, Any]:
     return {
         "reference_image": build_file_content_signature(reference_image),
-        "rendered_preview": build_file_content_signature(rendered_preview),
+        "rendered_preview": build_file_content_signature(rendered_preview, include_path=False),
         "image_width": int(image_width),
         "image_height": int(image_height),
         "page_script_hash": _stable_script_hash(page_script),
@@ -685,6 +686,11 @@ def _generate_direct_project_page_script(
         _ensure_not_stopped(stop_checker)
         _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
         if rendered_preview is None:
+            cleanup_round_preview_artifacts(
+                page_dir,
+                round_index + 1,
+                protect_paths=[preview_pptx],
+            )
             _log_page(page_logger, page_no, "Office 真渲染不可用，跳过真实导出回看")
             break
 
@@ -698,22 +704,33 @@ def _generate_direct_project_page_script(
         page_result["comparison_paths"].append(str(preview_artifacts.comparison_path))
         _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
         refine_started_at = time.perf_counter()
-        candidate_script, candidate_adjustments = _revise_page_script_with_checkpoint(
-            provider=provider,
-            page_dir=page_dir,
-            page_signature=page_signature,
-            reference_image=reference_image,
-            rendered_preview=rendered_preview,
-            image_width=image_width,
-            image_height=image_height,
-            page_script=current_script,
-            asset_adjustments=current_asset_adjustments,
-            round_index=round_index,
-            page_logger=page_logger,
-            page_no=page_no,
-            stop_checker=stop_checker,
-        )
-        _ensure_not_stopped(stop_checker)
+        try:
+            candidate_script, candidate_adjustments = _revise_page_script_with_checkpoint(
+                provider=provider,
+                page_dir=page_dir,
+                page_signature=page_signature,
+                reference_image=reference_image,
+                rendered_preview=rendered_preview,
+                image_width=image_width,
+                image_height=image_height,
+                page_script=current_script,
+                asset_adjustments=current_asset_adjustments,
+                round_index=round_index,
+                page_logger=page_logger,
+                page_no=page_no,
+                stop_checker=stop_checker,
+            )
+            _ensure_not_stopped(stop_checker)
+        finally:
+            cleanup_round_preview_artifacts(
+                page_dir,
+                round_index + 1,
+                protect_paths=[
+                    preview_pptx,
+                    rendered_preview,
+                    preview_artifacts.comparison_path,
+                ],
+            )
         _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
         if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:
             _log_page(page_logger, page_no, "修正轮未返回更优脚本，保留当前结果")
