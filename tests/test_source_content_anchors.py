@@ -152,9 +152,45 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("S01｜覆盖情况", prompt)
         self.assertIn("S02｜后续计划", prompt)
         self.assertIn('"source_anchor_ids": ["S01"]', prompt)
-        self.assertIn("可以一页承载一个或多个锚点", prompt)
+        self.assertIn("内容规划约束", prompt)
+        self.assertIn("不按输入章节号、源文页号或锚点顺序做一一映射", prompt)
+        self.assertIn("source_anchor_ids 必须写明每页承载的事实锚点", prompt)
+        self.assertIn("可以组合多个相关锚点", prompt)
         self.assertIn("内容把控规则", prompt)
         self.assertIn("输入偏长时做重点突出和语义总结", prompt)
+
+    def test_planning_prompt_guides_model_to_merge_source_anchors_when_page_count_is_smaller(self) -> None:
+        content = """
+一、定义
+说明基础概念。
+二、分类
+说明分类体系。
+三、原则总览
+说明多个原则框架。
+四、原则细节
+说明其中一个原则。
+五、案例
+说明案例应用。
+""".strip()
+        anchors = build_source_content_anchors(content, page_count=3)
+
+        prompt = build_planning_prompt(
+            content=content,
+            page_count=3,
+            image_width=2048,
+            image_height=1152,
+            style_notes="",
+            style_image_count=0,
+            style_guide=self.style_guide,
+            source_anchors=anchors,
+            generation_options={"include_cover_page": False},
+        )
+
+        self.assertIn("源文事实锚点数为 5，多于目标 3 页", prompt)
+        self.assertIn("必须合并相邻或同类主题", prompt)
+        self.assertIn("不能只截取前 3 个锚点", prompt)
+        self.assertIn("总览页必须使用上位标题", prompt)
+        self.assertIn("同一标题或同一核心主题不能重复占用多个页面", prompt)
 
     def test_long_source_content_is_summarized_by_richness_without_inventing_facts(self) -> None:
         content = """

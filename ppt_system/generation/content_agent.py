@@ -20,6 +20,7 @@ from ppt_system.generation.generation_options import default_generation_options
 from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
 from ppt_system.generation.generation_prompts import select_prompt_bullets
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
+from ppt_system.generation.planning_constraints import build_content_planning_constraints
 from ppt_system.generation.page_richness import (
     DEFAULT_PAGE_RICHNESS,
     build_page_richness_planning_guidance,
@@ -404,6 +405,9 @@ def build_planning_prompt(
 内容把控规则：
 {build_source_content_control_prompt()}
 
+内容规划约束：
+{build_content_planning_constraints(len(source_anchors), page_count)}
+
 禁止事项：
 {format_style_list(negative_rules)}
 
@@ -437,7 +441,7 @@ JSON 格式必须如下：
 2. 每页必须选择一个 layout_family，必须从可用版式家族中选择，不能写成模板编号。
 3. 相邻页不能重复同一 layout_family。
 4. 整套页至少覆盖 3 种以上不同的 layout_family。
-5. source_anchor_ids 必须从“源文事实锚点”中选择，可以一页承载一个或多个锚点；你可以规划每页放哪些锚点，但不能新增锚点外事实。
+5. source_anchor_ids 必须从“源文事实锚点”中选择并服务于本页主题；可以组合多个相关锚点，但不要按锚点顺序机械映射。
 6. title、summary、bullets 只能压缩或摘取所选 source_anchor_ids 中的事实，不得把“4 大类”改成事项数量，不得自行计算、补写或改写数字口径。
 7. page_richness 不能作为盲目扩充或缩减依据：偏长内容要做重点突出和语义总结，偏短内容只允许少量承接性表达以服务排版。
 8. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
