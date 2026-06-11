@@ -49,7 +49,6 @@ class OpenAIImageProvider:
                 config.get("image_supports_extended_options", True),
             )
         )
-
         if not self.api_key:
             raise RuntimeError("未在模型配置中填写生图模型 API Key。")
 
@@ -161,17 +160,15 @@ class OpenAIImageProvider:
             "n": self.n,
         }
         if mode == "edit":
-            payload["background"] = self.background
             payload["response_format"] = self.response_format
-            payload["moderation"] = self.moderation
             if self.quality:
                 payload["quality"] = self.quality
         else:
+            payload["response_format"] = self.response_format
             if self.quality:
                 payload["quality"] = self.quality
         if mode == "generation" and self._supports_extended_options():
             payload["resolution"] = self.resolution
-            payload["background"] = self.background
             payload["output_format"] = self.output_format
         return {key: value for key, value in payload.items() if value not in {"", None}}
 

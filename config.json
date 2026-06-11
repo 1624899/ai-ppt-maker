@@ -107,7 +107,7 @@
         "model": "gpt-5.5",
         "enabled": true,
         "temperature": 0.3,
-        "max_tokens": 5000,
+        "max_tokens": 5120,
         "reasoning_effort": "",
         "id": "chat_openai_compatible"
       }

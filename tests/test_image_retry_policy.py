@@ -110,15 +110,54 @@ class ImageRetryPolicyTests(unittest.TestCase):
                 "api_base_url": "https://example.com/v1",
                 "image_model": "gpt-image-2",
                 "image_supports_extended_options": False,
+                "image_response_format": "b64_json",
             },
             {"api_key": "test-key"},
         )
 
         payload = provider._image_payload("测试提示词", mode="generation")
 
+        self.assertEqual(payload["response_format"], "b64_json")
         self.assertNotIn("resolution", payload)
         self.assertNotIn("background", payload)
         self.assertNotIn("output_format", payload)
+
+    def test_edit_payload_omits_background_and_moderation(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2",
+                "image_response_format": "b64_json",
+                "image_background": "opaque",
+                "image_moderation": "low",
+            },
+            {"api_key": "test-key"},
+        )
+
+        payload = provider._image_payload("测试提示词", mode="edit")
+
+        self.assertEqual(payload["response_format"], "b64_json")
+        self.assertNotIn("background", payload)
+        self.assertNotIn("moderation", payload)
+
+    def test_edit_payload_ignores_background_and_moderation_switch(self) -> None:
+        provider = OpenAIImageProvider(
+            {
+                "api_base_url": "https://example.com/v1",
+                "image_model": "gpt-image-2",
+                "image_response_format": "b64_json",
+                "image_background": "transparent",
+                "image_moderation": "low",
+            },
+            {
+                "api_key": "test-key",
+            },
+        )
+
+        payload = provider._image_payload("测试提示词", mode="edit")
+
+        self.assertNotIn("background", payload)
+        self.assertNotIn("moderation", payload)
 
     def test_profile_can_enable_extended_generation_options(self) -> None:
         provider = OpenAIImageProvider(
@@ -137,7 +176,7 @@ class ImageRetryPolicyTests(unittest.TestCase):
         payload = provider._image_payload("测试提示词", mode="generation")
 
         self.assertEqual(payload["resolution"], "2k")
-        self.assertEqual(payload["background"], "opaque")
+        self.assertNotIn("background", payload)
         self.assertEqual(payload["output_format"], "png")
 
 
