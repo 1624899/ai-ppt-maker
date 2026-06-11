@@ -13,35 +13,35 @@ from ppt_system.runtime.env_loader import load_dotenv
 MODEL_TYPES = {"chat", "image"}
 KEY_PLACEHOLDER = "__ENV__"
 ENV_KEY_PREFIX = "PPT_SYSTEM"
-LOCAL_CONFIG_FILENAME = "config.local.json"
+DEFAULT_MODEL_NAMES = {
+    "chat": "gpt-5.5",
+    "image": "gpt-image-2",
+}
+ENV_FIELD_SUFFIXES = {
+    "api_key": "API_KEY",
+    "base_url": "BASE_URL",
+}
 
 
 def read_config(path: Path) -> dict[str, Any]:
-    config = read_merged_config(path)
-    return hydrate_model_config_api_keys(config, env_path=path.with_name(".env"))
+    config = read_json_object(path)
+    return hydrate_model_config_env_fields(config, env_path=path.with_name(".env"))
 
 
 def write_config(path: Path, config: dict[str, Any]) -> None:
     target_path = resolve_writable_config_path(path)
-    target_path.write_text(json.dumps(strip_model_config_api_keys(config), ensure_ascii=False, indent=2), encoding="utf-8")
+    target_path.write_text(json.dumps(strip_model_config_env_fields(config), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def read_merged_config(path: Path) -> dict[str, Any]:
-    config = read_json_object(path)
-    local_path = resolve_local_config_path(path)
-    if local_path.exists():
-        config = merge_config(config, read_json_object(local_path))
-    return config
+    return read_json_object(path)
 
 
 def resolve_local_config_path(path: Path) -> Path:
-    return path.with_name(LOCAL_CONFIG_FILENAME)
+    return path.with_name("config.local.json")
 
 
 def resolve_writable_config_path(path: Path) -> Path:
-    local_path = resolve_local_config_path(path)
-    if local_path.exists():
-        return local_path
     return path
 
 
@@ -162,7 +162,7 @@ def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str,
         "name": str(payload.get("name", "")).strip(),
         "base_url": normalize_api_base_url(str(payload.get("base_url", ""))),
         "api_key": str(payload.get("api_key", "")).strip(),
-        "model": str(payload.get("model", "")).strip(),
+        "model": str(payload.get("model", "")).strip() or DEFAULT_MODEL_NAMES[model_type],
         "enabled": bool(payload.get("enabled", True)),
     }
     if not item["name"] or not item["base_url"] or not item["model"]:
@@ -184,6 +184,10 @@ def make_config_id(model_type: str) -> str:
 
 
 def hydrate_model_config_api_keys(config: dict[str, Any], env_path: Path) -> dict[str, Any]:
+    return hydrate_model_config_env_fields(config, env_path)
+
+
+def hydrate_model_config_env_fields(config: dict[str, Any], env_path: Path) -> dict[str, Any]:
     load_dotenv(env_path)
     hydrated = copy_config(config)
     model_configs = ensure_model_configs(hydrated)
@@ -191,14 +195,18 @@ def hydrate_model_config_api_keys(config: dict[str, Any], env_path: Path) -> dic
         items = []
         for item in model_configs[model_type]:
             next_item = dict(item)
-            api_key = resolve_model_api_key(env_path, model_type, next_item)
-            next_item["api_key"] = api_key
+            for field in ENV_FIELD_SUFFIXES:
+                next_item[field] = resolve_model_env_field(env_path, model_type, next_item, field)
             items.append(next_item)
         model_configs[model_type] = items
     return hydrated
 
 
 def strip_model_config_api_keys(config: dict[str, Any]) -> dict[str, Any]:
+    return strip_model_config_env_fields(config)
+
+
+def strip_model_config_env_fields(config: dict[str, Any]) -> dict[str, Any]:
     sanitized = copy_config(config)
     model_configs = ensure_model_configs(sanitized)
     for model_type in MODEL_TYPES:
@@ -217,48 +225,95 @@ def build_public_model_config(item: dict[str, Any]) -> dict[str, Any]:
 
 def build_persisted_model_config(item: dict[str, Any]) -> dict[str, Any]:
     persisted = dict(item)
-    persisted["api_key"] = KEY_PLACEHOLDER if str(item.get("api_key", "")).strip() else ""
+    for field in ENV_FIELD_SUFFIXES:
+        persisted[field] = KEY_PLACEHOLDER if str(item.get(field, "")).strip() else ""
     return persisted
 
 
 def resolve_model_api_key_env_name(model_type: str, item: dict[str, Any]) -> str:
+    return resolve_model_env_name(model_type, item, "api_key")
+
+
+def resolve_model_base_url_env_name(model_type: str, item: dict[str, Any]) -> str:
+    return resolve_model_env_name(model_type, item, "base_url")
+
+
+def resolve_model_env_name(model_type: str, item: dict[str, Any], field: str) -> str:
+    if field not in ENV_FIELD_SUFFIXES:
+        raise ValueError(f"不支持的模型环境字段：{field}")
     raw_config_id = str(item.get("id", "")).strip()
     token = raw_config_id or str(item.get("name", "")).strip() or model_type
     safe_token = "".join(char if char.isalnum() else "_" for char in token).upper().strip("_")
     if not safe_token:
         safe_token = model_type.upper()
-    return f"{ENV_KEY_PREFIX}_{model_type.upper()}_{safe_token}_API_KEY"
+    return f"{ENV_KEY_PREFIX}_{model_type.upper()}_{safe_token}_{ENV_FIELD_SUFFIXES[field]}"
 
 
 def resolve_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> str:
-    env_key = resolve_model_api_key_env_name(model_type, item)
+    return resolve_model_env_field(env_path, model_type, item, "api_key")
+
+
+def resolve_model_base_url(env_path: Path, model_type: str, item: dict[str, Any]) -> str:
+    return resolve_model_env_field(env_path, model_type, item, "base_url")
+
+
+def resolve_model_env_field(env_path: Path, model_type: str, item: dict[str, Any], field: str) -> str:
+    env_key = resolve_model_env_name(model_type, item, field)
     env_value = os.environ.get(env_key, "").strip()
     if env_value:
-        return env_value
-    inline_value = str(item.get("api_key", "")).strip()
+        return normalize_model_env_field(field, env_value)
+    inline_value = str(item.get(field, "")).strip()
     if inline_value and inline_value != KEY_PLACEHOLDER:
-        return inline_value
+        return normalize_model_env_field(field, inline_value)
     return ""
 
 
 def save_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> None:
-    api_key = str(item.get("api_key", "")).strip()
-    if not api_key:
-        return
+    save_model_env_fields(env_path, model_type, item, fields=("api_key",))
+
+
+def save_model_env_fields(env_path: Path, model_type: str, item: dict[str, Any], *, fields: tuple[str, ...] | None = None) -> None:
+    fields = fields or tuple(ENV_FIELD_SUFFIXES)
     entries = read_env_entries(env_path)
-    env_key = resolve_model_api_key_env_name(model_type, item)
-    entries[env_key] = api_key
+    changed = False
+    for field in fields:
+        value = normalize_model_env_field(field, str(item.get(field, "")).strip())
+        if not value:
+            continue
+        env_key = resolve_model_env_name(model_type, item, field)
+        entries[env_key] = value
+        os.environ[env_key] = value
+        changed = True
+    if not changed:
+        return
     write_env_entries(env_path, entries)
-    os.environ[env_key] = api_key
 
 
 def delete_model_api_key(env_path: Path, model_type: str, item: dict[str, Any]) -> None:
+    delete_model_env_fields(env_path, model_type, item, fields=("api_key",))
+
+
+def delete_model_env_fields(env_path: Path, model_type: str, item: dict[str, Any], *, fields: tuple[str, ...] | None = None) -> None:
+    fields = fields or tuple(ENV_FIELD_SUFFIXES)
     entries = read_env_entries(env_path)
-    env_key = resolve_model_api_key_env_name(model_type, item)
-    if env_key in entries:
+    changed = False
+    for field in fields:
+        env_key = resolve_model_env_name(model_type, item, field)
+        if env_key not in entries:
+            os.environ.pop(env_key, None)
+            continue
         del entries[env_key]
+        os.environ.pop(env_key, None)
+        changed = True
+    if changed:
         write_env_entries(env_path, entries)
-    os.environ.pop(env_key, None)
+
+
+def normalize_model_env_field(field: str, value: str) -> str:
+    text = str(value or "").strip()
+    if field == "base_url":
+        return normalize_api_base_url(text)
+    return text
 
 
 def copy_config(config: dict[str, Any]) -> dict[str, Any]:

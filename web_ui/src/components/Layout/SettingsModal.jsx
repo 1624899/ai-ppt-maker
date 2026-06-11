@@ -6,6 +6,8 @@ import clsx from 'clsx';
 import { useModelConfigs } from '../../hooks/useModelConfigs';
 
 const DEFAULT_BASE_URL = 'https://your-api-endpoint.com/v1';
+const DEFAULT_CHAT_MODEL = 'gpt-5.5';
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 
 const MODEL_TYPES = [
   { value: 'chat', label: '对话模型', description: '内容规划、脚本生成与评估使用' },
@@ -18,7 +20,7 @@ const createModelDefaults = (modelType) => {
       name: '新的对话模型',
       base_url: DEFAULT_BASE_URL,
       api_key: '',
-      model: '',
+      model: DEFAULT_CHAT_MODEL,
       temperature: 0.3,
       max_tokens: 5000,
     };
@@ -27,7 +29,7 @@ const createModelDefaults = (modelType) => {
     name: '新的生图模型',
     base_url: DEFAULT_BASE_URL,
     api_key: '',
-    model: '',
+    model: DEFAULT_IMAGE_MODEL,
     output_format: 'png',
   };
 };

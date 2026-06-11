@@ -66,7 +66,7 @@ def api_create_model_config(model_type: str):
     config = runtime.read_config()
     try:
         item = runtime.upsert_model_config(config, model_type, request.get_json(force=True))
-        runtime.save_model_api_key(runtime.ENV_PATH, model_type, item)
+        runtime.save_model_env_fields(runtime.ENV_PATH, model_type, item)
         runtime.write_config(runtime.CONFIG_PATH, config)
     except ValueError as exc:
         return api_error(exc)
@@ -83,7 +83,7 @@ def api_update_model_config(model_type: str, config_id: str):
             for candidate in runtime.list_model_configs(config)[model_type]
             if candidate.get("id") == config_id
         )
-        runtime.save_model_api_key(runtime.ENV_PATH, model_type, item)
+        runtime.save_model_env_fields(runtime.ENV_PATH, model_type, item)
         runtime.write_config(runtime.CONFIG_PATH, config)
         return jsonify(item)
     except ValueError as exc:
@@ -97,7 +97,7 @@ def api_delete_model_config(model_type: str, config_id: str):
     config = runtime.read_config()
     try:
         removed = runtime.delete_model_config(config, model_type, config_id)
-        runtime.delete_model_api_key(runtime.ENV_PATH, model_type, removed)
+        runtime.delete_model_env_fields(runtime.ENV_PATH, model_type, removed)
         runtime.write_config(runtime.CONFIG_PATH, config)
     except ValueError as exc:
         return api_error(exc)

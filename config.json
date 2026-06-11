@@ -1,5 +1,5 @@
 {
-  "max_pages": 20,
+  "max_pages": 30,
   "default_pages": 4,
   "default_include_cover_page": true,
   "default_image_preset": "landscape_2k",
@@ -68,7 +68,7 @@
   "image_quality": "medium",
   "image_background": "opaque",
   "image_output_format": "png",
-  "image_response_format": "url",
+  "image_response_format": "b64_json",
   "image_moderation": "low",
   "image_n": 1,
   "use_style_refs_for_first_stage": true,
@@ -102,7 +102,7 @@
     "chat": [
       {
         "name": "OpenAI 兼容对话模型",
-        "base_url": "https://api.openai.com/v1",
+        "base_url": "__ENV__",
         "api_key": "__ENV__",
         "model": "gpt-5.5",
         "enabled": true,
@@ -115,7 +115,7 @@
     "image": [
       {
         "name": "OpenAI 兼容图像模型",
-        "base_url": "https://api.openai.com/v1",
+        "base_url": "__ENV__",
         "api_key": "__ENV__",
         "model": "gpt-image-2",
         "enabled": true,

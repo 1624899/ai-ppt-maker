@@ -70,10 +70,12 @@ from ppt_system.integrations.model_config import (
     get_active_model_config,
     list_model_configs,
     read_config as read_json_config,
+    save_model_env_fields,
     save_model_api_key,
     set_active_model_config,
     upsert_model_config,
     write_config,
+    delete_model_env_fields,
     delete_model_api_key,
 )
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
