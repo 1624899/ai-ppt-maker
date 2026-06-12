@@ -286,13 +286,62 @@ class GuidedWorkflowApiTests(unittest.TestCase):
         self.assertEqual(record["status"], "queued")
         self.assertEqual(record["request"]["workflow_mode"], "guided")
 
+    def test_confirm_plan_accepts_stale_prompts_after_sync(self) -> None:
+        job_id, job_dir, _payload = self._create_job("guided")
+        self._seed_planned_state(job_id, job_dir)
+        initial_submit_count = len(self.executor.calls)
+        plan = {
+            "title": "需要重建提示词",
+            "style_notes": "清爽蓝白科技风",
+            "pages": [
+                {
+                    "page_no": 1,
+                    "title": "新第一页",
+                    "summary": "新的页面摘要",
+                    "bullets": ["新要点"],
+                    "layout_family": "process_horizontal",
+                    "visual_suggestion": "使用清晰流程箭头",
+                    "reference_prompt": "",
+                    "reference_prompt_stale": True,
+                },
+                {
+                    "page_no": 2,
+                    "title": "新第二页",
+                    "summary": "继续展开",
+                    "bullets": ["第二个要点"],
+                    "reference_prompt": "",
+                    "reference_prompt_stale": True,
+                },
+                {
+                    "page_no": 3,
+                    "title": "新第三页",
+                    "summary": "收束行动",
+                    "bullets": ["行动项"],
+                    "reference_prompt": "",
+                    "reference_prompt_stale": True,
+                },
+            ],
+        }
+
+        response = self.client.post(f"/api/jobs/{job_id}/plan/confirm", json={"plan": plan})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "queued")
+        self.assertEqual(len(self.executor.calls), initial_submit_count + 1)
+        first_page = payload["pages"][0]
+        self.assertIn("新第一页", first_page["reference_prompt"])
+        self.assertIn("新要点", first_page["reference_prompt"])
+        self.assertFalse(first_page["reference_prompt_stale"])
+
     def test_confirm_rejects_incomplete_plan(self) -> None:
         job_id, job_dir, _payload = self._create_job("guided")
         self._seed_planned_state(job_id, job_dir)
         bad_plan = {
             "title": "缺少提示词",
             "pages": [
-                {"page_no": 1, "title": "第一页", "summary": "摘要", "reference_prompt": ""},
+                {"page_no": 1, "title": "第一页", "summary": "摘要", "reference_prompt": "", "reference_prompt_manual": True},
             ],
         }
 

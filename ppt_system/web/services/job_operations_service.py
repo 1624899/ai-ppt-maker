@@ -19,6 +19,12 @@ from ppt_system.web.services.job_edit_planner import (
     build_edit_context,
     plan_agent_edit,
 )
+from ppt_system.web.services.job_delivery_invalidation import (
+    build_empty_delivery_result,
+    invalidate_delivery_artifacts,
+    invalidate_delivery_result,
+    invalidate_job_snapshot_result,
+)
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
 
 
@@ -175,9 +181,15 @@ def _apply_agent_edit_operation(
         else:
             _reset_export_stage(current_state, edit_plan.page_numbers, "等待 Agent 编辑后重建可编辑 PPT")
 
+    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
-    _invalidate_job_snapshot_result(runtime, job_dir)
+    runtime.update_job_record(
+        runtime.JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="queued",
+        result=build_empty_delivery_result(),
+    )
     submit_existing_job_pipeline(record)
     return runtime.attach_delivery_actions(updated_state, job_dir)
 
@@ -207,9 +219,15 @@ def _regenerate_page(
         _invalidate_delivery_result(current_state)
         _reset_generation_stages(current_state, page_no, "等待重新生成本页")
 
+    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
-    _invalidate_job_snapshot_result(runtime, job_dir)
+    runtime.update_job_record(
+        runtime.JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="queued",
+        result=build_empty_delivery_result(),
+    )
     submit_existing_job_pipeline(record)
     return runtime.attach_delivery_actions(updated_state, job_dir)
 
@@ -244,9 +262,15 @@ def _restore_page_version(
         _invalidate_delivery_result(current_state)
         _reset_generation_stages(current_state, page_no, "等待基于已恢复版本重建导出")
 
+    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result={})
-    _invalidate_job_snapshot_result(runtime, job_dir)
+    runtime.update_job_record(
+        runtime.JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="queued",
+        result=build_empty_delivery_result(),
+    )
     submit_existing_job_pipeline(record)
     return runtime.attach_delivery_actions(updated_state, job_dir)
 
@@ -501,15 +525,28 @@ def _format_page_scope(page_numbers: tuple[int, ...]) -> str:
 
 
 def _invalidate_delivery_result(state: dict[str, Any]) -> None:
-    state["result"] = {"deliveries": {}, "editable_delivery_bundle": {}}
+    invalidate_delivery_result(state)
 
 
 def _invalidate_job_snapshot_result(runtime: Any, job_dir: Path) -> None:
-    snapshot = runtime.load_job_snapshot(job_dir)
-    if not snapshot:
-        return
-    snapshot["result"] = {"deliveries": {}, "editable_delivery_bundle": {}}
-    runtime.write_job_snapshot(job_dir, snapshot)
+    invalidate_job_snapshot_result(runtime, job_dir)
+
+
+def _invalidate_delivery_artifacts(
+    runtime: Any,
+    job_dir: Path,
+    *,
+    job_id: str,
+    state: dict[str, Any] | None = None,
+    include_reference: bool,
+) -> None:
+    invalidate_delivery_artifacts(
+        runtime,
+        job_dir,
+        job_id=job_id,
+        state=state,
+        include_reference=include_reference,
+    )
 
 
 def _copy_artifact(

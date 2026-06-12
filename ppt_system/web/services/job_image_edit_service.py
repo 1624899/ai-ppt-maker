@@ -14,6 +14,11 @@ from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
+from ppt_system.web.services.job_delivery_invalidation import (
+    DeliveryInvalidationError,
+    invalidate_delivery_artifacts,
+    invalidate_delivery_result,
+)
 from ppt_system.web.services.job_stage_requeue import activate_requeued_stage, reset_stages_after_artifact_change
 from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
@@ -63,6 +68,8 @@ def api_apply_image_edit_candidate(job_id: str, candidate_id: str):
         return api_error(exc)
     except FileNotFoundError as exc:
         return api_error(exc, 404)
+    except DeliveryInvalidationError as exc:
+        return api_error(exc, 409)
     except RuntimeError as exc:
         status = 409 if "正在运行" in str(exc) else 500
         return api_error(exc, status)
@@ -217,6 +224,7 @@ def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]
         _reset_followup_stages_after_apply(current_state, current_candidate)
 
     should_submit_pipeline = _apply_requeues_pipeline(preview_type)
+    invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
     updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
     if _should_submit_pipeline_after_apply(updated_state, preview_type):
         job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
@@ -498,7 +506,7 @@ def _append_apply_operation(
 
 
 def _invalidate_delivery_result(state: dict[str, Any]) -> None:
-    state["result"] = {"deliveries": {}, "editable_delivery_bundle": {}}
+    invalidate_delivery_result(state)
 
 
 def _sync_job_snapshot(runtime: Any, job_dir: Path, state: dict[str, Any]) -> None:

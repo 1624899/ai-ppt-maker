@@ -7,6 +7,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import main
+from ppt_system.export.delivery_options import EDITABLE_PPT_FILENAMES, REFERENCE_PPT_FILENAME
+from ppt_system.export.editable_delivery_cache import build_editable_delivery_cache_path
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from main import app, mutate_job_state, update_job_record
@@ -164,6 +166,15 @@ class JobOperationsApiTests(unittest.TestCase):
             stop_requested=False,
         )
         return job_id, job_dir
+
+    def _write_stale_delivery_files(self, job_dir: Path) -> tuple[Path, ...]:
+        paths: list[Path] = [job_dir / REFERENCE_PPT_FILENAME]
+        for filename in EDITABLE_PPT_FILENAMES.values():
+            output_pptx = job_dir / filename
+            paths.extend([output_pptx, build_editable_delivery_cache_path(output_pptx)])
+        for path in paths:
+            path.write_bytes(b"old-ppt-delivery")
+        return tuple(paths)
 
     def test_agent_style_instruction_requeues_pipeline_for_whole_deck(self) -> None:
         job_id, job_dir = self._seed_completed_pages()
@@ -470,6 +481,7 @@ class JobOperationsApiTests(unittest.TestCase):
     def test_page_regenerate_backs_up_target_page_and_requeues_pipeline(self) -> None:
         job_id, job_dir = self._seed_completed_pages()
         initial_submit_count = len(self.executor.calls)
+        stale_delivery_files = self._write_stale_delivery_files(job_dir)
 
         response = self.client.post(
             f"/api/jobs/{job_id}/operations",
@@ -495,6 +507,8 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertTrue(version["artifacts"]["reference"]["exists"])
         self.assertTrue(version["artifacts"]["element"]["exists"])
         self.assertTrue((job_dir / "versions" / "page_02" / version["version_id"] / "reference.png").exists())
+        for stale_file in stale_delivery_files:
+            self.assertFalse(stale_file.exists(), f"旧交付文件未删除：{stale_file.name}")
 
     def test_image_edit_candidate_generation_does_not_replace_current_image(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()
@@ -605,6 +619,7 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertIsNotNone(candidate_payload)
         candidate_id = candidate_payload["image_edit_candidates"][0]["candidate_id"]
         candidate_image = candidate_payload["image_edit_candidates"][0]["image"]
+        stale_delivery_files = self._write_stale_delivery_files(job_dir)
 
         apply_response = self.client.post(f"/api/jobs/{job_id}/image-edit-candidates/{candidate_id}/apply")
 
@@ -633,6 +648,8 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(record["status"], "running")
         self.assertEqual(record["current_stage"], "elements_generation")
         self.assertEqual(len(self.executor.calls), 2)
+        for stale_file in stale_delivery_files:
+            self.assertFalse(stale_file.exists(), f"旧交付文件未删除：{stale_file.name}")
 
     def test_image_edit_candidate_after_apply_uses_applied_image_as_source(self) -> None:
         job_id, job_dir = self._seed_completed_pages()
@@ -738,7 +755,7 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(metadata["generation"]["call_index"], 2)
 
     def test_apply_image_edit_candidate_replaces_element_and_requeues_export_only(self) -> None:
-        job_id, _job_dir = self._seed_completed_pages()
+        job_id, job_dir = self._seed_completed_pages()
         config = {
             **self.config,
             "model_configs": {
@@ -778,6 +795,7 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertIsNotNone(candidate_payload)
         candidate_id = candidate_payload["image_edit_candidates"][0]["candidate_id"]
         candidate_image = candidate_payload["image_edit_candidates"][0]["image"]
+        stale_delivery_files = self._write_stale_delivery_files(job_dir)
 
         apply_response = self.client.post(f"/api/jobs/{job_id}/image-edit-candidates/{candidate_id}/apply")
 
@@ -799,6 +817,8 @@ class JobOperationsApiTests(unittest.TestCase):
         self.assertEqual(record["status"], "running")
         self.assertEqual(record["current_stage"], "ppt_export")
         self.assertEqual(len(self.executor.calls), 2)
+        for stale_file in stale_delivery_files:
+            self.assertFalse(stale_file.exists(), f"旧交付文件未删除：{stale_file.name}")
 
     def test_restore_page_version_restores_artifacts_and_requeues_export(self) -> None:
         job_id, _job_dir = self._seed_completed_pages()
