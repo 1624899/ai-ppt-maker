@@ -13,7 +13,6 @@ from ppt_system.export.direct_page_script import (
     build_direct_page_preview_project,
     _generate_page_script_from_images,
     prepare_direct_page_assets,
-    render_direct_comparison_image,
     resolve_canvas_size,
     _revise_page_script_with_rendered_preview,
     _write_page_preview_script,
@@ -56,7 +55,6 @@ class PreparedProjectPageAssets:
     assets_manifest: str
     text_placeholders_path: str
     split_source_image: str
-    transparent_preview_image: str | None
     asset_count: int
     asset_adjustments: dict[str, Any]
     image_width: int
@@ -121,7 +119,6 @@ def _summarize_prepared_page_assets(
         "assets_manifest": str(prepared_assets.assets_manifest),
         "text_placeholders": str(prepared_assets.text_placeholders_path),
         "split_source_image": str(prepared_assets.split_source_image),
-        "transparent_preview_image": str(prepared_assets.transparent_preview_image or ""),
         "asset_adjustments": dict(prepared_assets.asset_adjustments),
         "processing": {
             "page_no": int(prepared_assets.page_no),
@@ -157,7 +154,6 @@ def _build_prepared_assets_from_payload(
         assets_manifest=str(manifest_path),
         text_placeholders_path=str(text_placeholders_path),
         split_source_image=str(payload.get("split_source_image", "")),
-        transparent_preview_image=str(payload.get("transparent_preview_image") or "") or None,
         asset_count=int(manifest.get("count", 0)),
         asset_adjustments=normalize_asset_adjustments(payload.get("asset_adjustments")),
         image_width=int(image_width),
@@ -530,7 +526,6 @@ def prepare_direct_project_assets(
             assets_manifest=str(asset_result.manifest_path),
             text_placeholders_path=str(text_placeholders_path),
             split_source_image=str(asset_result.split_source_image),
-            transparent_preview_image=asset_result.transparent_preview_image,
             asset_count=int(manifest.get("count", 0)),
             asset_adjustments=dict(asset_result.asset_adjustments),
             image_width=int(image_width),
@@ -662,49 +657,44 @@ def _generate_direct_project_page_script(
     for round_index in range(max(0, int(refine_rounds))):
         _ensure_not_stopped(stop_checker)
         preview_artifacts = build_round_preview_artifacts(page_dir, round_index + 1)
-        _write_page_preview_script(
-            project=preview_project,
-            work_dir=work_dir,
-            output_pptx=preview_artifacts.pptx_path,
-            page_no=page_no,
-            page_script=current_script,
-            script_path=preview_artifacts.script_path,
-        )
-        preview_script_started_at = time.perf_counter()
-        preview_pptx = execute_generated_text_script(preview_artifacts.script_path, stop_checker=stop_checker)
-        _ensure_not_stopped(stop_checker)
-        _log_page(page_logger, page_no, f"预览 PPT 脚本执行完成，耗时 {time.perf_counter() - preview_script_started_at:.1f}s")
-
-        render_started_at = time.perf_counter()
-        rendered_preview = render_pptx_first_slide_to_png(
-            preview_pptx,
-            preview_artifacts.image_path,
-            image_width=image_width,
-            image_height=image_height,
-            stop_checker=stop_checker,
-        )
-        _ensure_not_stopped(stop_checker)
-        _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
-        if rendered_preview is None:
-            cleanup_round_preview_artifacts(
-                page_dir,
-                round_index + 1,
-                protect_paths=[preview_pptx],
-            )
-            _log_page(page_logger, page_no, "Office 真渲染不可用，跳过真实导出回看")
-            break
-
-        page_result["office_render_available"] = True
-        page_result["office_preview_paths"].append(str(rendered_preview))
-        render_direct_comparison_image(
-            reference_image=reference_image,
-            preview_image=rendered_preview,
-            output_path=preview_artifacts.comparison_path,
-        )
-        page_result["comparison_paths"].append(str(preview_artifacts.comparison_path))
-        _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
-        refine_started_at = time.perf_counter()
+        refine_completed = False
+        candidate_script = current_script
+        candidate_adjustments = current_asset_adjustments
         try:
+            _write_page_preview_script(
+                project=preview_project,
+                work_dir=work_dir,
+                output_pptx=preview_artifacts.pptx_path,
+                page_no=page_no,
+                page_script=current_script,
+                script_path=preview_artifacts.script_path,
+            )
+            preview_script_started_at = time.perf_counter()
+            preview_pptx = execute_generated_text_script(preview_artifacts.script_path, stop_checker=stop_checker)
+            _ensure_not_stopped(stop_checker)
+            _log_page(
+                page_logger,
+                page_no,
+                f"预览 PPT 脚本执行完成，耗时 {time.perf_counter() - preview_script_started_at:.1f}s",
+            )
+
+            render_started_at = time.perf_counter()
+            rendered_preview = render_pptx_first_slide_to_png(
+                preview_pptx,
+                preview_artifacts.image_path,
+                image_width=image_width,
+                image_height=image_height,
+                stop_checker=stop_checker,
+            )
+            _ensure_not_stopped(stop_checker)
+            _log_page(page_logger, page_no, f"Office 预览渲染结束，耗时 {time.perf_counter() - render_started_at:.1f}s")
+            if rendered_preview is None:
+                _log_page(page_logger, page_no, "Office 真渲染不可用，跳过真实导出回看")
+                break
+
+            page_result["office_render_available"] = True
+            _log_page(page_logger, page_no, f"开始第 {round_index + 1} 轮真实导出回看修正")
+            refine_started_at = time.perf_counter()
             candidate_script, candidate_adjustments = _revise_page_script_with_checkpoint(
                 provider=provider,
                 page_dir=page_dir,
@@ -721,17 +711,20 @@ def _generate_direct_project_page_script(
                 stop_checker=stop_checker,
             )
             _ensure_not_stopped(stop_checker)
+            _log_page(
+                page_logger,
+                page_no,
+                f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s",
+            )
+            refine_completed = True
         finally:
             cleanup_round_preview_artifacts(
                 page_dir,
                 round_index + 1,
-                protect_paths=[
-                    preview_pptx,
-                    rendered_preview,
-                    preview_artifacts.comparison_path,
-                ],
+                keep=0,
             )
-        _log_page(page_logger, page_no, f"第 {round_index + 1} 轮回看修正完成，耗时 {time.perf_counter() - refine_started_at:.1f}s")
+        if not refine_completed:
+            break
         if candidate_script == current_script and candidate_adjustments == current_asset_adjustments:
             _log_page(page_logger, page_no, "修正轮未返回更优脚本，保留当前结果")
             break
@@ -746,7 +739,7 @@ def _generate_direct_project_page_script(
         "script": current_script,
         "asset_adjustments": dict(current_asset_adjustments),
     }
-    if page_result["office_preview_paths"]:
+    if page_result["office_render_available"]:
         overlap_report = analyze_text_asset_overlaps(
             manifest_path=Path(prepared_page_assets.assets_manifest),
             page_script=current_script,

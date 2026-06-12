@@ -78,6 +78,7 @@ def test_round_preview_artifacts_are_unique_and_old_files_are_cleaned() -> None:
         legacy_paths = [
             page_dir / "render_preview_round_01.pptx",
             page_dir / "office_preview_round_01.png",
+            page_dir / "office_preview_round_01.PNG",
             page_dir / "comparison_round_01.png",
         ]
         for path in legacy_paths:

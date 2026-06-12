@@ -169,11 +169,34 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             )
 
             self.assertEqual(result.split_source_image, str(visual_path))
-            self.assertEqual(result.transparent_preview_image, str(visual_path))
             self.assertEqual(int(result.manifest["min_area"]), 1)
             self.assertEqual(int(result.manifest["count"]), 2)
             self.assertFalse((work_dir / "page_01" / "page_01_enhanced.png").exists())
             self.assertFalse((work_dir / "page_01" / "page_01_transparent.png").exists())
+            self.assertFalse((work_dir / "page_01" / "page_01_transparent_preview.png").exists())
+
+    def test_prepare_direct_page_assets_does_not_write_transparent_preview_copy(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            visual_path = root / "visual.png"
+
+            image = Image.new("RGBA", (80, 80), (255, 255, 255, 255))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((20, 20, 60, 60), fill=(0, 80, 220, 255))
+            image.save(visual_path)
+
+            result = prepare_direct_page_assets(
+                work_dir=work_dir,
+                page_no=1,
+                elements_image=visual_path,
+                image_width=80,
+                image_height=80,
+            )
+
+            self.assertTrue((work_dir / "page_01" / "assets" / "assets.json").exists())
+            self.assertFalse((work_dir / "page_01" / "page_01_transparent_preview.png").exists())
+            self.assertFalse(hasattr(result, "transparent_preview_image"))
 
     def test_normalize_page_script_rejects_disallowed_code(self) -> None:
         with self.assertRaises(RuntimeError):
@@ -667,7 +690,6 @@ def build_deck():
                     "image_width": 400,
                     "image_height": 240,
                     "split_source_image": str(visual_path),
-                    "transparent_preview_image": str(visual_path),
                     "removed_intermediate_images": [],
                     "asset_adjustments": {"asset_map": {"1": {"dx": -10, "dy": 40}}},
                 },

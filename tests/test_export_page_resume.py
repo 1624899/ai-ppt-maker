@@ -416,7 +416,7 @@ def test_preview_pptx_uses_unique_path_after_page_edit() -> None:
 
         assert len(rendered_pptx_paths) == 2
         assert rendered_pptx_paths[0] != rendered_pptx_paths[1]
-        assert all(path.exists() for path in rendered_pptx_paths)
+        assert all(not path.exists() for path in rendered_pptx_paths)
         assert all(path.parent.name == "preview_pptx" for path in rendered_pptx_paths)
         assert all(path.name.startswith("render_preview_round_01_") for path in rendered_pptx_paths)
         assert all(path.suffix == ".pptx" for path in rendered_pptx_paths)
@@ -481,17 +481,9 @@ def test_preview_artifacts_are_cleaned_when_refine_fails() -> None:
                     raise AssertionError("预期修正失败，但任务未失败")
 
         assert rendered_preview_paths
-        current_pptx = next(
-            path for path in (page_dir / "preview_pptx").glob("render_preview_round_01_*.pptx") if "_old_" not in path.name
-        )
-        current_comparison = next(
-            path
-            for path in (page_dir / "preview_comparisons").glob("comparison_round_01_*.png")
-            if "_old_" not in path.name
-        )
-        assert current_pptx.exists()
-        assert rendered_preview_paths[0].exists()
-        assert current_comparison.exists()
-        assert len([path for path in old_pptx_paths if path.exists()]) <= 8
-        assert len([path for path in old_image_paths if path.exists()]) <= 8
-        assert len([path for path in old_comparison_paths if path.exists()]) <= 8
+        assert not any((page_dir / "preview_pptx").glob("render_preview_round_01_*.pptx"))
+        assert not any((page_dir / "preview_images").glob("office_preview_round_01_*.png"))
+        assert not any((page_dir / "preview_comparisons").glob("comparison_round_01_*.png"))
+        assert not any(path.exists() for path in old_pptx_paths)
+        assert not any(path.exists() for path in old_image_paths)
+        assert not any(path.exists() for path in old_comparison_paths)

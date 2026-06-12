@@ -74,9 +74,12 @@ def cleanup_round_preview_artifacts(
             keep=keep,
             protect_paths=protected,
         ),
-        "images": cleanup_old_artifacts(
+        "images": cleanup_old_artifacts_matching(
             page_dir / "preview_images",
-            pattern=f"office_preview_{round_stem}_*.png",
+            patterns=[
+                f"office_preview_{round_stem}_*.png",
+                f"office_preview_{round_stem}_*.PNG",
+            ],
             keep=keep,
             protect_paths=protected,
         ),
@@ -92,9 +95,12 @@ def cleanup_round_preview_artifacts(
             keep=0,
             protect_paths=protected,
         ),
-        "legacy_images": cleanup_old_artifacts(
+        "legacy_images": cleanup_old_artifacts_matching(
             page_dir,
-            pattern=f"office_preview_{round_stem}.png",
+            patterns=[
+                f"office_preview_{round_stem}.png",
+                f"office_preview_{round_stem}.PNG",
+            ],
             keep=0,
             protect_paths=protected,
         ),
@@ -104,7 +110,44 @@ def cleanup_round_preview_artifacts(
             keep=0,
             protect_paths=protected,
         ),
-    }
+}
+
+
+def cleanup_old_artifacts_matching(
+    directory: Path,
+    *,
+    patterns: Iterable[str],
+    keep: int,
+    protect_paths: Iterable[Path] = (),
+) -> list[Path]:
+    if keep < 0:
+        raise ValueError("保留数量不能小于 0。")
+    if not directory.exists():
+        return []
+
+    protected = _normalize_protected_paths(protect_paths)
+    candidates_by_path: dict[Path, tuple[int, str, Path]] = {}
+    for pattern in patterns:
+        for path in directory.glob(pattern):
+            resolved_path = _resolve_for_compare(path)
+            if not path.is_file() or resolved_path in protected:
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            candidates_by_path[resolved_path] = (stat.st_mtime_ns, path.name, path)
+
+    candidates = list(candidates_by_path.values())
+    candidates.sort(reverse=True)
+    deleted: list[Path] = []
+    for _, _, path in candidates[int(keep) :]:
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        deleted.append(path)
+    return deleted
 
 
 def cleanup_old_artifacts(

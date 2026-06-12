@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -49,7 +48,6 @@ class PreparedDirectPageAssets:
     image_width: int
     image_height: int
     split_source_image: str
-    transparent_preview_image: str | None
     removed_intermediate_images: list[str]
     asset_adjustments: dict[str, Any]
 
@@ -202,7 +200,6 @@ def prepare_direct_page_assets(
     assets_dir = page_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     current_source = Path(elements_image)
-    transparent_preview_image: Path | None = None
     alpha_profile = inspect_image_alpha(current_source)
     transparent_input = bool(preserve_existing_transparency) and bool(alpha_profile.has_transparency)
     resolved_skip_enhance = bool(skip_enhance) or transparent_input
@@ -222,10 +219,6 @@ def prepare_direct_page_assets(
         transparent_path = page_dir / f"page_{int(page_no):02d}_transparent.png"
         make_transparent(current_source, transparent_path)
         current_source = transparent_path
-        transparent_preview_image = page_dir / f"page_{int(page_no):02d}_transparent_preview.png"
-        shutil.copyfile(transparent_path, transparent_preview_image)
-    elif transparent_input:
-        transparent_preview_image = current_source
     _ensure_not_stopped(stop_checker)
 
     manifest = split_transparent_png(
@@ -253,7 +246,6 @@ def prepare_direct_page_assets(
         image_width=int(image_width),
         image_height=int(image_height),
         split_source_image=str(current_source),
-        transparent_preview_image=str(transparent_preview_image) if transparent_preview_image else None,
         removed_intermediate_images=removed_intermediate_images,
         asset_adjustments=asset_adjustments,
     )
