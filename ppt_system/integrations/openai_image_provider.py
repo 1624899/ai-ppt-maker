@@ -14,6 +14,7 @@ from ppt_system.integrations.http_retry_policy import (
     transport_retry_budget,
 )
 from ppt_system.integrations.image_response import save_image_from_response_payload
+from ppt_system.image.canvas_normalization import ensure_image_canvas_size
 
 
 class OpenAIImageProvider:
@@ -25,7 +26,9 @@ class OpenAIImageProvider:
         )
         self.model = str(profile.get("model", config.get("image_model", "gpt-image-2")))
         self.size = str(config.get("active_image_size", config.get("image_size", "2048x1152")))
-        self.pixel_size = f"{int(config.get('image_width', 2048))}x{int(config.get('image_height', 1152))}"
+        self.image_width = positive_int(config.get("image_width"), default=2048)
+        self.image_height = positive_int(config.get("image_height"), default=1152)
+        self.pixel_size = f"{self.image_width}x{self.image_height}"
         self.resolution = str(config.get("active_image_resolution", config.get("image_resolution", "2k"))).lower()
         self.quality = str(config.get("image_quality", "high"))
         self.background = str(config.get("image_background", "opaque"))
@@ -239,12 +242,20 @@ class OpenAIImageProvider:
             output_path,
             timeout=self.image_download_timeout,
         )
+        normalization = ensure_image_canvas_size(
+            output_path,
+            target_width=self.image_width,
+            target_height=self.image_height,
+            resize_mode="auto",
+        )
 
         return {
             "provider": "openai_compatible",
             "model": self.model,
             "base_url": self.api_base_url,
             "size": self._resolve_size(),
+            "canvas": {"width": self.image_width, "height": self.image_height},
+            "canvas_normalization": normalization.as_dict(),
             "resolution": self.resolution,
             "quality": self.quality,
             "background": self.background,
@@ -293,6 +304,14 @@ def bounded_timeout_seconds(raw_value: Any, *, default: int, maximum: int = 180)
     except (TypeError, ValueError):
         value = int(default)
     return max(1, min(int(maximum), value))
+
+
+def positive_int(raw_value: Any, *, default: int) -> int:
+    try:
+        value = int(float(raw_value))
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(1, value)
 
 
 def _coerce_bool(value: Any) -> bool:

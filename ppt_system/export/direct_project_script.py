@@ -41,6 +41,7 @@ from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
+from ppt_system.image.canvas_normalization import ensure_image_canvas_size
 from ppt_system.image.text_placeholder_detection import load_text_placeholders, save_text_placeholders
 
 
@@ -69,6 +70,17 @@ def _log(stage_logger: StageLogger | None, message: str) -> None:
 def _log_page(page_logger: PageLogger | None, page_no: int, message: str) -> None:
     if page_logger:
         page_logger(page_no, message)
+
+
+def _resolve_declared_project_canvas(project: dict[str, Any]) -> tuple[int, int] | None:
+    try:
+        image_width = int(project.get("image_width", 0) or 0)
+        image_height = int(project.get("image_height", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if image_width <= 0 or image_height <= 0:
+        return None
+    return image_width, image_height
 
 
 def _ensure_not_stopped(stop_checker: StopChecker | None) -> None:
@@ -428,6 +440,7 @@ def prepare_direct_project_assets(
         skip_transparent=skip_transparent,
     )
     slide_width_inch = float(project.get("slide_width_inch", 13.333333))
+    declared_canvas = _resolve_declared_project_canvas(project)
     for page in _iter_exportable_project_pages(project):
         _ensure_not_stopped(stop_checker)
         page_no = int(page.get("page_no", 0))
@@ -438,7 +451,28 @@ def prepare_direct_project_assets(
         if not reference_image.exists():
             raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_image}")
 
-        image_width, image_height = resolve_canvas_size(reference_image, visual_image)
+        if declared_canvas is not None:
+            image_width, image_height = declared_canvas
+            reference_normalization = ensure_image_canvas_size(
+                reference_image,
+                target_width=image_width,
+                target_height=image_height,
+                resize_mode="auto",
+            )
+            visual_normalization = ensure_image_canvas_size(
+                visual_image,
+                target_width=image_width,
+                target_height=image_height,
+                resize_mode="auto",
+            )
+            if reference_normalization.normalized or visual_normalization.normalized:
+                _log_page(
+                    page_logger,
+                    page_no,
+                    f"已按项目画布 {image_width}x{image_height} 规范原稿图与元素图尺寸",
+                )
+        else:
+            image_width, image_height = resolve_canvas_size(reference_image, visual_image)
         page_dir = work_dir / f"page_{page_no:02d}"
         text_placeholders_path = page_dir / "text_placeholders.json"
         completed_prepared_assets = _build_prepared_assets_from_completed_page_checkpoint(

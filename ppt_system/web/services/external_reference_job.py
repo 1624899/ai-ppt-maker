@@ -6,11 +6,10 @@ import json
 from pathlib import Path
 from typing import Any, Sequence
 
-from PIL import Image, ImageColor, ImageOps
-
 from ppt_system.export.delivery_options import REFERENCE_PPT_FILENAME, build_editable_ppt_filename
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.generation.generation_prompts import build_elements_prompt
+from ppt_system.image.canvas_normalization import normalize_image_canvas
 from ppt_system.jobs.job_targets import JOB_TARGET_EDITABLE_PPT, JOB_TARGET_REFERENCE_ONLY
 from ppt_system.web.services.job_submission_runtime import build_active_config
 
@@ -76,30 +75,15 @@ def normalize_reference_image(
 ) -> None:
     """把任意外部图片规范成后续流水线使用的固定画布。"""
     resolved_mode = normalize_resize_mode(resize_mode)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    background_rgba = ImageColor.getcolor(str(background or "#FFFFFF"), "RGBA")
-
-    with Image.open(source_path) as raw_image:
-        image = raw_image.convert("RGBA")
-        if resolved_mode == "stretch":
-            normalized = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
-        elif resolved_mode == "cover":
-            normalized = ImageOps.fit(
-                image,
-                (target_width, target_height),
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
-            )
-        else:
-            normalized = Image.new("RGBA", (target_width, target_height), background_rgba)
-            contained = ImageOps.contain(image, (target_width, target_height), method=Image.Resampling.LANCZOS)
-            left = (target_width - contained.width) // 2
-            top = (target_height - contained.height) // 2
-            normalized.alpha_composite(contained, (left, top))
-
-        flattened = Image.new("RGBA", normalized.size, background_rgba)
-        flattened.alpha_composite(normalized)
-        flattened.convert("RGB").save(output_path)
+    normalize_image_canvas(
+        source_path,
+        output_path,
+        target_width=target_width,
+        target_height=target_height,
+        resize_mode=resolved_mode,
+        background=background or "#FFFFFF",
+        flatten=True,
+    )
 
 
 def build_external_page(

@@ -88,7 +88,7 @@
   "job_db_maintenance_include_pinned": false,
   "job_db_maintenance_vacuum": true,
   "job_db_maintenance_min_reclaimable_bytes": 8388608,
-  "active_chat_config_id": "chat_openai_compatible",
+  "active_chat_config_id": "chat_a4710077",
   "active_image_config_id": "image_openai_compatible",
   "enable_design_grammar": true,
   "min_distinct_layout_families": 3,
@@ -110,6 +110,28 @@
         "max_tokens": 5120,
         "reasoning_effort": "",
         "id": "chat_openai_compatible"
+      },
+      {
+        "name": "any",
+        "base_url": "__ENV__",
+        "api_key": "__ENV__",
+        "model": "gpt-5.5",
+        "enabled": true,
+        "temperature": 0.3,
+        "max_tokens": 5120,
+        "reasoning_effort": "",
+        "id": "chat_402bcf3d"
+      },
+      {
+        "name": "cc",
+        "base_url": "__ENV__",
+        "api_key": "__ENV__",
+        "model": "gpt-5.5",
+        "enabled": true,
+        "temperature": 0.3,
+        "max_tokens": 5120,
+        "reasoning_effort": "",
+        "id": "chat_a4710077"
       }
     ],
     "image": [
