@@ -285,6 +285,81 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
 
+    def test_complete_json_accepts_sse_chat_completion_chunks(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        events = [
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion.chunk",
+                "created": 1782267521,
+                "model": "gpt-5.5",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": ""},
+                        "finish_reason": None,
+                    }
+                ],
+                "usage": None,
+            },
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion.chunk",
+                "created": 1782267521,
+                "model": "gpt-5.5",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": '{"page_script":"add_text(slide, \\"标题\\", '},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion.chunk",
+                "created": 1782267521,
+                "model": "gpt-5.5",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": '0, 0, 100, 40)"}'},
+                        "finish_reason": None,
+                    }
+                ],
+            },
+            {
+                "id": "chatcmpl_test",
+                "object": "chat.completion.chunk",
+                "created": 1782267521,
+                "model": "gpt-5.5",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"total_tokens": 12},
+            },
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+        sse_text = f"{sse_text}\n\ndata: [DONE]\n\n"
+        response = _BrokenJsonResponse(text=sse_text, content=sse_text.encode("utf-8"))
+
+        with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response):
+            result = provider.complete_json([{"role": "user", "content": "test"}])
+
+        self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+
     def test_complete_json_retries_ambiguous_empty_response_once(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",

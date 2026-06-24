@@ -11,6 +11,7 @@ import requests
 
 from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.chat_response_parser import AmbiguousChatResponseError, extract_chat_completion_text
+from ppt_system.integrations.chat_stream_parser import looks_like_sse_text, parse_chat_completion_sse
 from ppt_system.integrations.http_retry_policy import (
     build_transport_error_message,
     is_retryable_status_code,
@@ -248,11 +249,19 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
     response_content = getattr(response, "content", None)
 
     if isinstance(response_content, bytes) and response_content:
+        decoded_candidates: list[str] = []
         for encoding in ("utf-8-sig", "utf-8"):
             try:
-                return json.loads(response_content.decode(encoding))
-            except (UnicodeDecodeError, json.JSONDecodeError):
+                decoded_text = response_content.decode(encoding)
+                decoded_candidates.append(decoded_text)
+                return json.loads(decoded_text)
+            except UnicodeDecodeError:
                 continue
+            except json.JSONDecodeError:
+                continue
+        for decoded_text in decoded_candidates:
+            if looks_like_sse_text(decoded_text):
+                return parse_chat_completion_sse(decoded_text)
 
     if callable(response_json):
         try:
@@ -265,6 +274,8 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
         try:
             return json.loads(response_text)
         except json.JSONDecodeError as exc:
+            if looks_like_sse_text(response_text):
+                return parse_chat_completion_sse(response_text)
             raise RuntimeError(_build_invalid_json_message(response, response_text)) from exc
     raise RuntimeError("对话模型返回空响应，无法解析 JSON。")
 
