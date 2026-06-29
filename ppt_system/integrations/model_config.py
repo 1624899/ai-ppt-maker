@@ -28,14 +28,15 @@ LOCAL_CONFIG_KEYS = (
 )
 
 
-def read_config(path: Path) -> dict[str, Any]:
-    config = read_merged_config(path)
-    return hydrate_model_config_env_fields(config, env_path=path.with_name(".env"))
+def read_config(path: Path, *, local_path: Path | None = None, env_path: Path | None = None) -> dict[str, Any]:
+    resolved_env_path = env_path or path.with_name(".env")
+    config = read_merged_config(path, local_path=local_path)
+    return hydrate_model_config_env_fields(config, env_path=resolved_env_path)
 
 
-def write_config(path: Path, config: dict[str, Any]) -> None:
-    target_path = resolve_writable_config_path(path)
-    existing_override = read_local_config(path)
+def write_config(path: Path, config: dict[str, Any], *, local_path: Path | None = None) -> None:
+    target_path = resolve_writable_config_path(path, local_path=local_path)
+    existing_override = read_local_config(path, local_path=local_path)
     persisted = strip_model_config_env_fields(config)
     next_override = copy_config(existing_override)
     for key in LOCAL_CONFIG_KEYS:
@@ -44,18 +45,18 @@ def write_config(path: Path, config: dict[str, Any]) -> None:
     write_json_object(target_path, next_override)
 
 
-def read_merged_config(path: Path) -> dict[str, Any]:
+def read_merged_config(path: Path, *, local_path: Path | None = None) -> dict[str, Any]:
     base_config = read_json_object(path)
-    local_config = read_local_config(path)
+    local_config = read_local_config(path, local_path=local_path)
     return merge_config(base_config, local_config)
 
 
-def resolve_local_config_path(path: Path) -> Path:
-    return path.with_name("config.local.json")
+def resolve_local_config_path(path: Path, *, local_path: Path | None = None) -> Path:
+    return Path(local_path) if local_path is not None else path.with_name("config.local.json")
 
 
-def resolve_writable_config_path(path: Path) -> Path:
-    return resolve_local_config_path(path)
+def resolve_writable_config_path(path: Path, *, local_path: Path | None = None) -> Path:
+    return resolve_local_config_path(path, local_path=local_path)
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
@@ -65,14 +66,15 @@ def read_json_object(path: Path) -> dict[str, Any]:
     return config
 
 
-def read_local_config(path: Path) -> dict[str, Any]:
-    local_path = resolve_local_config_path(path)
-    if not local_path.exists():
-        write_json_object(local_path, {})
-    return read_json_object(local_path)
+def read_local_config(path: Path, *, local_path: Path | None = None) -> dict[str, Any]:
+    resolved_local_path = resolve_local_config_path(path, local_path=local_path)
+    if not resolved_local_path.exists():
+        write_json_object(resolved_local_path, {})
+    return read_json_object(resolved_local_path)
 
 
 def write_json_object(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

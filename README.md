@@ -342,6 +342,18 @@ cd web_ui
 npm run build
 ```
 
+## 📦 Windows 本地软件打包
+
+项目支持先以「本地 Web 软件」方式打包：前端构建为静态资源，Flask 后端由 PyInstaller 打成 Windows 可执行程序。
+
+```powershell
+.\scripts\build_windows_desktop.ps1 -Clean
+```
+
+源码运行时仍默认使用项目目录下的 `.env`、`config.local.json` 和 `output/`；打包后的 exe 默认把用户配置、密钥、任务数据库和生成产物写入 `%APPDATA%\AI PPT Maker\`，便于升级软件时保留用户数据。
+
+更多说明参见 [Windows 桌面打包说明](docs/desktop-packaging.md)。
+
 ## 🛠️ 维护工具
 
 `tools/` 目录提供了一系列诊断和维护脚本：

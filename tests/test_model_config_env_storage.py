@@ -244,6 +244,52 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
             self.assertTrue(local_config_path.exists())
             self.assertEqual(local_config_path.read_text(encoding="utf-8").strip(), "{}")
 
+    def test_read_and_write_config_can_use_external_local_and_env_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_root = root / "app"
+            data_root = root / "data"
+            app_root.mkdir()
+            data_root.mkdir()
+            config_path = app_root / "config.json"
+            local_config_path = data_root / "config.local.json"
+            env_path = data_root / ".env"
+            config_path.write_text(
+                '{"default_pages": 4, "active_chat_config_id": "", "model_configs": {"chat": [], "image": []}}',
+                encoding="utf-8",
+            )
+
+            config = {
+                "default_pages": 8,
+                "active_chat_config_id": "chat_user",
+                "model_configs": {
+                    "chat": [
+                        {
+                            "id": "chat_user",
+                            "name": "用户模型",
+                            "base_url": "https://example.com/v1",
+                            "api_key": "sk-user",
+                            "model": "gpt-5.5",
+                            "enabled": True,
+                            "temperature": 0.3,
+                            "max_tokens": 5000,
+                            "reasoning_effort": "",
+                        }
+                    ],
+                    "image": [],
+                },
+            }
+
+            save_model_env_fields(env_path, "chat", config["model_configs"]["chat"][0])
+            write_config(config_path, config, local_path=local_config_path)
+            hydrated = read_config(config_path, local_path=local_config_path, env_path=env_path)
+
+            self.assertFalse((app_root / "config.local.json").exists())
+            self.assertFalse((app_root / ".env").exists())
+            self.assertTrue(local_config_path.exists())
+            self.assertEqual(hydrated["active_chat_config_id"], "chat_user")
+            self.assertEqual(hydrated["model_configs"]["chat"][0]["api_key"], "sk-user")
+
     def test_write_config_updates_local_override_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

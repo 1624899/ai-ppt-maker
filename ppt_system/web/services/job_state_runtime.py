@@ -725,7 +725,11 @@ def remove_job_artifacts(job_dir: Path) -> None:
     except OSError:
         return
     config = runtime.read_config()
-    output_root = (runtime.ROOT / str(config.get("output_dir", "output"))).resolve()
+    if hasattr(runtime, "resolve_configured_output_root") and hasattr(runtime, "RUNTIME_PATHS"):
+        output_root = runtime.resolve_configured_output_root(runtime.RUNTIME_PATHS, config)
+    else:
+        output_dir = Path(str(config.get("output_dir", "output") or "output"))
+        output_root = (output_dir if output_dir.is_absolute() else runtime.ROOT / output_dir).resolve()
     if resolved == output_root or output_root not in resolved.parents:
         return
     shutil.rmtree(resolved, ignore_errors=True)

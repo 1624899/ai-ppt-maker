@@ -294,7 +294,12 @@ def create_external_reference_job(
     if runtime.get_job_record(runtime.JOBS_DB_PATH, resolved_job_id):
         raise ValueError(f"任务已存在：{resolved_job_id}")
 
-    job_dir = runtime.ROOT / str(config.get("output_dir", "output")) / resolved_job_id
+    if hasattr(runtime, "resolve_configured_job_dir") and hasattr(runtime, "RUNTIME_PATHS"):
+        job_dir = runtime.resolve_configured_job_dir(runtime.RUNTIME_PATHS, config, resolved_job_id)
+    else:
+        output_dir = Path(str(config.get("output_dir", "output") or "output"))
+        output_root = output_dir if output_dir.is_absolute() else runtime.ROOT / output_dir
+        job_dir = output_root / resolved_job_id
     refs_dir = job_dir / "style_refs"
     stage1_dir = job_dir / "01_reference_pages"
     stage2_dir = job_dir / "02_elements_pages"

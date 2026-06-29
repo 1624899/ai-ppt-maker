@@ -3,6 +3,11 @@ config.local.json
 output/
 *__pycache__
 *node_modules
+.venv-build/
+build/
+dist/
+*.spec
+web_ui/dist/
 .codegraph
 .playwright-cli
 

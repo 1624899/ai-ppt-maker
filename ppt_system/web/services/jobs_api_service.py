@@ -32,7 +32,11 @@ from ppt_system.jobs.job_targets import JOB_TARGET_REFERENCE_ONLY
 
 def _resolve_job_dir(config: dict[str, Any], job_id: str) -> Path:
     runtime = get_runtime_module()
-    return runtime.ROOT / str(config["output_dir"]) / job_id
+    if hasattr(runtime, "resolve_configured_job_dir") and hasattr(runtime, "RUNTIME_PATHS"):
+        return runtime.resolve_configured_job_dir(runtime.RUNTIME_PATHS, config, job_id)
+    output_dir = Path(str(config.get("output_dir", "output") or "output"))
+    root = output_dir if output_dir.is_absolute() else runtime.ROOT / output_dir
+    return root / job_id
 
 
 def _is_truthy(value: Any) -> bool:
@@ -703,8 +707,8 @@ def api_deliver_job(job_id: str):
 
 def serve_run_file(job_id: str, filename: str):
     runtime = get_runtime_module()
-    config = runtime.read_config()
-    directory = _resolve_job_dir(config, job_id)
+    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    directory = Path(record["job_dir"]) if record and record.get("job_dir") else _resolve_job_dir(runtime.read_config(), job_id)
     return send_from_directory(directory, filename)
 
 

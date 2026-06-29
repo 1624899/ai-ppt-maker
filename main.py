@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import threading
 import time
 import traceback
 import uuid
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -165,14 +167,27 @@ from ppt_system.web.services.workflow_policy import (
     should_pause_after_planning,
 )
 from ppt_system.web.services.static_assets import build_static_asset_version
+from ppt_system.runtime.app_paths import (
+    ensure_runtime_directories,
+    resolve_application_root,
+    resolve_configured_job_dir,
+    resolve_configured_output_root,
+    resolve_runtime_paths,
+)
 
 
 sys.modules.setdefault("main", sys.modules[__name__])
 
-ROOT = Path(__file__).resolve().parent
-CONFIG_PATH = ROOT / "config.json"
-ENV_PATH = ROOT / ".env"
-JOBS_DB_PATH = ROOT / "output" / "jobs.sqlite3"
+ROOT = resolve_application_root(__file__)
+RUNTIME_PATHS = resolve_runtime_paths(ROOT)
+ensure_runtime_directories(RUNTIME_PATHS)
+DATA_DIR = RUNTIME_PATHS.data_dir
+CONFIG_PATH = RUNTIME_PATHS.config_path
+LOCAL_CONFIG_PATH = RUNTIME_PATHS.local_config_path
+ENV_PATH = RUNTIME_PATHS.env_path
+OUTPUT_ROOT = RUNTIME_PATHS.default_output_dir
+LOGS_DIR = RUNTIME_PATHS.logs_dir
+JOBS_DB_PATH = OUTPUT_ROOT / "jobs.sqlite3"
 init_job_db(JOBS_DB_PATH)
 JOB_EXECUTOR = ThreadPoolExecutor(max_workers=resolve_job_worker_count(read_config))
 JOB_STATUS_LOCK = threading.Lock()
@@ -205,5 +220,12 @@ app = create_app(
     static_asset_version_provider=static_asset_version,
 )
 
+
+def should_open_browser() -> bool:
+    return str(os.environ.get("PPT_SYSTEM_NO_BROWSER", "")).strip().lower() not in {"1", "true", "yes", "on"}
+
+
 if __name__ == "__main__":
+    if should_open_browser():
+        threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:7860")).start()
     app.run(host="127.0.0.1", port=7860, debug=False)
