@@ -10,11 +10,6 @@ from ppt_system.generation.prompt_visual_guidance import (
     build_template_quality_guidance,
     build_visual_requirement_line,
 )
-from ppt_system.generation.prompt_quality_rules import (
-    enrich_reference_prompt_text,
-    ensure_clean_rendering_line,
-    strip_generated_prompt_clauses,
-)
 from ppt_system.generation.reference_shape_constraints import build_shape_clarity_prompt_lines
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_prompt_lines,
@@ -37,7 +32,7 @@ def build_reference_prompt_by_mode(
     if normalized_mode == "baseline":
         existing_prompt = str(page.get("image_prompt", "")).strip()
         if existing_prompt:
-            return enrich_reference_prompt_text(existing_prompt)
+            return existing_prompt
         return build_reference_prompt(
             page,
             style_notes,
@@ -82,7 +77,7 @@ def build_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页"))
     summary = str(page.get("summary", ""))
-    visual_suggestion = strip_generated_prompt_clauses(collect_visual_suggestion(page))
+    visual_suggestion = collect_visual_suggestion(page)
     texts = page.get("texts", [])
     layout_family = page.get("layout_family", "grid_n_x_m")
     raw_element_plan = page.get("element_plan", {})
@@ -153,7 +148,7 @@ def build_reference_prompt(
             layout_family_override=layout_family,
             difference_override=difference,
         )
-        return enrich_reference_prompt_text("\n".join([
+        return "\n".join([
             f"生成一张 {image_width}x{image_height}、16:9 的完整 PPT 单页效果图，必须包含文字。",
             compressed_style,
             f"页面标题：{title}",
@@ -163,8 +158,8 @@ def build_reference_prompt(
             element_section,
             negative_section,
             *text_lines,
-        ]))
-    return enrich_reference_prompt_text(merged)
+        ])
+    return merged
 
 
 def build_compact_reference_prompt(
@@ -180,7 +175,7 @@ def build_compact_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
-    visual_suggestion = strip_generated_prompt_clauses(collect_visual_suggestion(page))
+    visual_suggestion = collect_visual_suggestion(page)
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
@@ -228,7 +223,6 @@ def build_compact_reference_prompt(
     if style_notes:
         lines.append(f"补充风格说明：{style_notes}")
     lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
-    lines = ensure_clean_rendering_line(lines)
     lines.append("不要乱码，不要堆满装饰，优先让信息关系清楚。")
     return "\n".join(lines)
 
@@ -246,7 +240,7 @@ def build_slot_brief_reference_prompt(
     style_guide = style_guide or {}
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
-    visual_suggestion = strip_generated_prompt_clauses(collect_visual_suggestion(page))
+    visual_suggestion = collect_visual_suggestion(page)
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
@@ -292,7 +286,6 @@ def build_slot_brief_reference_prompt(
     if style_notes:
         lines.append(f"补充风格说明：{style_notes}")
     lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
-    lines = ensure_clean_rendering_line(lines)
     lines.append(build_template_quality_guidance(style_notes, style_guide))
     return "\n".join(lines)
 
@@ -381,11 +374,14 @@ def build_elements_prompt(page: dict[str, Any] | None = None, style_guide: dict[
 
     element_primitives = style_guide.get("element_primitives", [])
     prompt_anchor = style_guide.get("prompt_anchor", "")
-    anchor_desc = f"风格锚点：{prompt_anchor}。" if str(prompt_anchor).strip() else ""
 
     primitives_desc = ""
     if element_primitives:
         primitives_desc = f"保留以下元素类型：{'、'.join(element_primitives)}。"
+
+    anchor_desc = ""
+    if prompt_anchor:
+        anchor_desc = f"尽量继承以下风格锚点：{prompt_anchor}。"
 
     return (
         "将该图片中除了文字以外的所有元素生成1张背景为纯白色的图像"

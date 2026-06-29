@@ -2,8 +2,7 @@
 
 import unittest
 
-from ppt_system.generation.generation_prompts import build_elements_prompt, build_reference_prompt_by_mode
-from ppt_system.generation.prompt_quality_rules import REFERENCE_CLEAN_RENDERING_LINE
+from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
 
 
 class ReferencePromptShapeConstraintsTests(unittest.TestCase):
@@ -149,62 +148,6 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
 
         self.assertIn("儿童科普手绘风", prompt)
         self.assertIn("优先服从已给定的风格说明", prompt)
-
-    def test_reference_prompts_add_clean_rendering_constraint_for_all_modes(self) -> None:
-        prompts = [
-            build_reference_prompt_by_mode(
-                self.page,
-                "蓝白科技汇报",
-                2048,
-                1152,
-                prompt_mode=mode,
-                style_guide={},
-                has_reference_images=False,
-                reference_style_adherence="balanced",
-            )
-            for mode in ("baseline", "compact", "slot_brief")
-        ]
-
-        for prompt in prompts:
-            self.assertIn(REFERENCE_CLEAN_RENDERING_LINE, prompt)
-            self.assertIn("不要细碎噪点", prompt)
-
-    def test_visual_suggestion_removes_generated_richness_clause(self) -> None:
-        page = {
-            **self.page,
-            "style_constraints": (
-                "蓝白商务汇报风格，浅色背景"
-                "；内容丰富度要求：信息密度适中，保持主次分明"
-            ),
-            "page_richness": "medium",
-        }
-
-        prompt = build_reference_prompt_by_mode(
-            page,
-            "蓝白商务汇报",
-            2048,
-            1152,
-            prompt_mode="compact",
-            style_guide={},
-            has_reference_images=False,
-            reference_style_adherence="balanced",
-        )
-
-        self.assertIn("本页视觉建议：蓝白商务汇报风格，浅色背景", prompt)
-        self.assertEqual(prompt.count("内容丰富度要求："), 1)
-
-    def test_elements_prompt_keeps_anchor_without_name_error(self) -> None:
-        prompt = build_elements_prompt(
-            self.page,
-            {
-                "element_primitives": ["圆角卡片", "线性图标"],
-                "prompt_anchor": "蓝白商务汇报，线性科技图标",
-            },
-        )
-
-        self.assertIn("保留以下元素类型：圆角卡片、线性图标", prompt)
-        self.assertIn("风格锚点：蓝白商务汇报，线性科技图标", prompt)
-
 
 if __name__ == "__main__":
     unittest.main()
