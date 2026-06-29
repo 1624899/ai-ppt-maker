@@ -10,6 +10,8 @@ from ppt_system.integrations.model_config import (
     delete_model_api_key,
     list_model_configs,
     read_config,
+    read_merged_config,
+    resolve_local_config_path,
     resolve_writable_config_path,
     resolve_model_base_url_env_name,
     resolve_model_api_key_env_name,
@@ -25,8 +27,14 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = root / "config.json"
+            local_config_path = root / "config.local.json"
             env_path = root / ".env"
+            config_path.write_text(
+                '{"active_chat_config_id": "", "model_configs": {"chat": [], "image": []}}',
+                encoding="utf-8",
+            )
             config = {
+                "active_chat_config_id": "chat_demo",
                 "model_configs": {
                     "chat": [
                         {
@@ -49,11 +57,13 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
             write_config(config_path, config)
 
             env_text = env_path.read_text(encoding="utf-8")
-            config_text = config_path.read_text(encoding="utf-8")
+            config_text = local_config_path.read_text(encoding="utf-8")
             self.assertIn("PPT_SYSTEM_CHAT_CHAT_DEMO_API_KEY=sk-chat", env_text)
             self.assertIn("PPT_SYSTEM_CHAT_CHAT_DEMO_BASE_URL=https://example.com/v1", env_text)
+            self.assertEqual(resolve_writable_config_path(config_path), local_config_path)
             self.assertIn('"api_key": "__ENV__"', config_text)
             self.assertIn('"base_url": "__ENV__"', config_text)
+            self.assertIn('"active_chat_config_id": "chat_demo"', config_text)
 
             hydrated = read_config(config_path)
             self.assertEqual(hydrated["model_configs"]["chat"][0]["api_key"], "sk-chat")
@@ -157,7 +167,7 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
 
         self.assertFalse(updated["supports_extended_options"])
 
-    def test_read_config_ignores_local_override_file(self) -> None:
+    def test_read_config_merges_local_override_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = root / "config.json"
@@ -217,23 +227,48 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
             config = read_config(config_path)
 
             self.assertEqual(config["max_pages"], 10)
-            self.assertEqual(config["default_pages"], 4)
-            self.assertEqual(config["active_chat_config_id"], "chat_template")
-            self.assertEqual(config["model_configs"]["chat"][0]["base_url"], "https://api.openai.com/v1")
+            self.assertEqual(config["default_pages"], 6)
+            self.assertEqual(config["active_chat_config_id"], "chat_local")
+            self.assertEqual(config["model_configs"]["chat"][0]["base_url"], "https://example.test/v1")
 
-    def test_write_config_ignores_existing_local_override_file(self) -> None:
+    def test_read_config_creates_empty_local_override_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.json"
+            local_config_path = resolve_local_config_path(config_path)
+            config_path.write_text('{"default_pages": 4, "model_configs": {"chat": [], "image": []}}', encoding="utf-8")
+
+            config = read_merged_config(config_path)
+
+            self.assertEqual(config["default_pages"], 4)
+            self.assertTrue(local_config_path.exists())
+            self.assertEqual(local_config_path.read_text(encoding="utf-8").strip(), "{}")
+
+    def test_write_config_updates_local_override_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = root / "config.json"
             local_config_path = root / "config.local.json"
-            config_path.write_text('{"default_pages": 4, "model_configs": {"chat": [], "image": []}}', encoding="utf-8")
-            local_config_path.write_text('{"default_pages": 6, "model_configs": {"chat": [], "image": []}}', encoding="utf-8")
+            config_path.write_text(
+                '{"default_pages": 4, "active_chat_config_id": "chat_template", "model_configs": {"chat": [], "image": []}}',
+                encoding="utf-8",
+            )
+            local_config_path.write_text('{"default_pages": 6, "active_chat_config_id": "chat_old"}', encoding="utf-8")
 
-            self.assertEqual(resolve_writable_config_path(config_path), config_path)
-            write_config(config_path, {"default_pages": 8, "model_configs": {"chat": [], "image": []}})
+            self.assertEqual(resolve_writable_config_path(config_path), local_config_path)
+            write_config(
+                config_path,
+                {
+                    "default_pages": 8,
+                    "active_chat_config_id": "chat_new",
+                    "model_configs": {"chat": [], "image": []},
+                },
+            )
 
-            self.assertIn('"default_pages": 8', config_path.read_text(encoding="utf-8"))
-            self.assertIn('"default_pages": 6', local_config_path.read_text(encoding="utf-8"))
+            self.assertIn('"default_pages": 4', config_path.read_text(encoding="utf-8"))
+            local_text = local_config_path.read_text(encoding="utf-8")
+            self.assertIn('"default_pages": 6', local_text)
+            self.assertIn('"active_chat_config_id": "chat_new"', local_text)
 
     def test_create_model_config_uses_default_model_name_when_omitted(self) -> None:
         config = {"model_configs": {"chat": [], "image": []}}

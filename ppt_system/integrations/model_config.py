@@ -21,20 +21,33 @@ ENV_FIELD_SUFFIXES = {
     "api_key": "API_KEY",
     "base_url": "BASE_URL",
 }
+LOCAL_CONFIG_KEYS = (
+    "active_chat_config_id",
+    "active_image_config_id",
+    "model_configs",
+)
 
 
 def read_config(path: Path) -> dict[str, Any]:
-    config = read_json_object(path)
+    config = read_merged_config(path)
     return hydrate_model_config_env_fields(config, env_path=path.with_name(".env"))
 
 
 def write_config(path: Path, config: dict[str, Any]) -> None:
     target_path = resolve_writable_config_path(path)
-    target_path.write_text(json.dumps(strip_model_config_env_fields(config), ensure_ascii=False, indent=2), encoding="utf-8")
+    existing_override = read_local_config(path)
+    persisted = strip_model_config_env_fields(config)
+    next_override = copy_config(existing_override)
+    for key in LOCAL_CONFIG_KEYS:
+        if key in persisted:
+            next_override[key] = copy_config(persisted[key])
+    write_json_object(target_path, next_override)
 
 
 def read_merged_config(path: Path) -> dict[str, Any]:
-    return read_json_object(path)
+    base_config = read_json_object(path)
+    local_config = read_local_config(path)
+    return merge_config(base_config, local_config)
 
 
 def resolve_local_config_path(path: Path) -> Path:
@@ -42,7 +55,7 @@ def resolve_local_config_path(path: Path) -> Path:
 
 
 def resolve_writable_config_path(path: Path) -> Path:
-    return path
+    return resolve_local_config_path(path)
 
 
 def read_json_object(path: Path) -> dict[str, Any]:
@@ -50,6 +63,17 @@ def read_json_object(path: Path) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError(f"配置文件必须是 JSON 对象：{path}")
     return config
+
+
+def read_local_config(path: Path) -> dict[str, Any]:
+    local_path = resolve_local_config_path(path)
+    if not local_path.exists():
+        write_json_object(local_path, {})
+    return read_json_object(local_path)
+
+
+def write_json_object(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def merge_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
