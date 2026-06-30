@@ -43,6 +43,8 @@ const SlideImage = ({
         <img
           src={src}
           alt={alt || emptyTitle}
+          loading={isMiniVariant(variant) ? 'lazy' : 'eager'}
+          decoding="async"
           onLoad={(event) => {
             setLoadedImage({
               src,
