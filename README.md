@@ -352,7 +352,7 @@ npm run build
 
 源码运行时仍默认使用项目目录下的 `.env`、`config.local.json` 和 `output/`；打包后的 exe 默认把用户配置、密钥、任务数据库和生成产物写入 `%APPDATA%\AI PPT Maker\`，便于升级软件时保留用户数据。
 
-打包输出目录会包含 `uninstall_ai_ppt_maker.ps1`，可用于清理用户数据、便携数据或当前程序目录。
+打包输出目录会包含 `卸载 AI PPT Maker.cmd`，用户双击后可按向导清理用户数据、便携数据或当前程序目录。
 
 更多说明参见 [Windows 桌面打包说明](docs/desktop-packaging.md)。
 

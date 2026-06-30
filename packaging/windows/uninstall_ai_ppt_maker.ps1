@@ -57,6 +57,35 @@ function Remove-DirectorySafely {
   Remove-Item -LiteralPath $resolved -Recurse -Force
 }
 
+function Remove-AppDirectoryAfterExit {
+  param([string]$Path)
+  if (-not (Test-ExpectedAppDir $Path)) {
+    throw "Refusing to remove app directory because it does not look like a packaged $AppName folder: $Path"
+  }
+  $resolved = (Resolve-Path -LiteralPath $Path).Path
+  $root = [IO.Path]::GetPathRoot($resolved)
+  if ($resolved -eq $root -or $resolved.Length -le 6) {
+    throw "Refusing to remove unsafe path: $resolved"
+  }
+  $cleanupScript = Join-Path ([IO.Path]::GetTempPath()) ("ai_ppt_maker_uninstall_{0}.ps1" -f ([guid]::NewGuid().ToString("N")))
+  $scriptContent = @"
+Start-Sleep -Seconds 2
+Remove-Item -LiteralPath '$($resolved.Replace("'", "''"))' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath '$($cleanupScript.Replace("'", "''"))' -Force -ErrorAction SilentlyContinue
+"@
+  Set-Content -LiteralPath $cleanupScript -Value $scriptContent -Encoding UTF8
+  Write-Host "Schedule app directory removal after this window exits: $resolved" -ForegroundColor Yellow
+  Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    $cleanupScript
+  ) -WindowStyle Hidden | Out-Null
+}
+
 function Stop-RunningApp {
   param([string]$Name)
   Get-Process -ErrorAction SilentlyContinue |
@@ -96,10 +125,7 @@ if ($RemovePortableData) {
 }
 
 if ($RemoveAppDir) {
-  if (-not (Test-ExpectedAppDir $resolvedAppDir)) {
-    throw "Refusing to remove app directory because it does not look like a packaged $AppName folder: $resolvedAppDir"
-  }
-  Remove-DirectorySafely -Path $resolvedAppDir -Label "app directory"
+  Remove-AppDirectoryAfterExit -Path $resolvedAppDir
 }
 
 Write-Host ""

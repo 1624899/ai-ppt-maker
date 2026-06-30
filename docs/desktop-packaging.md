@@ -63,15 +63,25 @@ dist\AI PPT Maker\
 3. 执行 `npm run build`。
 4. 准备隔离的 `.venv-build` 打包环境。
 5. 将 `config.json`、`web_ui/dist` 和文档图片资源打进程序。
-6. 将卸载辅助脚本复制到 `dist\AI PPT Maker\uninstall_ai_ppt_maker.ps1`。
+6. 将卸载向导和卸载辅助脚本复制到 `dist\AI PPT Maker\`。
 
 ## 卸载脚本
 
 打包输出目录会包含：
 
 ```text
+dist\AI PPT Maker\卸载 AI PPT Maker.cmd
 dist\AI PPT Maker\uninstall_ai_ppt_maker.ps1
 ```
+
+普通用户双击 `卸载 AI PPT Maker.cmd` 即可进入命令行向导。向导提供：
+
+- 只清理用户数据。
+- 只删除当前程序目录并保留用户数据。
+- 删除用户数据、便携数据和当前程序目录。
+- 取消。
+
+高级命令行用法如下。
 
 默认卸载用户数据目录：
 
