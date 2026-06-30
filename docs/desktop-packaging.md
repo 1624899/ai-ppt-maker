@@ -61,8 +61,37 @@ dist\AI PPT Maker\
 1. 检查 `python` 和 `npm`。
 2. 在 `web_ui/` 下执行 `npm ci` 或 `npm install`。
 3. 执行 `npm run build`。
-4. 确认或安装 `PyInstaller`。
+4. 准备隔离的 `.venv-build` 打包环境。
 5. 将 `config.json`、`web_ui/dist` 和文档图片资源打进程序。
+6. 将卸载辅助脚本复制到 `dist\AI PPT Maker\uninstall_ai_ppt_maker.ps1`。
+
+## 卸载脚本
+
+打包输出目录会包含：
+
+```text
+dist\AI PPT Maker\uninstall_ai_ppt_maker.ps1
+```
+
+默认卸载用户数据目录：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall_ai_ppt_maker.ps1
+```
+
+只删除程序文件、保留用户数据：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall_ai_ppt_maker.ps1 -RemoveUserData:$false -RemoveAppDir
+```
+
+删除用户数据、便携数据和当前程序目录：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall_ai_ppt_maker.ps1 -RemovePortableData -RemoveAppDir
+```
+
+脚本删除程序目录前会校验目录中存在 `AI PPT Maker.exe` 和 `_internal`，避免误删普通文件夹。
 
 ## 后续产品化建议
 

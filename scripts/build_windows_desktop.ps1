@@ -18,6 +18,7 @@ $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
 $EntryPoint = Join-Path $ProjectRoot "main.py"
 $FrontendDist = Join-Path $WebRoot "dist"
 $IconPath = Join-Path $ProjectRoot "packaging\windows\app.ico"
+$UninstallScript = Join-Path $ProjectRoot "packaging\windows\uninstall_ai_ppt_maker.ps1"
 
 function Invoke-Step {
   param(
@@ -111,10 +112,19 @@ try {
     & $BuildPython @args
   }
 
+  Invoke-Step "Copy helper scripts" {
+    $appOutputDir = Join-Path $DistRoot $AppName
+    if (Test-Path $UninstallScript) {
+      New-Item -ItemType Directory -Path $appOutputDir -Force | Out-Null
+      Copy-Item -LiteralPath $UninstallScript -Destination (Join-Path $appOutputDir "uninstall_ai_ppt_maker.ps1") -Force
+    }
+  }
+
   Invoke-Step "Build complete" {
     Write-Host "Output directory: $DistRoot" -ForegroundColor Green
     Write-Host "The packaged app stores user data in %APPDATA%\AI PPT Maker by default." -ForegroundColor Green
     Write-Host "Set PPT_SYSTEM_DATA_MODE=portable before launch to use portable data mode." -ForegroundColor Green
+    Write-Host "Uninstall helper: dist\$AppName\uninstall_ai_ppt_maker.ps1" -ForegroundColor Green
   }
 } finally {
   Pop-Location
