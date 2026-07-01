@@ -3,18 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ppt_system.jobs.active_job_registry import release_job_management
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.generation.generation_options import resolve_generation_options
+from ppt_system.jobs.active_job_registry import bind_job_future, mark_job_managed, release_job_management
+from ppt_system.runtime import runtime_context
+from ppt_system.web.services.app_config_runtime import read_config, resolve_image_preset
+from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
 
 
 def bind_submitted_job(job_id: str, submitted: object) -> None:
-    runtime = get_runtime_module()
     if submitted is None:
         # 测试替身或同步执行器不会返回 Future，这时不要把任务长期标记为运行中托管。
         release_job_management(job_id)
         return
     if hasattr(submitted, "add_done_callback"):
-        runtime.bind_job_future(job_id, submitted)
+        bind_job_future(job_id, submitted)
 
 
 def build_active_config(
@@ -37,14 +39,13 @@ def submit_existing_job_pipeline(
     config: dict[str, Any] | None = None,
     request_payload: dict[str, Any] | None = None,
 ) -> object:
-    runtime = get_runtime_module()
-    active_config_source = config or runtime.read_config()
+    active_config_source = config or read_config()
     payload = dict(request_payload or record.get("request", {}))
-    generation_options = runtime.resolve_generation_options(
+    generation_options = resolve_generation_options(
         payload.get("generation_options", payload),
         config=active_config_source,
     )
-    image_preset = runtime.resolve_image_preset(
+    image_preset = resolve_image_preset(
         active_config_source,
         str(payload.get("image_preset", active_config_source["default_image_preset"])),
     )
@@ -59,9 +60,9 @@ def submit_existing_job_pipeline(
     stage1_dir.mkdir(parents=True, exist_ok=True)
     stage2_dir.mkdir(parents=True, exist_ok=True)
 
-    runtime.mark_job_managed(job_id)
-    submitted = runtime.JOB_EXECUTOR.submit(
-        runtime.run_job_pipeline,
+    mark_job_managed(job_id)
+    submitted = runtime_context.JOB_EXECUTOR.submit(
+        run_job_pipeline,
         job_id,
         job_dir,
         active_config_source,

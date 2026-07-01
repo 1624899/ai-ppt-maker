@@ -2,21 +2,33 @@ from __future__ import annotations
 
 from flask import jsonify, request
 
-from ppt_system.integrations.model_config import sanitize_model_config
+from ppt_system.generation.generation_options import default_generation_options
+from ppt_system.generation.page_richness import PAGE_RICHNESS_LEVELS
+from ppt_system.integrations.model_config import (
+    delete_model_config,
+    delete_model_env_fields,
+    list_model_configs,
+    sanitize_model_config,
+    save_model_env_fields,
+    set_active_model_config,
+    upsert_model_config,
+    write_config,
+)
 from ppt_system.integrations.model_connectivity import test_model_connectivity
 from ppt_system.generation.design_grammar import build_layout_family_options
 from ppt_system.generation.reference_style_adherence import (
     REFERENCE_STYLE_ADHERENCE_LABELS,
     REFERENCE_STYLE_ADHERENCE_LEVELS,
 )
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.jobs.db_maintenance_scheduler import resolve_job_db_maintenance_config
+from ppt_system.runtime import runtime_context
 from ppt_system.web.services.api_response import api_error, api_ok
+from ppt_system.web.services.app_config_runtime import read_config
 
 
 def api_config():
-    runtime = get_runtime_module()
-    config = runtime.read_config()
-    defaults = runtime.default_generation_options(config)
+    config = read_config()
+    defaults = default_generation_options(config)
     return jsonify(
         {
             "max_pages": config["max_pages"],
@@ -35,14 +47,14 @@ def api_config():
             "image_output_format": config["image_output_format"],
             "default_include_cover_page": bool(defaults["include_cover_page"]),
             "default_page_richness": str(defaults["page_richness_default"]),
-            "page_richness_options": list(runtime.PAGE_RICHNESS_LEVELS),
+            "page_richness_options": list(PAGE_RICHNESS_LEVELS),
             "layout_family_options": build_layout_family_options(),
             "default_reference_style_adherence": str(defaults["reference_style_adherence"]),
             "reference_style_adherence_options": [
                 {"value": value, "label": REFERENCE_STYLE_ADHERENCE_LABELS[value]}
                 for value in REFERENCE_STYLE_ADHERENCE_LEVELS
             ],
-            "job_db_maintenance": runtime.resolve_job_db_maintenance_config(config),
+            "job_db_maintenance": resolve_job_db_maintenance_config(config),
             "active_chat_config_id": config.get("active_chat_config_id", ""),
             "active_image_config_id": config.get("active_image_config_id", ""),
         }
@@ -50,41 +62,38 @@ def api_config():
 
 
 def api_model_configs():
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     return jsonify(
         {
             "active_chat_config_id": config.get("active_chat_config_id", ""),
             "active_image_config_id": config.get("active_image_config_id", ""),
-            "configs": runtime.list_model_configs(config),
+            "configs": list_model_configs(config),
         }
     )
 
 
 def api_create_model_config(model_type: str):
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     try:
-        item = runtime.upsert_model_config(config, model_type, request.get_json(force=True))
-        runtime.save_model_env_fields(runtime.ENV_PATH, model_type, item)
-        runtime.write_config(runtime.CONFIG_PATH, config)
+        item = upsert_model_config(config, model_type, request.get_json(force=True))
+        save_model_env_fields(runtime_context.ENV_PATH, model_type, item)
+        write_config(runtime_context.CONFIG_PATH, config, local_path=runtime_context.LOCAL_CONFIG_PATH)
     except ValueError as exc:
         return api_error(exc)
-    return jsonify(runtime.list_model_configs(config)[model_type][-1])
+    return jsonify(list_model_configs(config)[model_type][-1])
 
 
 def api_update_model_config(model_type: str, config_id: str):
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     try:
-        runtime.upsert_model_config(config, model_type, request.get_json(force=True), config_id=config_id)
+        upsert_model_config(config, model_type, request.get_json(force=True), config_id=config_id)
         item = next(
             candidate
-            for candidate in runtime.list_model_configs(config)[model_type]
+            for candidate in list_model_configs(config)[model_type]
             if candidate.get("id") == config_id
         )
-        runtime.save_model_env_fields(runtime.ENV_PATH, model_type, item)
-        runtime.write_config(runtime.CONFIG_PATH, config)
+        save_model_env_fields(runtime_context.ENV_PATH, model_type, item)
+        write_config(runtime_context.CONFIG_PATH, config, local_path=runtime_context.LOCAL_CONFIG_PATH)
         return jsonify(item)
     except ValueError as exc:
         return api_error(exc)
@@ -93,34 +102,31 @@ def api_update_model_config(model_type: str, config_id: str):
 
 
 def api_delete_model_config(model_type: str, config_id: str):
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     try:
-        removed = runtime.delete_model_config(config, model_type, config_id)
-        runtime.delete_model_env_fields(runtime.ENV_PATH, model_type, removed)
-        runtime.write_config(runtime.CONFIG_PATH, config)
+        removed = delete_model_config(config, model_type, config_id)
+        delete_model_env_fields(runtime_context.ENV_PATH, model_type, removed)
+        write_config(runtime_context.CONFIG_PATH, config, local_path=runtime_context.LOCAL_CONFIG_PATH)
     except ValueError as exc:
         return api_error(exc)
     return api_ok()
 
 
 def api_activate_model_config(model_type: str, config_id: str):
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     try:
-        runtime.set_active_model_config(config, model_type, config_id)
-        runtime.write_config(runtime.CONFIG_PATH, config)
+        set_active_model_config(config, model_type, config_id)
+        write_config(runtime_context.CONFIG_PATH, config, local_path=runtime_context.LOCAL_CONFIG_PATH)
     except ValueError as exc:
         return api_error(exc)
     return api_ok()
 
 
 def api_test_model_config(model_type: str):
-    runtime = get_runtime_module()
-    config = runtime.read_config()
+    config = read_config()
     payload = request.get_json(force=True) or {}
     try:
-        profile = build_connectivity_profile(runtime, config, model_type, payload)
+        profile = build_connectivity_profile(config, model_type, payload)
         timeout = int(config.get("connectivity_test_timeout_seconds", 20))
         result = test_model_connectivity(model_type, profile, timeout=timeout)
     except ValueError as exc:
@@ -128,7 +134,7 @@ def api_test_model_config(model_type: str):
     return jsonify(result.to_dict()), (200 if result.ok else 400)
 
 
-def build_connectivity_profile(runtime, config: dict, model_type: str, payload: dict) -> dict:
+def build_connectivity_profile(config: dict, model_type: str, payload: dict) -> dict:
     if model_type not in {"chat", "image"}:
         raise ValueError("模型类型只能是 chat 或 image。")
 

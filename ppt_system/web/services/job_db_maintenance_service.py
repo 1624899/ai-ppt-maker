@@ -5,19 +5,25 @@ from typing import Any
 
 from flask import jsonify, request
 
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.jobs.active_job_registry import is_job_managed
+from ppt_system.jobs.db_lifecycle import (
+    collect_db_stats as collect_job_db_stats,
+    delete_jobs_by_ids as delete_job_db_records,
+    list_cleanup_candidates as list_job_db_cleanup_candidates,
+    vacuum_db as vacuum_job_db,
+)
+from ppt_system.runtime import runtime_context
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
+from ppt_system.web.services.job_state_runtime import remove_job_artifacts
 
 
 def api_job_db_stats():
-    runtime = get_runtime_module()
-    stats = runtime.collect_job_db_stats(runtime.JOBS_DB_PATH)
+    stats = collect_job_db_stats(runtime_context.JOBS_DB_PATH)
     return jsonify(stats)
 
 
 def api_job_db_maintenance():
-    runtime = get_runtime_module()
     payload = request.get_json(silent=True) or {}
     try:
         keep_latest = _parse_keep_latest(payload.get("keep_latest", 20))
@@ -25,7 +31,7 @@ def api_job_db_maintenance():
         dry_run = bool(payload.get("dry_run", True))
         vacuum = bool(payload.get("vacuum", False))
         result = execute_job_db_maintenance(
-            runtime.JOBS_DB_PATH,
+            runtime_context.JOBS_DB_PATH,
             keep_latest=keep_latest,
             include_pinned=include_pinned,
             dry_run=dry_run,
@@ -44,13 +50,12 @@ def execute_job_db_maintenance(
     dry_run: bool,
     vacuum: bool,
 ) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    candidates = runtime.list_job_db_cleanup_candidates(
+    candidates = list_job_db_cleanup_candidates(
         db_path,
         keep_latest=keep_latest,
         include_pinned=include_pinned,
     )
-    before_stats = runtime.collect_job_db_stats(db_path)
+    before_stats = collect_job_db_stats(db_path)
     cleaned_job_ids: list[str] = []
     removed_artifact_dirs: list[str] = []
 
@@ -59,21 +64,21 @@ def execute_job_db_maintenance(
             job_id = str(candidate.get("job_id") or "").strip()
             if not job_id:
                 continue
-            if runtime.is_job_managed(job_id):
+            if is_job_managed(job_id):
                 continue
             job_dir_value = str(candidate.get("job_dir") or "").strip()
             if job_dir_value:
-                runtime.remove_job_artifacts(Path(job_dir_value))
+                remove_job_artifacts(Path(job_dir_value))
                 removed_artifact_dirs.append(job_dir_value)
-            with runtime.JOB_STATUS_LOCK:
-                runtime.JOB_STATUS_CACHE.pop(job_id, None)
+            with runtime_context.JOB_STATUS_LOCK:
+                runtime_context.JOB_STATUS_CACHE.pop(job_id, None)
             cleaned_job_ids.append(job_id)
-        deleted_count = runtime.delete_job_db_records(db_path, cleaned_job_ids)
+        deleted_count = delete_job_db_records(db_path, cleaned_job_ids)
         if deleted_count > 0:
             JOB_EVENT_BUS.notify_history_changed()
         if vacuum and (deleted_count > 0 or before_stats.get("reclaimable_bytes", 0) > 0):
-            runtime.vacuum_job_db(db_path)
-    after_stats = runtime.collect_job_db_stats(db_path)
+            vacuum_job_db(db_path)
+    after_stats = collect_job_db_stats(db_path)
 
     return {
         "dry_run": dry_run,

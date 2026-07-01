@@ -184,7 +184,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。用户输�
 
 | 文件 | 职责 |
 |------|------|
-| `main.py` | Flask 后端启动入口。初始化 SQLite 数据库、ThreadPoolExecutor 线程池、DB 维护调度器；通过 `ppt_system.web.create_app()` 创建应用并注册全部 Blueprint 路由；暴露 REST API 端点用于任务创建、Pipeline 执行、计划确认、交付导出、模型配置和 DB 维护 |
+| `main.py` | Flask 后端启动入口。通过 `ppt_system.web.create_app()` 创建应用并注册全部 Blueprint 路由；运行时路径、SQLite、线程池和 DB 维护调度器由 `ppt_system.runtime.runtime_context` 初始化 |
 | `project_builder.py` | CLI 工具。接收长文文件和视觉参考图片，构建包含页面规划、文本布局和图像 prompt 的项目 JSON 配置，供下游 PPT 生成使用 |
 | `config.json` | 全局配置文件。定义图像尺寸预设（square/landscape/portrait，1K-4K）、API 端点、模型设置（chat & image）、并发限制、任务 DB 维护参数和设计语法选项 |
 | `requirements.txt` | Python 依赖清单：`requests`、`flask`、`python-pptx`、`opencv-python-headless`、`Pillow` |
@@ -340,8 +340,10 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。用户输�
 | `__init__.py` | 包初始化标记 |
 | `console_encoding.py` | 控制台编码。在 Windows 上配置 stdout/stderr 的 UTF-8 编码 |
 | `env_loader.py` | 环境变量加载器。将 `.env` 文件加载到 `os.environ`（简单 key=value 解析器，不覆盖已有值） |
+| `app_paths.py` | 应用路径解析。处理源码运行和 PyInstaller 环境下的应用根目录、数据目录、配置路径和输出目录 |
 | `interruptible_execution.py` | 可中断执行。支持协作中断的可调用对象和子进程执行器（后台线程轮询 `stop_checker`） |
 | `logging_utils.py` | 日志工具。格式化带时间戳和作用域前缀的日志行 |
+| `runtime_context.py` | 运行时上下文。集中初始化应用路径、配置读取、任务数据库路径、任务线程池、状态缓存和 DB 维护调度器，供 Web service 显式引用 |
 | `time_utils.py` | 时间工具。UTC 时间戳工具函数：naive datetime、毫秒格式、ISO-8601 格式 |
 
 ---
@@ -402,7 +404,7 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 |------|------|
 | `__init__.py` | 包初始化，导出 `create_app` |
 | `app.py` | **Flask 应用工厂**。注册 4 个 Blueprint（UI、配置 API、任务 API、产物 API），配置静态/模板目录，禁用浏览器缓存 |
-| `runtime.py` | 运行时模块桥接。从 `sys.modules` 解析 `main` 运行时模块，用于共享后端状态访问 |
+| `runtime.py` | 兼容桥接。为旧调用方返回 `ppt_system.runtime.runtime_context`；新代码应直接导入所需模块或运行时上下文 |
 
 ---
 
@@ -427,9 +429,6 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 |------|------|
 | `Header.jsx` | 顶部应用栏。品牌 Logo、当前任务标题/状态、设置按钮、任务启动切换、上下文感知操作按钮（创建/暂停/续跑/确认计划） |
 | `SettingsModal.jsx` | 设置模态框。管理 OpenAI 兼容模型配置（对话 & 图像模型）：创建、编辑、激活、删除、测试连通性 |
-| `Sidebar.jsx` | 左侧边栏。历史任务列表（交错动画）和「新任务」按钮，用于旧版布局 |
-| `MainPanel.jsx` | 中间面板包装器。渲染 `<TaskConfigForm>` 查看/编辑任务参数，用于旧版布局 |
-| `ResultPanel.jsx` | 右侧结果面板。阶段时间线（动画进度）、页面缩略图画廊、阶段日志模态框和下载链接，用于旧版布局 |
 
 ---
 
@@ -467,7 +466,6 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 
 | 文件 | 职责 |
 |------|------|
-| `components/Forms/TaskConfigForm.jsx` | 任务配置表单。手风琴折叠式表单，包含任务参数（内容、输出规格、风格约束），用于旧版布局的 MainPanel，含全屏内容编辑器模态框 |
 | `components/Motion/MotionUI.jsx` | Framer Motion 原语。`FadeIn`（淡入+滑动）、`StaggerContainer`/`StaggerItem`（交错列表动画，支持 reduced-motion）和 `ScaleButton`（弹性 hover/tap 反馈） |
 
 ---

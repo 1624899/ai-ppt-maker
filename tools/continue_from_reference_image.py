@@ -9,18 +9,42 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import main as runtime  # noqa: E402
 from ppt_system.export.delivery_options import (  # noqa: E402
     build_editable_ppt_filename,
 )
+from ppt_system.export.export_pipeline import export_editable_delivery  # noqa: E402
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE  # noqa: E402
+from ppt_system.generation.generation_options import resolve_generation_options  # noqa: E402
+from ppt_system.jobs.job_delivery_state import (  # noqa: E402
+    build_editable_delivery_payload,
+    get_editable_delivery_bundle,
+    normalize_job_result_payload,
+    set_editable_delivery,
+)
+from ppt_system.jobs.job_store import get_job as get_job_record  # noqa: E402
+from ppt_system.jobs.job_store import update_job as update_job_record  # noqa: E402
+from ppt_system.jobs.job_targets import JOB_TARGET_EDITABLE_PPT, TARGET_LABELS  # noqa: E402
+from ppt_system.runtime import runtime_context  # noqa: E402
 from ppt_system.runtime.console_encoding import configure_utf8_console  # noqa: E402
-from ppt_system.web.services.job_submission_runtime import build_active_config  # noqa: E402
+from ppt_system.web.services.app_config_runtime import read_config, resolve_image_preset  # noqa: E402
 from ppt_system.web.services.external_reference_job import (  # noqa: E402
     RESIZE_MODES,
     collect_reference_images,
     create_external_reference_job as create_external_reference_job_service,
 )
+from ppt_system.web.services.job_pipeline_runner import run_job_pipeline  # noqa: E402
+from ppt_system.web.services.job_snapshot_runtime import (  # noqa: E402
+    build_job_payload_from_state,
+    load_job_snapshot,
+    write_job_snapshot,
+)
+from ppt_system.web.services.job_state_runtime import (  # noqa: E402
+    get_job_state_snapshot,
+    load_job_state,
+    mutate_job_state,
+    reconcile_resume_state,
+)
+from ppt_system.web.services.job_submission_runtime import build_active_config  # noqa: E402
 
 
 DEFAULT_REFERENCE_PATH = ROOT / "图片转换"
@@ -73,10 +97,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def create_external_reference_job(args: argparse.Namespace) -> dict[str, Any]:
-    config = runtime.read_config()
+    config = read_config()
     source_images = collect_reference_images(ROOT, Path(args.reference_path), recursive=bool(args.recursive))
     return create_external_reference_job_service(
-        runtime,
         config=config,
         source_images=source_images,
         job_id=str(args.job_id or "").strip(),
@@ -92,7 +115,7 @@ def create_external_reference_job(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def run_job_pipeline_from_created_job(created: dict[str, Any]) -> None:
-    runtime.run_job_pipeline(
+    run_job_pipeline(
         str(created["job_id"]),
         Path(created["job_dir"]),
         dict(created["config"]),
@@ -116,7 +139,7 @@ def find_stage(state: dict[str, Any], stage_key: str) -> dict[str, Any]:
 
 
 def ensure_pipeline_succeeded(job_id: str, job_dir: Path) -> None:
-    state = runtime.load_job_state(job_id, job_dir) or {}
+    state = load_job_state(job_id, job_dir) or {}
     status = str(state.get("status", "")).strip()
     if status == "completed":
         return
@@ -131,35 +154,35 @@ def ensure_pipeline_succeeded(job_id: str, job_dir: Path) -> None:
 
 def export_default_editable_ppt(job_id: str, job_dir: Path) -> Path:
     """把可编辑资源包导出成默认拆分页 PPT，并同步写回任务结果。"""
-    state, _record = runtime.get_job_state_snapshot(job_id, job_dir)
+    state, _record = get_job_state_snapshot(job_id, job_dir)
     if not state:
         raise RuntimeError(f"任务状态不存在：{job_id}")
 
-    job_snapshot = runtime.load_job_snapshot(job_dir)
-    job_payload = runtime.build_job_payload_from_state(state, job_snapshot)
-    result_payload = runtime.normalize_job_result_payload(job_payload.get("result", {}))
-    editable_bundle = runtime.get_editable_delivery_bundle(result_payload)
+    job_snapshot = load_job_snapshot(job_dir)
+    job_payload = build_job_payload_from_state(state, job_snapshot)
+    result_payload = normalize_job_result_payload(job_payload.get("result", {}))
+    editable_bundle = get_editable_delivery_bundle(result_payload)
     bundle_path = Path(str(editable_bundle.get("bundle_path", "")).strip())
     if not bundle_path.exists():
         raise RuntimeError(f"可编辑资源包不存在，无法导出 PPT：{bundle_path}")
 
     layer_mode = SEPARATE_LAYER_MODE
     output_pptx = job_dir / build_editable_ppt_filename(layer_mode)
-    export_payload = runtime.export_editable_delivery(bundle_path, output_pptx, layer_mode=layer_mode)
-    editable_delivery = runtime.build_editable_delivery_payload(job_id, job_dir, export_payload)
-    result_payload = runtime.set_editable_delivery(result_payload, editable_delivery, layer_mode=layer_mode)
+    export_payload = export_editable_delivery(bundle_path, output_pptx, layer_mode=layer_mode)
+    editable_delivery = build_editable_delivery_payload(job_id, job_dir, export_payload)
+    result_payload = set_editable_delivery(result_payload, editable_delivery, layer_mode=layer_mode)
 
     job_payload["result"] = result_payload
-    runtime.write_job_snapshot(job_dir, job_payload)
-    runtime.mutate_job_state(job_dir, job_id, lambda current_state: current_state.update({"result": result_payload}))
+    write_job_snapshot(job_dir, job_payload)
+    mutate_job_state(job_dir, job_id, lambda current_state: current_state.update({"result": result_payload}))
     return output_pptx
 
 
 def reset_job_for_resume(job_id: str, job_dir: Path, request_payload: dict[str, Any]) -> None:
     """把已有外部原稿图任务恢复到可继续执行的队列状态。"""
     request_payload["job_target"] = JOB_TARGET_EDITABLE_PPT
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         stop_requested=False,
         status="queued",
@@ -173,7 +196,7 @@ def reset_job_for_resume(job_id: str, job_dir: Path, request_payload: dict[str, 
         state["stop_requested"] = False
         job_meta = state.setdefault("job_meta", {})
         job_meta["job_target"] = JOB_TARGET_EDITABLE_PPT
-        job_meta["job_target_label"] = runtime.TARGET_LABELS[JOB_TARGET_EDITABLE_PPT]
+        job_meta["job_target_label"] = TARGET_LABELS[JOB_TARGET_EDITABLE_PPT]
         for stage in state.get("stages", []):
             if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") in {
                 "error",
@@ -183,24 +206,24 @@ def reset_job_for_resume(job_id: str, job_dir: Path, request_payload: dict[str, 
                 stage["status"] = "pending"
                 stage["summary"] = "等待继续执行"
 
-    runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.reconcile_resume_state(job_dir, job_id)
+    mutate_job_state(job_dir, job_id, updater)
+    reconcile_resume_state(job_dir, job_id)
 
 
 def build_resume_payload(job_id: str) -> dict[str, Any]:
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError(f"任务不存在：{job_id}")
     job_dir = Path(str(record["job_dir"]))
     request_payload = dict(record.get("request", {}))
-    config = runtime.read_config()
-    image_preset = runtime.resolve_image_preset(
+    config = read_config()
+    image_preset = resolve_image_preset(
         config,
         str(request_payload.get("image_preset") or record.get("image_preset") or config.get("default_image_preset", "landscape_2k")),
     )
     image_quality = str(request_payload.get("image_quality") or record.get("image_quality") or config.get("image_quality", "medium"))
     active_config = build_active_config(config, image_preset, image_quality)
-    generation_options = runtime.resolve_generation_options(
+    generation_options = resolve_generation_options(
         request_payload.get("generation_options", request_payload),
         config=config,
     )

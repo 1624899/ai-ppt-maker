@@ -30,7 +30,7 @@ from ppt_system.jobs.job_interrupt_signal import clear_job_stop_request
 from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
 from ppt_system.jobs.job_store import update_job as update_job_record
 from ppt_system.jobs.job_targets import get_terminal_stage, should_continue_after_stage
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.runtime import runtime_context
 from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.app_config_runtime import build_export_options
 from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
@@ -64,7 +64,7 @@ from ppt_system.web.services.workflow_policy import (
 
 
 def _jobs_db_path() -> Path:
-    return get_runtime_module().JOBS_DB_PATH
+    return runtime_context.JOBS_DB_PATH
 
 
 def run_job_pipeline(

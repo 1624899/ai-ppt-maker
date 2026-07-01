@@ -8,11 +8,14 @@ from typing import Any
 
 from flask import jsonify, request
 
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.runtime import runtime_context
+from ppt_system.web.services.app_config_runtime import read_config
 from ppt_system.web.services.app_config_runtime import resolve_image_preset
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_agent_draft_model_planner import plan_agent_draft_with_model
 from ppt_system.web.services.job_agent_draft_models import AgentDraft
+from ppt_system.web.services.job_state_runtime import get_job_state_snapshot, mutate_job_state
 from ppt_system.web.services.job_submission_runtime import build_active_config
 
 
@@ -42,12 +45,11 @@ def api_clear_agent_conversation(job_id: str):
 
 
 def create_agent_draft(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError("任务不存在")
     job_dir = Path(record["job_dir"])
-    state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
+    state, _ = get_job_state_snapshot(job_id, job_dir)
     if not state:
         raise FileNotFoundError("任务状态不存在")
 
@@ -60,7 +62,7 @@ def create_agent_draft(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     messages = _normalize_messages(payload.get("messages"))
     annotations = _normalize_annotations(payload.get("annotations"))
     page_numbers = _collect_page_numbers(state)
-    config = runtime.read_config()
+    config = read_config()
     active_config = _resolve_agent_active_config(config, record)
     draft, draft_meta = plan_agent_draft(
         user_message,
@@ -106,7 +108,7 @@ def create_agent_draft(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         current_state["agent_pending_draft"] = asdict(draft)
         current_state["agent_pending_draft_meta"] = draft_meta
 
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
     return {
         "draft": asdict(draft),
         "messages": (updated_state.get("agent_conversation") if isinstance(updated_state, dict) else []) or [],
@@ -115,12 +117,11 @@ def create_agent_draft(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def clear_agent_conversation(job_id: str) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError("任务不存在")
     job_dir = Path(record["job_dir"])
-    state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
+    state, _ = get_job_state_snapshot(job_id, job_dir)
     if not state:
         raise FileNotFoundError("任务状态不存在")
 
@@ -129,7 +130,7 @@ def clear_agent_conversation(job_id: str) -> dict[str, Any]:
         current_state["agent_pending_draft"] = None
         current_state["agent_pending_draft_meta"] = None
 
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
     return {
         **updated_state,
         "ok": True,

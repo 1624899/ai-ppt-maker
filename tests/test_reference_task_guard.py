@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from main import submit_elements_task, submit_reference_task
+from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
 
 
 class _DummyImageProvider:

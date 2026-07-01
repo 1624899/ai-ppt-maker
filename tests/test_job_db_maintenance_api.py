@@ -6,10 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
+from ppt_system.runtime import runtime_context
 from ppt_system.jobs.active_job_registry import clear_job_management_registry, mark_job_managed
 from ppt_system.jobs.job_store import create_job as create_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from ppt_system.jobs.job_store import list_jobs as list_job_records
+from ppt_system.jobs.job_store import update_job as update_job_record
 
 
 class JobDbMaintenanceApiTests(unittest.TestCase):
@@ -23,13 +25,13 @@ class JobDbMaintenanceApiTests(unittest.TestCase):
         self.output_dir = self.base_dir / "runs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.config = {"output_dir": str(self.output_dir)}
-        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
+        self.read_config_patch = patch.object(runtime_context, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(runtime_context, "JOBS_DB_PATH", self.jobs_db_path)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
-        main.JOB_STATUS_CACHE.clear()
+        runtime_context.JOB_STATUS_CACHE.clear()
         self.client = main.app.test_client()
 
     def _create_record(
@@ -76,7 +78,7 @@ class JobDbMaintenanceApiTests(unittest.TestCase):
                 fields["pinned_at"] = pinned_at
             if updated_at:
                 fields["updated_at"] = updated_at
-            main.update_job_record(self.jobs_db_path, job_id, touch_updated_at=False, **fields)
+            update_job_record(self.jobs_db_path, job_id, touch_updated_at=False, **fields)
         return job_dir
 
     def test_job_db_stats_reports_counts(self) -> None:

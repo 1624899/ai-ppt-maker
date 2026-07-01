@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 import main
+from ppt_system.runtime import runtime_context
 from ppt_system.integrations.model_connectivity import test_model_connectivity
 
 
@@ -111,7 +112,7 @@ class ModelConnectivityApiTests(unittest.TestCase):
                 "image": [],
             },
         }
-        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
+        self.read_config_patch = patch.object(runtime_context, "read_config", return_value=self.config)
         self.read_config_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.client = main.app.test_client()

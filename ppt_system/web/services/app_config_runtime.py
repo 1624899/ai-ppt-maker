@@ -4,20 +4,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from ppt_system.web.runtime import get_runtime_module
-
-
-def _runtime():
-    return get_runtime_module()
+from ppt_system.runtime import runtime_context
 
 
 def read_config() -> dict[str, Any]:
-    runtime = _runtime()
-    return runtime.read_json_config(
-        runtime.CONFIG_PATH,
-        local_path=getattr(runtime, "LOCAL_CONFIG_PATH", None),
-        env_path=getattr(runtime, "ENV_PATH", None),
-    )
+    return runtime_context.read_config()
 
 
 def resolve_image_preset(config: dict[str, Any], preset_name: str) -> dict[str, Any]:

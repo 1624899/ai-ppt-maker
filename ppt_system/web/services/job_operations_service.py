@@ -9,7 +9,10 @@ from typing import Any
 
 from flask import jsonify, request
 
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.jobs.job_delivery_state import attach_delivery_actions
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.runtime import runtime_context
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.job_edit_planner import (
@@ -25,6 +28,7 @@ from ppt_system.web.services.job_delivery_invalidation import (
     invalidate_delivery_result,
     invalidate_job_snapshot_result,
 )
+from ppt_system.web.services.job_state_runtime import get_job_state_snapshot, mutate_job_state
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
 
 
@@ -63,25 +67,24 @@ def api_create_job_operation(job_id: str):
 
 
 def create_job_operation(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError("任务不存在")
     operation_type = _normalize_operation_type(payload.get("operation_type") or payload.get("type"))
     job_dir = Path(record["job_dir"])
-    state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
+    state, _ = get_job_state_snapshot(job_id, job_dir)
     if not state:
         raise FileNotFoundError("任务状态不存在")
 
     if operation_type == "page_regenerate":
         _ensure_not_running(record)
-        return _regenerate_page(runtime, record, state, payload)
+        return _regenerate_page(record, state, payload)
     if operation_type == "restore_page_version":
         _ensure_not_running(record)
-        return _restore_page_version(runtime, record, state, payload)
+        return _restore_page_version(record, state, payload)
     if operation_type in PAGE_RECORD_ONLY_TYPES | JOB_RECORD_ONLY_TYPES:
-        return _apply_agent_edit_operation(runtime, record, state, payload, operation_type)
-    return _record_pending_operation(runtime, record, state, payload, operation_type)
+        return _apply_agent_edit_operation(record, state, payload, operation_type)
+    return _record_pending_operation(record, state, payload, operation_type)
 
 
 def _normalize_operation_type(value: Any) -> str:
@@ -98,7 +101,6 @@ def _ensure_not_running(record: dict[str, Any]) -> None:
 
 
 def _apply_agent_edit_operation(
-    runtime: Any,
     record: dict[str, Any],
     state: dict[str, Any],
     payload: dict[str, Any],
@@ -123,9 +125,9 @@ def _apply_agent_edit_operation(
         available_page_numbers=available_page_numbers,
     )
     if edit_plan.record_only:
-        return _record_pending_operation(runtime, record, state, payload, operation_type)
+        return _record_pending_operation(record, state, payload, operation_type)
     if not edit_plan.page_numbers:
-        return _record_pending_operation(runtime, record, state, payload, operation_type)
+        return _record_pending_operation(record, state, payload, operation_type)
 
     _ensure_not_running(record)
     for target_page_no in edit_plan.page_numbers:
@@ -181,21 +183,20 @@ def _apply_agent_edit_operation(
         else:
             _reset_export_stage(current_state, edit_plan.page_numbers, "等待 Agent 编辑后重建可编辑 PPT")
 
-    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    _invalidate_delivery_artifacts(job_dir, job_id=job_id, state=state, include_reference=True)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         stop_requested=False,
         status="queued",
         result=build_empty_delivery_result(),
     )
     submit_existing_job_pipeline(record)
-    return runtime.attach_delivery_actions(updated_state, job_dir)
+    return attach_delivery_actions(updated_state, job_dir)
 
 
 def _regenerate_page(
-    runtime: Any,
     record: dict[str, Any],
     state: dict[str, Any],
     payload: dict[str, Any],
@@ -219,21 +220,20 @@ def _regenerate_page(
         _invalidate_delivery_result(current_state)
         _reset_generation_stages(current_state, page_no, "等待重新生成本页")
 
-    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    _invalidate_delivery_artifacts(job_dir, job_id=job_id, state=state, include_reference=True)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         stop_requested=False,
         status="queued",
         result=build_empty_delivery_result(),
     )
     submit_existing_job_pipeline(record)
-    return runtime.attach_delivery_actions(updated_state, job_dir)
+    return attach_delivery_actions(updated_state, job_dir)
 
 
 def _restore_page_version(
-    runtime: Any,
     record: dict[str, Any],
     state: dict[str, Any],
     payload: dict[str, Any],
@@ -262,21 +262,20 @@ def _restore_page_version(
         _invalidate_delivery_result(current_state)
         _reset_generation_stages(current_state, page_no, "等待基于已恢复版本重建导出")
 
-    _invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    _invalidate_delivery_artifacts(job_dir, job_id=job_id, state=state, include_reference=True)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         stop_requested=False,
         status="queued",
         result=build_empty_delivery_result(),
     )
     submit_existing_job_pipeline(record)
-    return runtime.attach_delivery_actions(updated_state, job_dir)
+    return attach_delivery_actions(updated_state, job_dir)
 
 
 def _record_pending_operation(
-    runtime: Any,
     record: dict[str, Any],
     state: dict[str, Any],
     payload: dict[str, Any],
@@ -303,8 +302,8 @@ def _record_pending_operation(
         if page_no is not None:
             _append_page_edit_request(current_state, page_no, operation)
 
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    refreshed_state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    refreshed_state, _ = get_job_state_snapshot(job_id, job_dir)
     return refreshed_state or updated_state
 
 
@@ -528,12 +527,11 @@ def _invalidate_delivery_result(state: dict[str, Any]) -> None:
     invalidate_delivery_result(state)
 
 
-def _invalidate_job_snapshot_result(runtime: Any, job_dir: Path) -> None:
-    invalidate_job_snapshot_result(runtime, job_dir)
+def _invalidate_job_snapshot_result(job_dir: Path) -> None:
+    invalidate_job_snapshot_result(job_dir)
 
 
 def _invalidate_delivery_artifacts(
-    runtime: Any,
     job_dir: Path,
     *,
     job_id: str,
@@ -541,7 +539,6 @@ def _invalidate_delivery_artifacts(
     include_reference: bool,
 ) -> None:
     invalidate_delivery_artifacts(
-        runtime,
         job_dir,
         job_id=job_id,
         state=state,

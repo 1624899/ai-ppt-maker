@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import unittest
 import json
@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
+from ppt_system.jobs.job_store import update_job as update_job_record
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, SEPARATE_LAYER_MODE
-from main import app, load_job_state, mutate_job_state, status_file, update_job_record
+from main import app
 import main
+from ppt_system.runtime import runtime_context
+from ppt_system.web.services.job_state_runtime import load_job_state, mutate_job_state, status_file
 
 
 class _FakeExecutor:
@@ -63,16 +66,16 @@ class JobApiPageRichnessTests(unittest.TestCase):
         }
 
         self.executor = _FakeExecutor()
-        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
-        self.executor_patch = patch.object(main, "JOB_EXECUTOR", self.executor)
+        self.read_config_patch = patch.object(runtime_context, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(runtime_context, "JOBS_DB_PATH", self.jobs_db_path)
+        self.executor_patch = patch.object(runtime_context, "JOB_EXECUTOR", self.executor)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.executor_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
         self.addCleanup(self.executor_patch.stop)
-        main.JOB_STATUS_CACHE.clear()
+        runtime_context.JOB_STATUS_CACHE.clear()
 
         self.client = app.test_client()
 
@@ -255,7 +258,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             current_stage="ppt_export",
             stop_requested=False,
         )
-        main.JOB_STATUS_CACHE.clear()
+        runtime_context.JOB_STATUS_CACHE.clear()
 
         response = self.client.post(f"/api/jobs/{job_id}/resume")
 
@@ -354,7 +357,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             output_pptx.write_bytes(b"reference pptx")
             return {"page_count": 2}
 
-        with patch.object(main, "export_reference_images_to_pptx", side_effect=fake_reference_export):
+        with patch("ppt_system.web.services.jobs_api_service.export_reference_images_to_pptx", side_effect=fake_reference_export):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "reference_ppt"},
@@ -438,7 +441,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "description": "desc",
             }
 
-        with patch.object(main, "export_editable_delivery", side_effect=fake_export):
+        with patch("ppt_system.web.services.jobs_api_service.export_editable_delivery", side_effect=fake_export):
             separate_response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "editable_ppt_separate"},
@@ -528,7 +531,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             stop_requested=False,
         )
 
-        with patch.object(main, "export_editable_delivery", side_effect=AssertionError("不应重新导出")):
+        with patch("ppt_system.web.services.jobs_api_service.export_editable_delivery", side_effect=AssertionError("不应重新导出")):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "editable_ppt_overlay"},

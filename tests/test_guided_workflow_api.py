@@ -6,9 +6,12 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import main
-from main import app, load_job_state, mutate_job_state, update_job_record
+from ppt_system.runtime import runtime_context
+from main import app
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.web.services.job_state_runtime import load_job_state, mutate_job_state
 
 
 class _FakeExecutor:
@@ -61,16 +64,16 @@ class GuidedWorkflowApiTests(unittest.TestCase):
         }
 
         self.executor = _FakeExecutor()
-        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
-        self.jobs_db_patch = patch.object(main, "JOBS_DB_PATH", self.jobs_db_path)
-        self.executor_patch = patch.object(main, "JOB_EXECUTOR", self.executor)
+        self.read_config_patch = patch.object(runtime_context, "read_config", return_value=self.config)
+        self.jobs_db_patch = patch.object(runtime_context, "JOBS_DB_PATH", self.jobs_db_path)
+        self.executor_patch = patch.object(runtime_context, "JOB_EXECUTOR", self.executor)
         self.read_config_patch.start()
         self.jobs_db_patch.start()
         self.executor_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.addCleanup(self.jobs_db_patch.stop)
         self.addCleanup(self.executor_patch.stop)
-        main.JOB_STATUS_CACHE.clear()
+        runtime_context.JOB_STATUS_CACHE.clear()
 
         self.client = app.test_client()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from main import build_export_options
+from ppt_system.web.services.app_config_runtime import build_export_options
 
 
 class ExportOptionsTests(unittest.TestCase):

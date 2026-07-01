@@ -9,9 +9,13 @@ from flask import jsonify, request
 
 from ppt_system.integrations.model_config import get_active_model_config
 from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
+from ppt_system.jobs.job_delivery_state import attach_delivery_actions
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.runtime import runtime_context
 from ppt_system.runtime.time_utils import utc_iso_timestamp
-from ppt_system.web.runtime import get_runtime_module
 from ppt_system.web.services import job_operations_service
+from ppt_system.web.services.app_config_runtime import read_config, resolve_image_preset
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.job_delivery_invalidation import (
@@ -19,7 +23,13 @@ from ppt_system.web.services.job_delivery_invalidation import (
     invalidate_delivery_artifacts,
     invalidate_delivery_result,
 )
+from ppt_system.web.services.job_snapshot_runtime import (
+    build_job_payload_from_state,
+    load_job_snapshot,
+    write_job_snapshot,
+)
 from ppt_system.web.services.job_stage_requeue import activate_requeued_stage, reset_stages_after_artifact_change
+from ppt_system.web.services.job_state_runtime import attach_resume_control, get_job_state_snapshot, mutate_job_state
 from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
 
@@ -77,8 +87,7 @@ def api_apply_image_edit_candidate(job_id: str, candidate_id: str):
 
 
 def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    record, state, job_dir = _load_record_and_state(runtime, job_id)
+    record, state, job_dir = _load_record_and_state(job_id)
     _ensure_not_running(record)
 
     page_no = _coerce_page_no(payload.get("page_no"))
@@ -95,8 +104,8 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
         raise FileNotFoundError(f"第 {page_no} 页还没有可编辑的{slot_label}。")
 
     annotations = _normalize_annotations(payload.get("annotations"))
-    config = runtime.read_config()
-    active_config = _build_active_image_config(runtime, config, record, state)
+    config = read_config()
+    active_config = _build_active_image_config(config, record, state)
     image_profile = get_active_model_config(config, "image")
     image_provider = OpenAIImageProvider(active_config, image_profile)
 
@@ -182,19 +191,18 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
         candidates.append(json.loads(json.dumps(candidate, ensure_ascii=False)))
         del candidates[:-MAX_IMAGE_EDIT_CANDIDATES]
 
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    _sync_job_snapshot(runtime, job_dir, updated_state)
-    return runtime.attach_delivery_actions(updated_state, job_dir)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    _sync_job_snapshot(job_dir, updated_state)
+    return attach_delivery_actions(updated_state, job_dir)
 
 
 def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]:
-    runtime = get_runtime_module()
-    record, state, job_dir = _load_record_and_state(runtime, job_id)
+    record, state, job_dir = _load_record_and_state(job_id)
     _ensure_not_running(record)
 
     candidate = _find_candidate(state, candidate_id)
     if str(candidate.get("status", "")) == "applied":
-        return runtime.attach_delivery_actions(state, job_dir)
+        return attach_delivery_actions(state, job_dir)
 
     page_no = _coerce_page_no(candidate.get("page_no"))
     preview_type = _normalize_preview_type(candidate.get("preview_type"))
@@ -224,27 +232,27 @@ def apply_image_edit_candidate(job_id: str, candidate_id: str) -> dict[str, Any]
         _reset_followup_stages_after_apply(current_state, current_candidate)
 
     should_submit_pipeline = _apply_requeues_pipeline(preview_type)
-    invalidate_delivery_artifacts(runtime, job_dir, job_id=job_id, state=state, include_reference=True)
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
+    invalidate_delivery_artifacts(job_dir, job_id=job_id, state=state, include_reference=True)
+    updated_state = mutate_job_state(job_dir, job_id, updater)
     if _should_submit_pipeline_after_apply(updated_state, preview_type):
-        job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
+        job_operations_service._invalidate_job_snapshot_result(job_dir)
         activation_summary = _build_requeue_running_summary(preview_type)
-        updated_state = _mark_requeued_pipeline_submitting(runtime, job_dir, job_id, activation_summary)
-        _sync_job_snapshot(runtime, job_dir, updated_state)
+        updated_state = _mark_requeued_pipeline_submitting(job_dir, job_id, activation_summary)
+        _sync_job_snapshot(job_dir, updated_state)
         try:
             submit_existing_job_pipeline(record)
         except Exception as exc:
-            updated_state = _mark_requeue_submission_failed(runtime, job_dir, job_id, preview_type, exc)
-            _sync_job_snapshot(runtime, job_dir, updated_state)
+            updated_state = _mark_requeue_submission_failed(job_dir, job_id, preview_type, exc)
+            _sync_job_snapshot(job_dir, updated_state)
             raise
     elif should_submit_pipeline:
-        job_operations_service._invalidate_job_snapshot_result(runtime, job_dir)
-        _sync_job_snapshot(runtime, job_dir, updated_state)
+        job_operations_service._invalidate_job_snapshot_result(job_dir)
+        _sync_job_snapshot(job_dir, updated_state)
     else:
-        _sync_job_snapshot(runtime, job_dir, updated_state)
-    response_state = runtime.attach_delivery_actions(updated_state, job_dir)
-    refreshed_record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
-    runtime.attach_resume_control(response_state, refreshed_record, job_dir)
+        _sync_job_snapshot(job_dir, updated_state)
+    response_state = attach_delivery_actions(updated_state, job_dir)
+    refreshed_record = get_job_record(runtime_context.JOBS_DB_PATH, job_id) or record
+    attach_resume_control(response_state, refreshed_record, job_dir)
     return response_state
 
 
@@ -289,12 +297,12 @@ def build_image_edit_prompt(
     return "\n".join(line for line in lines if str(line).strip())
 
 
-def _load_record_and_state(runtime: Any, job_id: str) -> tuple[dict[str, Any], dict[str, Any], Path]:
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+def _load_record_and_state(job_id: str) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         raise FileNotFoundError("任务不存在")
     job_dir = Path(record["job_dir"])
-    state, _ = runtime.get_job_state_snapshot(job_id, job_dir)
+    state, _ = get_job_state_snapshot(job_id, job_dir)
     if not state:
         raise FileNotFoundError("任务状态不存在")
     return record, state, job_dir
@@ -306,7 +314,6 @@ def _ensure_not_running(record: dict[str, Any]) -> None:
 
 
 def _build_active_image_config(
-    runtime: Any,
     config: dict[str, Any],
     record: dict[str, Any],
     state: dict[str, Any],
@@ -315,7 +322,7 @@ def _build_active_image_config(
     job_meta = state.get("job_meta", {}) if isinstance(state.get("job_meta"), dict) else {}
     image_preset = job_meta.get("image_preset") if isinstance(job_meta.get("image_preset"), dict) else {}
     if not _is_valid_image_preset(image_preset):
-        image_preset = runtime.resolve_image_preset(
+        image_preset = resolve_image_preset(
             config,
             str(request_payload.get("image_preset") or config.get("default_image_preset", "")),
         )
@@ -426,7 +433,6 @@ def _build_requeue_running_summary(preview_type: str) -> str:
 
 
 def _mark_requeued_pipeline_submitting(
-    runtime: Any,
     job_dir: Path,
     job_id: str,
     summary: str,
@@ -435,11 +441,10 @@ def _mark_requeued_pipeline_submitting(
         if str(current_state.get("status") or "") == "queued":
             activate_requeued_stage(current_state, summary=summary)
 
-    return runtime.mutate_job_state(job_dir, job_id, updater)
+    return mutate_job_state(job_dir, job_id, updater)
 
 
 def _mark_requeue_submission_failed(
-    runtime: Any,
     job_dir: Path,
     job_id: str,
     preview_type: str,
@@ -464,9 +469,9 @@ def _mark_requeue_submission_failed(
                 logs.append(message)
             break
 
-    updated_state = runtime.mutate_job_state(job_dir, job_id, updater)
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         status="error",
         current_stage=updated_state.get("current_stage", ""),
@@ -509,18 +514,18 @@ def _invalidate_delivery_result(state: dict[str, Any]) -> None:
     invalidate_delivery_result(state)
 
 
-def _sync_job_snapshot(runtime: Any, job_dir: Path, state: dict[str, Any]) -> None:
-    snapshot = runtime.load_job_snapshot(job_dir)
+def _sync_job_snapshot(job_dir: Path, state: dict[str, Any]) -> None:
+    snapshot = load_job_snapshot(job_dir)
     if not snapshot:
-        snapshot = runtime.build_job_payload_from_state(state, {})
+        snapshot = build_job_payload_from_state(state, {})
     else:
-        snapshot = runtime.build_job_payload_from_state(state, snapshot)
+        snapshot = build_job_payload_from_state(state, snapshot)
     snapshot["pages"] = state.get("pages", [])
     snapshot["reference_pages"] = state.get("reference_pages", [])
     snapshot["element_pages"] = state.get("element_pages", [])
     snapshot["result"] = state.get("result", {})
     snapshot["image_edit_candidates"] = state.get("image_edit_candidates", [])
-    runtime.write_job_snapshot(job_dir, snapshot)
+    write_job_snapshot(job_dir, snapshot)
 
 
 def _normalize_preview_type(value: Any) -> str:

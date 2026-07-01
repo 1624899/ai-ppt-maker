@@ -19,23 +19,6 @@ from ppt_system.web.services.job_delivery_invalidation import (
 )
 
 
-class _RuntimeStub:
-    def __init__(self, snapshot: dict[str, Any] | None = None) -> None:
-        self.JOBS_DB_PATH = Path("jobs.sqlite3")
-        self.snapshot = snapshot
-        self.written_snapshot: dict[str, Any] | None = None
-        self.updated_jobs: list[tuple[Path, str, dict[str, Any]]] = []
-
-    def load_job_snapshot(self, job_dir: Path) -> dict[str, Any]:
-        return json.loads(json.dumps(self.snapshot, ensure_ascii=False)) if self.snapshot else {}
-
-    def write_job_snapshot(self, job_dir: Path, snapshot: dict[str, Any]) -> None:
-        self.written_snapshot = json.loads(json.dumps(snapshot, ensure_ascii=False))
-
-    def update_job_record(self, db_path: Path, job_id: str, **fields: Any) -> None:
-        self.updated_jobs.append((db_path, job_id, fields))
-
-
 class JobDeliveryInvalidationTests(unittest.TestCase):
     def test_remove_stale_delivery_files_deletes_known_pptx_outputs_and_cache_files(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -68,20 +51,36 @@ class JobDeliveryInvalidationTests(unittest.TestCase):
             job_dir = Path(temp_dir)
             stale_paths = _write_stale_delivery_files(job_dir)
             state = {"result": {"deliveries": {"reference_ppt": {"pptx_path": "old"}}}}
-            runtime = _RuntimeStub(snapshot={"result": {"deliveries": {"editable_ppt": {"latest": {}}}}})
+            written_snapshot: dict[str, Any] = {}
+            updated_jobs: list[tuple[str, dict[str, Any]]] = []
 
-            summary = invalidate_delivery_artifacts(
-                runtime,
-                job_dir,
-                job_id="job-demo",
-                state=state,
-                include_reference=True,
-            )
+            def fake_write_snapshot(_job_dir: Path, snapshot: dict[str, Any]) -> None:
+                written_snapshot.update(json.loads(json.dumps(snapshot, ensure_ascii=False)))
+
+            def fake_update_job_record(_db_path: Path, job_id: str, **fields: Any) -> None:
+                updated_jobs.append((job_id, fields))
+
+            with patch(
+                "ppt_system.web.services.job_delivery_invalidation.load_job_snapshot",
+                return_value={"result": {"deliveries": {"editable_ppt": {"latest": {}}}}},
+            ), patch(
+                "ppt_system.web.services.job_delivery_invalidation.write_job_snapshot",
+                side_effect=fake_write_snapshot,
+            ), patch(
+                "ppt_system.web.services.job_delivery_invalidation.update_job_record",
+                side_effect=fake_update_job_record,
+            ):
+                summary = invalidate_delivery_artifacts(
+                    job_dir,
+                    job_id="job-demo",
+                    state=state,
+                    include_reference=True,
+                )
 
             self.assertEqual(state["result"], build_empty_delivery_result())
-            self.assertEqual(runtime.written_snapshot["result"], build_empty_delivery_result())
-            self.assertEqual(runtime.updated_jobs[0][1], "job-demo")
-            self.assertEqual(runtime.updated_jobs[0][2]["result"], build_empty_delivery_result())
+            self.assertEqual(written_snapshot["result"], build_empty_delivery_result())
+            self.assertEqual(updated_jobs[0][0], "job-demo")
+            self.assertEqual(updated_jobs[0][1]["result"], build_empty_delivery_result())
             for path in stale_paths:
                 self.assertFalse(path.exists(), f"旧交付文件未删除：{path.name}")
             self.assertEqual(set(summary.removed), set(stale_paths))
@@ -91,22 +90,29 @@ class JobDeliveryInvalidationTests(unittest.TestCase):
             job_dir = Path(temp_dir)
             stale_paths = _write_stale_delivery_files(job_dir)
             state = {"result": {"deliveries": {"reference_ppt": {"pptx_path": "old"}}}}
-            runtime = _RuntimeStub(snapshot={"result": {"deliveries": {"editable_ppt": {"latest": {}}}}})
+            written_snapshots: list[dict[str, Any]] = []
+            updated_jobs: list[tuple[str, dict[str, Any]]] = []
 
             with patch.object(Path, "unlink", side_effect=OSError("文件被占用")):
                 with self.assertRaises(DeliveryInvalidationError) as context:
-                    invalidate_delivery_artifacts(
-                        runtime,
-                        job_dir,
-                        job_id="job-demo",
-                        state=state,
-                        include_reference=True,
-                    )
+                    with patch(
+                        "ppt_system.web.services.job_delivery_invalidation.write_job_snapshot",
+                        side_effect=lambda _job_dir, snapshot: written_snapshots.append(snapshot),
+                    ), patch(
+                        "ppt_system.web.services.job_delivery_invalidation.update_job_record",
+                        side_effect=lambda _db_path, job_id, **fields: updated_jobs.append((job_id, fields)),
+                    ):
+                        invalidate_delivery_artifacts(
+                            job_dir,
+                            job_id="job-demo",
+                            state=state,
+                            include_reference=True,
+                        )
 
             self.assertEqual(set(context.exception.summary.failed), set(stale_paths))
             self.assertEqual(state["result"], {"deliveries": {"reference_ppt": {"pptx_path": "old"}}})
-            self.assertIsNone(runtime.written_snapshot)
-            self.assertEqual(runtime.updated_jobs, [])
+            self.assertEqual(written_snapshots, [])
+            self.assertEqual(updated_jobs, [])
             for path in stale_paths:
                 self.assertTrue(path.exists(), f"删除失败时不应清理文件记录：{path.name}")
 

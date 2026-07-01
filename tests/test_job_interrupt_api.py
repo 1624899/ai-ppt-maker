@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import tempfile
@@ -8,9 +8,15 @@ from unittest.mock import patch
 
 import main
 from ppt_system.jobs.active_job_registry import clear_job_management_registry, mark_job_managed
+from ppt_system.jobs.job_errors import JobInterruptedError
+from ppt_system.jobs.job_interrupt_signal import has_job_stop_request, request_job_stop
+from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import create_job as create_job_record
 from ppt_system.jobs.job_store import init_db as init_job_db
 from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.runtime import runtime_context
+from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
+from ppt_system.web.services.job_state_runtime import ensure_job_not_stopped
 
 
 class JobInterruptApiTests(unittest.TestCase):
@@ -77,7 +83,7 @@ class JobInterruptApiTests(unittest.TestCase):
                 current_stage="reference_generation",
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
                 client = main.app.test_client()
                 response = client.post(f"/api/jobs/{job_id}/interrupt")
 
@@ -92,7 +98,7 @@ class JobInterruptApiTests(unittest.TestCase):
             self.assertEqual(active_payload_stage["status"], "interrupted")
             self.assertEqual(active_payload_stage["summary"], "任务已暂停，可继续从当前进度恢复")
             self.assertIn("任务已暂停，可继续从当前进度恢复", active_payload_stage["logs"])
-            self.assertTrue(main.has_job_stop_request(job_dir, job_id))
+            self.assertTrue(has_job_stop_request(job_dir, job_id))
 
             updated_state = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(updated_state["status"], "interrupted")
@@ -117,7 +123,7 @@ class JobInterruptApiTests(unittest.TestCase):
                 current_stage="queued",
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
                 client = main.app.test_client()
                 response = client.post(f"/api/jobs/{job_id}/interrupt")
 
@@ -176,9 +182,9 @@ class JobInterruptApiTests(unittest.TestCase):
                 },
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
-                main.JOB_STATUS_CACHE.clear()
-                main.run_job_pipeline(
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
+                runtime_context.JOB_STATUS_CACHE.clear()
+                run_job_pipeline(
                     job_id,
                     job_dir,
                     {},
@@ -197,7 +203,7 @@ class JobInterruptApiTests(unittest.TestCase):
             self.assertEqual(updated_state["status"], "interrupted")
             self.assertEqual(updated_state["current_stage"], "queued")
             self.assertFalse(updated_state["stop_requested"])
-            updated_record = main.get_job_record(jobs_db_path, job_id)
+            updated_record = get_job_record(jobs_db_path, job_id)
             self.assertIsNotNone(updated_record)
             self.assertEqual(updated_record["status"], "interrupted")
             self.assertFalse(updated_record["stop_requested"])
@@ -241,10 +247,10 @@ class JobInterruptApiTests(unittest.TestCase):
                 },
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
-                main.request_job_stop(job_dir, job_id)
-                with self.assertRaises(main.JobInterruptedError):
-                    main.ensure_job_not_stopped(job_dir, job_id, "ppt_export")
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
+                request_job_stop(job_dir, job_id)
+                with self.assertRaises(JobInterruptedError):
+                    ensure_job_not_stopped(job_dir, job_id, "ppt_export")
 
             updated_state = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(updated_state["status"], "interrupted")
@@ -305,8 +311,8 @@ class JobInterruptApiTests(unittest.TestCase):
                 },
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
-                main.request_job_stop(job_dir, job_id)
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
+                request_job_stop(job_dir, job_id)
                 mark_job_managed(job_id)
                 client = main.app.test_client()
                 response = client.post(f"/api/jobs/{job_id}/resume")
@@ -369,10 +375,10 @@ class JobInterruptApiTests(unittest.TestCase):
                 },
             )
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path):
-                main.request_job_stop(job_dir, job_id)
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path):
+                request_job_stop(job_dir, job_id)
                 mark_job_managed(job_id)
-                main.JOB_STATUS_CACHE.clear()
+                runtime_context.JOB_STATUS_CACHE.clear()
                 client = main.app.test_client()
                 response = client.get(f"/api/jobs/{job_id}")
 
@@ -425,12 +431,10 @@ class JobInterruptApiTests(unittest.TestCase):
             )
             update_job_record(jobs_db_path, job_id, touch_updated_at=False, updated_at="2026-01-01 00:00:01.000")
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path), patch.object(
-                main,
-                "read_config",
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path), patch.object(runtime_context, "read_config",
                 return_value={"output_dir": str(base_dir), "stopping_grace_seconds": 1},
             ):
-                main.JOB_STATUS_CACHE.clear()
+                runtime_context.JOB_STATUS_CACHE.clear()
                 client = main.app.test_client()
                 response = client.get(f"/api/jobs/{job_id}")
 
@@ -442,7 +446,7 @@ class JobInterruptApiTests(unittest.TestCase):
             self.assertEqual(active_stage["status"], "interrupted")
             self.assertEqual(active_stage["summary"], "任务已暂停，可继续从当前进度恢复")
 
-            updated_record = main.get_job_record(jobs_db_path, job_id)
+            updated_record = get_job_record(jobs_db_path, job_id)
             self.assertIsNotNone(updated_record)
             self.assertEqual(updated_record["status"], "interrupted")
             self.assertFalse(updated_record["stop_requested"])
@@ -491,12 +495,10 @@ class JobInterruptApiTests(unittest.TestCase):
             update_job_record(jobs_db_path, job_id, touch_updated_at=False, updated_at="2026-01-01 00:00:01.000")
             mark_job_managed(job_id)
 
-            with patch.object(main, "JOBS_DB_PATH", jobs_db_path), patch.object(
-                main,
-                "read_config",
+            with patch.object(runtime_context, "JOBS_DB_PATH", jobs_db_path), patch.object(runtime_context, "read_config",
                 return_value={"output_dir": str(base_dir), "stopping_grace_seconds": 1},
             ):
-                main.JOB_STATUS_CACHE.clear()
+                runtime_context.JOB_STATUS_CACHE.clear()
                 client = main.app.test_client()
                 response = client.get(f"/api/jobs/{job_id}")
 

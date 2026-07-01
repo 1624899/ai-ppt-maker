@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import main
+from ppt_system.runtime import runtime_context
 
 
 class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
@@ -42,7 +43,7 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
             "active_chat_config_id": "",
             "active_image_config_id": "",
         }
-        self.read_config_patch = patch.object(main, "read_config", return_value=self.config)
+        self.read_config_patch = patch.object(runtime_context, "read_config", return_value=self.config)
         self.read_config_patch.start()
         self.addCleanup(self.read_config_patch.stop)
         self.client = main.app.test_client()

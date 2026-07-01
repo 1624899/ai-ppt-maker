@@ -6,10 +6,48 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ppt_system.export.stage_labels import normalize_stage_label
+from ppt_system.export.stage_resume import has_expected_outputs, reconcile_completed_stages
+from ppt_system.generation.generation_options import resolve_generation_options
+from ppt_system.generation.planning_state import has_complete_planning_state
 from ppt_system.runtime.time_utils import utc_now_naive
-from ppt_system.web.runtime import get_runtime_module
+from ppt_system.jobs.active_job_registry import is_job_managed
+from ppt_system.jobs.job_delivery_state import (
+    attach_delivery_actions,
+    get_editable_delivery_bundle,
+    merge_job_result,
+    normalize_job_result_payload,
+)
+from ppt_system.jobs.job_errors import JobInterruptedError
+from ppt_system.jobs.job_interrupt_signal import has_job_stop_request
+from ppt_system.jobs.job_status_messages import INTERRUPTED_MESSAGE, STOPPING_MESSAGE
+from ppt_system.jobs.job_store import get_job as get_job_record
+from ppt_system.jobs.job_store import list_jobs as list_job_records
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.jobs.job_targets import (
+    JOB_TARGET_EDITABLE_PPT,
+    TARGET_LABELS,
+    build_completion_summary,
+    can_upgrade_to_editable,
+    normalize_job_target,
+    should_continue_after_stage,
+)
+from ppt_system.runtime import runtime_context
+from ppt_system.runtime.app_paths import resolve_configured_output_root
 from ppt_system.generation.title_extraction import derive_title_from_content
+from ppt_system.web.services.app_config_runtime import (
+    list_style_reference_images,
+    read_config,
+    resolve_image_preset,
+)
 from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
+from ppt_system.web.services.workflow_policy import (
+    build_confirmation_policy,
+    ensure_workflow_metadata,
+    get_workflow_mode_label,
+    initial_plan_confirmation_state,
+    normalize_workflow_mode,
+)
 
 RUNTIME_STATE_FIELDS = ("status", "current_stage", "stop_requested")
 NON_TERMINAL_JOB_STATUSES = {"", "pending", "queued", "running", "stopping"}
@@ -17,10 +55,6 @@ NON_TERMINAL_JOB_STATUSES.add("awaiting_plan_confirmation")
 STAGE_TERMINAL_STATUSES = {"error", "interrupted"}
 RESUMABLE_STAGE_STATUSES = STAGE_TERMINAL_STATUSES | {"stopping"}
 DEFAULT_STALE_STOPPING_GRACE_SECONDS = 300
-
-
-def _runtime():
-    return get_runtime_module()
 
 
 def write_error(job_dir: Path, payload: dict[str, Any]) -> None:
@@ -43,9 +77,8 @@ def build_job_state(
     job_target: str,
     workflow_mode: str = "auto",
 ) -> dict[str, Any]:
-    runtime = _runtime()
-    normalized_workflow_mode = runtime.normalize_workflow_mode(workflow_mode)
-    confirmation_policy = runtime.build_confirmation_policy(normalized_workflow_mode)
+    normalized_workflow_mode = normalize_workflow_mode(workflow_mode)
+    confirmation_policy = build_confirmation_policy(normalized_workflow_mode)
     pages = [
         {
             "page_no": index + 1,
@@ -73,14 +106,14 @@ def build_job_state(
             "generation_options": generation_options,
             "style_reference_images": style_reference_images,
             "job_target": job_target,
-            "job_target_label": runtime.TARGET_LABELS.get(
+            "job_target_label": TARGET_LABELS.get(
                 job_target,
-                runtime.TARGET_LABELS[runtime.JOB_TARGET_EDITABLE_PPT],
+                TARGET_LABELS[JOB_TARGET_EDITABLE_PPT],
             ),
             "workflow_mode": normalized_workflow_mode,
-            "workflow_mode_label": runtime.get_workflow_mode_label(normalized_workflow_mode),
+            "workflow_mode_label": get_workflow_mode_label(normalized_workflow_mode),
             "confirmation_policy": confirmation_policy,
-            "plan_confirmation": runtime.initial_plan_confirmation_state(normalized_workflow_mode),
+            "plan_confirmation": initial_plan_confirmation_state(normalized_workflow_mode),
         },
         "plan": {},
         "pages": pages,
@@ -128,13 +161,11 @@ def status_file(job_dir: Path) -> Path:
 
 
 def cache_job_state(job_id: str, state: dict[str, Any]) -> None:
-    runtime = _runtime()
-    with runtime.JOB_STATUS_LOCK:
-        runtime.JOB_STATUS_CACHE[job_id] = state
+    with runtime_context.JOB_STATUS_LOCK:
+        runtime_context.JOB_STATUS_CACHE[job_id] = state
 
 
 def save_job_state(job_dir: Path, state: dict[str, Any]) -> None:
-    runtime = _runtime()
     cache_job_state(state["job_id"], state)
     status_file(job_dir).write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     sync_job_record(state["job_id"], state)
@@ -142,9 +173,8 @@ def save_job_state(job_dir: Path, state: dict[str, Any]) -> None:
 
 
 def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
-    runtime = _runtime()
-    with runtime.JOB_STATUS_LOCK:
-        cached = runtime.JOB_STATUS_CACHE.get(job_id)
+    with runtime_context.JOB_STATUS_LOCK:
+        cached = runtime_context.JOB_STATUS_CACHE.get(job_id)
     if cached:
         return cached
     target = status_file(job_dir)
@@ -156,36 +186,34 @@ def load_job_state(job_id: str, job_dir: Path) -> dict[str, Any] | None:
 
 
 def get_job_state_snapshot(job_id: str, job_dir: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    runtime = _runtime()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     record = reconcile_job_record(record)
     if record:
         state = record.get("state", {})
         if isinstance(state, dict) and state:
             enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
-            response_state = runtime.attach_delivery_actions(enriched, job_dir)
+            response_state = attach_delivery_actions(enriched, job_dir)
             attach_resume_control(response_state, record, job_dir)
             return response_state, record
     state = load_job_state(job_id, job_dir)
     if not state:
         return None, record
     enriched = normalize_job_state_labels(enrich_job_state_with_record(state, record))
-    response_state = runtime.attach_delivery_actions(enriched, job_dir)
+    response_state = attach_delivery_actions(enriched, job_dir)
     attach_resume_control(response_state, record, job_dir)
     return response_state, record
 
 
 def attach_resume_control(state: dict[str, Any], record: dict[str, Any] | None, job_dir: Path) -> None:
-    runtime = _runtime()
     job_id = str((record or {}).get("job_id") or state.get("job_id") or "").strip()
     resolved_job_dir = Path(str((record or {}).get("job_dir") or job_dir))
     record_status = str((record or {}).get("status") or "").strip()
     status = record_status or str(state.get("status") or "").strip()
     stop_requested = bool((record or {}).get("stop_requested") or state.get("stop_requested"))
-    is_managed = bool(job_id and runtime.is_job_managed(job_id))
-    has_stop_signal = bool(job_id and runtime.has_job_stop_request(resolved_job_dir, job_id))
+    is_managed = bool(job_id and is_job_managed(job_id))
+    has_stop_signal = bool(job_id and has_job_stop_request(resolved_job_dir, job_id))
     is_waiting_for_stop = status == "stopping" or (is_managed and (has_stop_signal or stop_requested))
-    status_can_resume = status in {"interrupted", "error"} or runtime.can_upgrade_to_editable(state)
+    status_can_resume = status in {"interrupted", "error"} or can_upgrade_to_editable(state)
 
     state["resume_control"] = {
         "can_resume": bool(status_can_resume and not is_waiting_for_stop),
@@ -196,9 +224,8 @@ def attach_resume_control(state: dict[str, Any], record: dict[str, Any] | None, 
 
 
 def mutate_job_state(job_dir: Path, job_id: str, updater: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
-    runtime = _runtime()
-    with runtime.JOB_STATUS_LOCK:
-        current = runtime.JOB_STATUS_CACHE.get(job_id)
+    with runtime_context.JOB_STATUS_LOCK:
+        current = runtime_context.JOB_STATUS_CACHE.get(job_id)
         if current is None:
             target = status_file(job_dir)
             if target.exists():
@@ -207,7 +234,7 @@ def mutate_job_state(job_dir: Path, job_id: str, updater: Callable[[dict[str, An
                 raise RuntimeError(f"找不到任务状态：{job_id}")
         state = json.loads(json.dumps(current, ensure_ascii=False))
         updater(state)
-        runtime.JOB_STATUS_CACHE[job_id] = state
+        runtime_context.JOB_STATUS_CACHE[job_id] = state
         status_file(job_dir).write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         sync_job_record(job_id, state)
     JOB_EVENT_BUS.notify_job_changed(job_id)
@@ -307,8 +334,7 @@ def mark_state_interrupted(state: dict[str, Any], stage_key: str, message: str) 
 
 
 def mark_job_stopping(job_dir: Path, job_id: str, stage_key: str, message: str) -> None:
-    runtime = _runtime()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if str((record or {}).get("status") or "").strip() == "interrupted":
         return
 
@@ -329,13 +355,12 @@ def mark_job_stopping(job_dir: Path, job_id: str, stage_key: str, message: str) 
 
 
 def sync_job_record(job_id: str, state: dict[str, Any]) -> None:
-    runtime = _runtime()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if not record:
         return
-    merged_result = runtime.merge_job_result(record.get("result", {}), state.get("result", {}))
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    merged_result = merge_job_result(record.get("result", {}), state.get("result", {}))
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         status=state.get("status", "queued"),
         current_stage=state.get("current_stage", "queued"),
@@ -349,12 +374,11 @@ def sync_job_record(job_id: str, state: dict[str, Any]) -> None:
 def reconcile_stale_stopping_job(record: dict[str, Any] | None) -> dict[str, Any] | None:
     if not is_stale_stopping_job(record):
         return record
-    runtime = _runtime()
     assert record is not None
     job_id = str(record.get("job_id") or "").strip()
     job_dir = Path(str(record.get("job_dir") or ""))
     stage_key = str(record.get("current_stage") or "queued").strip() or "queued"
-    message = runtime.INTERRUPTED_MESSAGE
+    message = INTERRUPTED_MESSAGE
     target = status_file(job_dir)
 
     if target.exists():
@@ -370,8 +394,8 @@ def reconcile_stale_stopping_job(record: dict[str, Any] | None) -> dict[str, Any
         job_dir.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         cache_job_state(job_id, state)
-        runtime.update_job_record(
-            runtime.JOBS_DB_PATH,
+        update_job_record(
+            runtime_context.JOBS_DB_PATH,
             job_id,
             status="interrupted",
             current_stage=stage_key,
@@ -379,7 +403,7 @@ def reconcile_stale_stopping_job(record: dict[str, Any] | None) -> dict[str, Any
             stop_requested=False,
         )
 
-    return runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+    return get_job_record(runtime_context.JOBS_DB_PATH, job_id) or record
 
 
 def reconcile_job_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -390,7 +414,6 @@ def reconcile_job_record(record: dict[str, Any] | None) -> dict[str, Any] | None
 def reconcile_unmanaged_terminal_stage_job(record: dict[str, Any] | None) -> dict[str, Any] | None:
     if not should_reconcile_unmanaged_terminal_stage_job(record):
         return record
-    runtime = _runtime()
     assert record is not None
     job_id = str(record.get("job_id") or "").strip()
     job_dir = Path(str(record.get("job_dir") or ""))
@@ -405,23 +428,22 @@ def reconcile_unmanaged_terminal_stage_job(record: dict[str, Any] | None) -> dic
     job_dir.mkdir(parents=True, exist_ok=True)
     status_file(job_dir).write_text(json.dumps(reconciled, ensure_ascii=False, indent=2), encoding="utf-8")
     cache_job_state(job_id, reconciled)
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         status=reconciled.get("status", "interrupted"),
         current_stage=reconciled.get("current_stage", record.get("current_stage", "")),
         state=reconciled,
         stop_requested=False,
     )
-    return runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or record
+    return get_job_record(runtime_context.JOBS_DB_PATH, job_id) or record
 
 
 def should_reconcile_unmanaged_terminal_stage_job(record: dict[str, Any] | None) -> bool:
     if not record or str(record.get("status") or "").strip() not in NON_TERMINAL_JOB_STATUSES:
         return False
-    runtime = _runtime()
     job_id = str(record.get("job_id") or "").strip()
-    if not job_id or runtime.is_job_managed(job_id):
+    if not job_id or is_job_managed(job_id):
         return False
     state = load_state_for_record_reconciliation(record, Path(str(record.get("job_dir") or "")))
     return bool(state and find_terminal_stage_for_runtime_status(state) is not None)
@@ -443,9 +465,8 @@ def load_state_for_record_reconciliation(record: dict[str, Any], job_dir: Path) 
 def is_stale_stopping_job(record: dict[str, Any] | None) -> bool:
     if not record or str(record.get("status") or "").strip() != "stopping":
         return False
-    runtime = _runtime()
     job_id = str(record.get("job_id") or "").strip()
-    if not job_id or runtime.is_job_managed(job_id):
+    if not job_id or is_job_managed(job_id):
         return False
     updated_at = parse_job_timestamp(record.get("updated_at"))
     if updated_at is None:
@@ -454,9 +475,8 @@ def is_stale_stopping_job(record: dict[str, Any] | None) -> bool:
 
 
 def resolve_stale_stopping_grace_seconds() -> int:
-    runtime = _runtime()
     try:
-        config = runtime.read_config()
+        config = read_config()
     except Exception:
         config = {}
     raw_value = config.get("stopping_grace_seconds", DEFAULT_STALE_STOPPING_GRACE_SECONDS)
@@ -547,14 +567,13 @@ def _find_style_reference_images(record: dict[str, Any], state: dict[str, Any]) 
     job_id = str(record.get("job_id") or "").strip()
     if not job_dir or not job_id:
         return []
-    return _normalize_style_reference_images(_runtime().list_style_reference_images(job_id, Path(job_dir)))
+    return _normalize_style_reference_images(list_style_reference_images(job_id, Path(job_dir)))
 
 
 def _summarize_stage_progress(state: dict[str, Any]) -> list[dict[str, Any]]:
     stages = state.get("stages", [])
     if not isinstance(stages, list):
         return []
-    runtime = _runtime()
     summarized: list[dict[str, Any]] = []
     for stage in stages:
         if not isinstance(stage, dict):
@@ -563,7 +582,7 @@ def _summarize_stage_progress(state: dict[str, Any]) -> list[dict[str, Any]]:
         summarized.append(
             {
                 "key": key,
-                "label": runtime.normalize_stage_label(key, stage.get("label")),
+                "label": normalize_stage_label(key, stage.get("label")),
                 "status": str(stage.get("status") or "").strip(),
                 "summary": str(stage.get("summary") or "").strip(),
             }
@@ -575,7 +594,7 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
     state = record.get("state", {}) if isinstance(record.get("state"), dict) else {}
     job_meta = state.get("job_meta", {}) if isinstance(state.get("job_meta"), dict) else {}
     request_payload = record.get("request", {}) if isinstance(record.get("request"), dict) else {}
-    workflow_mode = _runtime().normalize_workflow_mode(
+    workflow_mode = normalize_workflow_mode(
         job_meta.get("workflow_mode") or request_payload.get("workflow_mode")
     )
     return {
@@ -595,44 +614,43 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
         "preview_image": _find_preview_image(state),
         "style_reference_images": _find_style_reference_images(record, state),
         "workflow_mode": workflow_mode,
-        "workflow_mode_label": _runtime().get_workflow_mode_label(workflow_mode),
+        "workflow_mode_label": get_workflow_mode_label(workflow_mode),
     }
 
 
 def enrich_job_state_with_record(state: dict[str, Any], record: dict[str, Any] | None) -> dict[str, Any]:
-    runtime = _runtime()
     merged = json.loads(json.dumps(state, ensure_ascii=False))
     if not record:
-        runtime.ensure_workflow_metadata(merged)
+        ensure_workflow_metadata(merged)
         return normalize_job_state_labels(reconcile_job_runtime_status(merged))
     merge_record_runtime_fields(merged, record)
     merged["title"] = str(record.get("title") or merged.get("title") or "")
     merged["pinned_at"] = str(record.get("pinned_at") or "")
     job_meta = merged.setdefault("job_meta", {})
-    runtime.ensure_workflow_metadata(merged, record.get("request", {}))
+    ensure_workflow_metadata(merged, record.get("request", {}))
     job_meta["content"] = str(job_meta.get("content") or record.get("content") or "")
     job_meta["page_count"] = int(job_meta.get("page_count") or record.get("page_count") or 0)
     job_meta["image_quality"] = str(job_meta.get("image_quality") or record.get("image_quality") or "")
     job_meta["style_notes"] = str(job_meta.get("style_notes") or record.get("style_notes") or "")
-    job_target = runtime.normalize_job_target(
+    job_target = normalize_job_target(
         job_meta.get("job_target") or record.get("request", {}).get("job_target"),
-        runtime.JOB_TARGET_EDITABLE_PPT,
+        JOB_TARGET_EDITABLE_PPT,
     )
     job_meta["job_target"] = job_target
-    job_meta["job_target_label"] = runtime.TARGET_LABELS.get(job_target, runtime.TARGET_LABELS[runtime.JOB_TARGET_EDITABLE_PPT])
+    job_meta["job_target_label"] = TARGET_LABELS.get(job_target, TARGET_LABELS[JOB_TARGET_EDITABLE_PPT])
     if not isinstance(job_meta.get("generation_options"), dict):
-        job_meta["generation_options"] = runtime.resolve_generation_options(record.get("request", {}), config=runtime.read_config())
+        job_meta["generation_options"] = resolve_generation_options(record.get("request", {}), config=read_config())
     if not job_meta.get("image_preset"):
-        config = runtime.read_config()
+        config = read_config()
         try:
-            job_meta["image_preset"] = runtime.resolve_image_preset(config, str(record.get("image_preset") or ""))
+            job_meta["image_preset"] = resolve_image_preset(config, str(record.get("image_preset") or ""))
         except ValueError:
             job_meta["image_preset"] = {
                 "name": str(record.get("image_preset") or ""),
                 "label": str(record.get("image_preset") or ""),
             }
     if not isinstance(job_meta.get("style_reference_images"), list) or not job_meta.get("style_reference_images"):
-        job_meta["style_reference_images"] = runtime.list_style_reference_images(str(record["job_id"]), Path(record["job_dir"]))
+        job_meta["style_reference_images"] = list_style_reference_images(str(record["job_id"]), Path(record["job_dir"]))
     return normalize_job_state_labels(reconcile_job_runtime_status(merged))
 
 
@@ -686,62 +704,53 @@ def find_first_stage_with_status(state: dict[str, Any], statuses: set[str]) -> d
 
 
 def normalize_job_state_labels(state: dict[str, Any]) -> dict[str, Any]:
-    runtime = _runtime()
     stages = state.get("stages", [])
     if not isinstance(stages, list):
         return state
     for stage in stages:
         if not isinstance(stage, dict):
             continue
-        stage["label"] = runtime.normalize_stage_label(stage.get("key"), stage.get("label"))
+        stage["label"] = normalize_stage_label(stage.get("key"), stage.get("label"))
     return state
 
 
 def list_job_summaries(limit: int = 100) -> list[dict[str, Any]]:
-    runtime = _runtime()
     records = [
         reconcile_job_record(record) or record
-        for record in runtime.list_job_records(runtime.JOBS_DB_PATH, limit=limit)
+        for record in list_job_records(runtime_context.JOBS_DB_PATH, limit=limit)
     ]
     return [job_summary(record) for record in records]
 
 
 def should_stop_job(job_id: str) -> bool:
-    runtime = _runtime()
-    record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id)
+    record = get_job_record(runtime_context.JOBS_DB_PATH, job_id)
     if bool(record and record.get("stop_requested")):
         return True
     if not record:
         return False
-    return runtime.has_job_stop_request(Path(str(record.get("job_dir") or "")), job_id)
+    return has_job_stop_request(Path(str(record.get("job_dir") or "")), job_id)
 
 
 def remove_job_artifacts(job_dir: Path) -> None:
-    runtime = _runtime()
     if not job_dir.exists():
         return
     try:
         resolved = job_dir.resolve()
     except OSError:
         return
-    config = runtime.read_config()
-    if hasattr(runtime, "resolve_configured_output_root") and hasattr(runtime, "RUNTIME_PATHS"):
-        output_root = runtime.resolve_configured_output_root(runtime.RUNTIME_PATHS, config)
-    else:
-        output_dir = Path(str(config.get("output_dir", "output") or "output"))
-        output_root = (output_dir if output_dir.is_absolute() else runtime.ROOT / output_dir).resolve()
+    config = read_config()
+    output_root = resolve_configured_output_root(runtime_context.RUNTIME_PATHS, config)
     if resolved == output_root or output_root not in resolved.parents:
         return
     shutil.rmtree(resolved, ignore_errors=True)
 
 
 def ensure_job_not_stopped(job_dir: Path, job_id: str, stage_key: str) -> None:
-    runtime = _runtime()
     if should_stop_job(job_id):
-        record = runtime.get_job_record(runtime.JOBS_DB_PATH, job_id) or {}
+        record = get_job_record(runtime_context.JOBS_DB_PATH, job_id) or {}
         if str(record.get("status") or "").strip() != "interrupted":
-            mark_job_stopping(job_dir, job_id, stage_key, runtime.STOPPING_MESSAGE)
-        raise runtime.JobInterruptedError(stage_key)
+            mark_job_stopping(job_dir, job_id, stage_key, STOPPING_MESSAGE)
+        raise JobInterruptedError(stage_key)
 
 
 def _attach_page_evaluations(plan: dict[str, Any], evaluation_result: dict[str, Any]) -> None:
@@ -824,10 +833,9 @@ def extract_element_pages_from_state(state: dict[str, Any]) -> list[dict[str, An
 
 
 def get_job_target_from_state(state: dict[str, Any]) -> str:
-    runtime = _runtime()
-    return runtime.normalize_job_target(
+    return normalize_job_target(
         state.get("job_meta", {}).get("job_target"),
-        runtime.JOB_TARGET_EDITABLE_PPT,
+        JOB_TARGET_EDITABLE_PPT,
     )
 
 
@@ -840,9 +848,8 @@ def finalize_job_completed(
     terminal_stage: str,
     summary: str,
 ) -> None:
-    runtime = _runtime()
     job_target = get_job_target_from_state(state)
-    normalized_result = runtime.normalize_job_result_payload(result_payload)
+    normalized_result = normalize_job_result_payload(result_payload)
     deliveries = normalized_result.get("deliveries", {})
 
     def updater(current_state: dict[str, Any]) -> None:
@@ -863,9 +870,9 @@ def finalize_job_completed(
         current_stage=terminal_stage,
         job_status="completed",
     )
-    append_stage_log(job_dir, job_id, terminal_stage, runtime.build_completion_summary(job_target))
-    runtime.update_job_record(
-        runtime.JOBS_DB_PATH,
+    append_stage_log(job_dir, job_id, terminal_stage, build_completion_summary(job_target))
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
         job_id,
         stop_requested=False,
         status="completed",
@@ -875,21 +882,19 @@ def finalize_job_completed(
 
 
 def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
-    runtime = _runtime()
-
     def updater(state: dict[str, Any]) -> None:
         pages = extract_pages_from_state(state)
         references = extract_reference_pages_from_state(state)
         elements = extract_element_pages_from_state(state)
         job_target = get_job_target_from_state(state)
         completion_map = {
-            "planning": runtime.has_complete_planning_state(state),
-            "reference_generation": runtime.has_expected_outputs(references, len(pages)),
-            "elements_generation": runtime.has_expected_outputs(elements, len(references)),
-            "ppt_export": bool(runtime.get_editable_delivery_bundle(state.get("result", {}))),
+            "planning": has_complete_planning_state(state),
+            "reference_generation": has_expected_outputs(references, len(pages)),
+            "elements_generation": has_expected_outputs(elements, len(references)),
+            "ppt_export": bool(get_editable_delivery_bundle(state.get("result", {}))),
         }
-        runtime.reconcile_completed_stages(state, completion_map)
-        if not runtime.should_continue_after_stage(job_target, "reference_generation"):
+        reconcile_completed_stages(state, completion_map)
+        if not should_continue_after_stage(job_target, "reference_generation"):
             for stage in state.get("stages", []):
                 if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "pending":
                     stage["status"] = "skipped"
@@ -899,14 +904,13 @@ def reconcile_resume_state(job_dir: Path, job_id: str) -> dict[str, Any]:
 
 
 def prepare_state_for_resume(state: dict[str, Any], next_job_target: str) -> None:
-    runtime = _runtime()
     previous_stage_key = str(state.get("current_stage") or "").strip()
     state["stop_requested"] = False
     state["status"] = "queued"
     state["error"] = ""
     job_meta = state.setdefault("job_meta", {})
     job_meta["job_target"] = next_job_target
-    job_meta["job_target_label"] = runtime.TARGET_LABELS[next_job_target]
+    job_meta["job_target_label"] = TARGET_LABELS[next_job_target]
 
     stages = state.get("stages", [])
     if not isinstance(stages, list):

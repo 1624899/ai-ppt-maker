@@ -6,6 +6,8 @@ from typing import Any
 
 from ppt_system.export.delivery_options import EDITABLE_PPT_FILENAMES, REFERENCE_PPT_FILENAME
 from ppt_system.export.editable_delivery_cache import build_editable_delivery_cache_path
+from ppt_system.jobs.job_store import update_job as update_job_record
+from ppt_system.web.services.job_snapshot_runtime import load_job_snapshot, write_job_snapshot
 
 
 @dataclass(frozen=True)
@@ -33,16 +35,20 @@ def invalidate_delivery_result(state: dict[str, Any]) -> dict[str, Any]:
     return state["result"]
 
 
-def invalidate_job_snapshot_result(runtime: Any, job_dir: Path) -> None:
-    snapshot = runtime.load_job_snapshot(job_dir)
+def invalidate_job_snapshot_result(job_dir: Path) -> None:
+    snapshot = load_job_snapshot(job_dir)
     if not snapshot:
         return
     snapshot["result"] = build_empty_delivery_result()
-    runtime.write_job_snapshot(job_dir, snapshot)
+    write_job_snapshot(job_dir, snapshot)
 
 
-def invalidate_job_record_result(runtime: Any, job_id: str) -> None:
-    runtime.update_job_record(runtime.JOBS_DB_PATH, job_id, result=build_empty_delivery_result())
+def invalidate_job_record_result(job_id: str, *, db_path: Path | None = None) -> None:
+    if db_path is None:
+        from ppt_system.runtime import runtime_context
+
+        db_path = runtime_context.JOBS_DB_PATH
+    update_job_record(db_path, job_id, result=build_empty_delivery_result())
 
 
 def remove_stale_delivery_files(
@@ -71,7 +77,6 @@ def remove_stale_delivery_files(
 
 
 def invalidate_delivery_artifacts(
-    runtime: Any,
     job_dir: Path,
     *,
     job_id: str | None = None,
@@ -89,9 +94,9 @@ def invalidate_delivery_artifacts(
 
     if state is not None:
         invalidate_delivery_result(state)
-    invalidate_job_snapshot_result(runtime, job_dir)
+    invalidate_job_snapshot_result(job_dir)
     if job_id:
-        invalidate_job_record_result(runtime, job_id)
+        invalidate_job_record_result(job_id)
     return summary
 
 

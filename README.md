@@ -269,7 +269,7 @@ ai-ppt-maker/
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `default_pages` | 默认生成页数 | `4` |
-| `max_pages` | 最大页数限制 | `10` |
+| `max_pages` | 最大页数限制 | `30` |
 | `default_image_preset` | 默认图片尺寸预设 | `landscape_2k` |
 | `stage1_concurrency` | 原稿图生成并发数 | `5` |
 | `stage2_concurrency` | 元素图生成并发数 | `5` |

@@ -8,9 +8,22 @@ from typing import Any, Sequence
 
 from ppt_system.export.delivery_options import REFERENCE_PPT_FILENAME, build_editable_ppt_filename
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
+from ppt_system.export.reference_preview_export import export_reference_images_to_pptx
+from ppt_system.generation.generation_options import resolve_generation_options
 from ppt_system.generation.generation_prompts import build_elements_prompt
 from ppt_system.image.canvas_normalization import normalize_image_canvas
+from ppt_system.jobs.job_delivery_state import (
+    build_reference_delivery_payload,
+    normalize_job_result_payload,
+    set_reference_delivery,
+)
+from ppt_system.jobs.job_store import create_job as create_job_record
+from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_targets import JOB_TARGET_EDITABLE_PPT, JOB_TARGET_REFERENCE_ONLY
+from ppt_system.runtime import runtime_context
+from ppt_system.runtime.app_paths import resolve_configured_job_dir
+from ppt_system.web.services.app_config_runtime import resolve_image_preset
+from ppt_system.web.services.job_state_runtime import build_job_state, build_job_title, save_job_state
 from ppt_system.web.services.job_submission_runtime import build_active_config
 
 
@@ -137,7 +150,6 @@ def mark_stage(
 
 
 def build_initial_state(
-    runtime: Any,
     *,
     job_id: str,
     content: str,
@@ -149,7 +161,7 @@ def build_initial_state(
     job_target: str,
     create_only: bool,
 ) -> dict[str, Any]:
-    state = runtime.build_job_state(
+    state = build_job_state(
         job_id,
         content,
         len(pages),
@@ -229,7 +241,6 @@ def build_initial_state(
 
 
 def create_reference_only_delivery(
-    runtime: Any,
     *,
     job_id: str,
     job_dir: Path,
@@ -238,25 +249,24 @@ def create_reference_only_delivery(
     image_height: int,
 ) -> dict[str, Any]:
     output_pptx = job_dir / REFERENCE_PPT_FILENAME
-    preview_export = runtime.export_reference_images_to_pptx(
+    preview_export = export_reference_images_to_pptx(
         state["reference_pages"],
         job_dir,
         output_pptx,
         image_width=image_width,
         image_height=image_height,
     )
-    delivery = runtime.build_reference_delivery_payload(
+    delivery = build_reference_delivery_payload(
         job_id,
         job_dir,
         output_pptx,
         page_count=int(preview_export["page_count"]),
         logical_page_count=len(state["reference_pages"]),
     )
-    return runtime.set_reference_delivery(runtime.normalize_job_result_payload({}), delivery)
+    return set_reference_delivery(normalize_job_result_payload({}), delivery)
 
 
 def create_external_reference_job(
-    runtime: Any,
     *,
     config: dict[str, Any],
     source_images: Sequence[Path],
@@ -281,25 +291,20 @@ def create_external_reference_job(
 
     resolved_resize_mode = normalize_resize_mode(resize_mode)
     preset_name = str(image_preset_name or config.get("default_image_preset", "landscape_2k"))
-    image_preset = runtime.resolve_image_preset(config, preset_name)
+    image_preset = resolve_image_preset(config, preset_name)
     resolved_quality = str(image_quality or config.get("image_quality", "medium")).strip().lower()
     if resolved_quality not in {"low", "medium", "high", "auto"}:
         raise ValueError("图像质量只能选择 low、medium、high 或 auto。")
     active_config = build_active_config(config, image_preset, resolved_quality)
-    generation_options = runtime.resolve_generation_options({"page_count": page_count}, config=config)
+    generation_options = resolve_generation_options({"page_count": page_count}, config=config)
 
     resolved_job_id = str(job_id or uuid.uuid4().hex[:12]).strip()
     if not resolved_job_id:
         raise ValueError("任务 ID 不能为空。")
-    if runtime.get_job_record(runtime.JOBS_DB_PATH, resolved_job_id):
+    if get_job_record(runtime_context.JOBS_DB_PATH, resolved_job_id):
         raise ValueError(f"任务已存在：{resolved_job_id}")
 
-    if hasattr(runtime, "resolve_configured_job_dir") and hasattr(runtime, "RUNTIME_PATHS"):
-        job_dir = runtime.resolve_configured_job_dir(runtime.RUNTIME_PATHS, config, resolved_job_id)
-    else:
-        output_dir = Path(str(config.get("output_dir", "output") or "output"))
-        output_root = output_dir if output_dir.is_absolute() else runtime.ROOT / output_dir
-        job_dir = output_root / resolved_job_id
+    job_dir = resolve_configured_job_dir(runtime_context.RUNTIME_PATHS, config, resolved_job_id)
     refs_dir = job_dir / "style_refs"
     stage1_dir = job_dir / "01_reference_pages"
     stage2_dir = job_dir / "02_elements_pages"
@@ -366,7 +371,6 @@ def create_external_reference_job(
 
     job_target = JOB_TARGET_REFERENCE_ONLY if create_only else JOB_TARGET_EDITABLE_PPT
     state = build_initial_state(
-        runtime,
         job_id=resolved_job_id,
         content=resolved_content,
         image_preset=image_preset,
@@ -378,10 +382,9 @@ def create_external_reference_job(
         create_only=create_only,
     )
 
-    result_payload = runtime.normalize_job_result_payload({})
+    result_payload = normalize_job_result_payload({})
     if create_only:
         result_payload = create_reference_only_delivery(
-            runtime,
             job_id=resolved_job_id,
             job_dir=job_dir,
             state=state,
@@ -411,13 +414,13 @@ def create_external_reference_job(
         "external_reference_background": str(background or "#FFFFFF"),
         "external_reference_create_only": bool(create_only),
     }
-    runtime.create_job_record(
-        runtime.JOBS_DB_PATH,
+    create_job_record(
+        runtime_context.JOBS_DB_PATH,
         {
             "job_id": resolved_job_id,
             "status": state["status"],
             "current_stage": state["current_stage"],
-            "title": str(title or runtime.build_job_title(resolved_content)),
+            "title": str(title or build_job_title(resolved_content)),
             "content": resolved_content,
             "page_count": page_count,
             "image_preset": preset_name,
@@ -430,7 +433,7 @@ def create_external_reference_job(
             "stop_requested": False,
         },
     )
-    runtime.save_job_state(job_dir, state)
+    save_job_state(job_dir, state)
     (job_dir / "config.snapshot.json").write_text(
         json.dumps(active_config, ensure_ascii=False, indent=2),
         encoding="utf-8",
