@@ -29,7 +29,8 @@ from ppt_system.web.services.job_snapshot_runtime import (
     write_job_snapshot,
 )
 from ppt_system.web.services.job_stage_requeue import activate_requeued_stage, reset_stages_after_artifact_change
-from ppt_system.web.services.job_state_runtime import attach_resume_control, get_job_state_snapshot, mutate_job_state
+from ppt_system.web.services.job_state_store import mutate_job_state
+from ppt_system.web.services.job_state_view import attach_resume_control, get_job_state_snapshot
 from ppt_system.web.services.job_submission_runtime import build_active_config, submit_existing_job_pipeline
 
 

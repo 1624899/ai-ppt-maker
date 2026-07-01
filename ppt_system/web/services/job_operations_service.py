@@ -28,7 +28,8 @@ from ppt_system.web.services.job_delivery_invalidation import (
     invalidate_delivery_result,
     invalidate_job_snapshot_result,
 )
-from ppt_system.web.services.job_state_runtime import get_job_state_snapshot, mutate_job_state
+from ppt_system.web.services.job_state_store import mutate_job_state
+from ppt_system.web.services.job_state_view import get_job_state_snapshot
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
 
 

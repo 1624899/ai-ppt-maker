@@ -23,7 +23,8 @@ from ppt_system.jobs.job_targets import JOB_TARGET_EDITABLE_PPT, JOB_TARGET_REFE
 from ppt_system.runtime import runtime_context
 from ppt_system.runtime.app_paths import resolve_configured_job_dir
 from ppt_system.web.services.app_config_runtime import resolve_image_preset
-from ppt_system.web.services.job_state_runtime import build_job_state, build_job_title, save_job_state
+from ppt_system.web.services.job_state_model import build_job_state, build_job_title
+from ppt_system.web.services.job_state_store import save_job_state
 from ppt_system.web.services.job_submission_runtime import build_active_config
 
 

@@ -15,7 +15,7 @@ from ppt_system.jobs.db_lifecycle import (
 from ppt_system.runtime import runtime_context
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
-from ppt_system.web.services.job_state_runtime import remove_job_artifacts
+from ppt_system.web.services.job_state_view import remove_job_artifacts
 
 
 def api_job_db_stats():

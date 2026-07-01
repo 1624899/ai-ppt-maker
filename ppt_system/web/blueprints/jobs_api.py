@@ -3,32 +3,36 @@ from __future__ import annotations
 from flask import Blueprint
 
 from ppt_system.web.services import job_agent_draft_service
+from ppt_system.web.services import job_creation_api_service
+from ppt_system.web.services import job_delivery_api_service
 from ppt_system.web.services import job_db_maintenance_service
 from ppt_system.web.services import job_image_edit_service
+from ppt_system.web.services import job_management_api_service
 from ppt_system.web.services import job_operations_service
-from ppt_system.web.services import jobs_api_service
+from ppt_system.web.services import job_plan_api_service
+from ppt_system.web.services import job_query_api_service
 
 bp = Blueprint("jobs_api", __name__)
 
 
 @bp.post("/api/jobs")
 def api_create_job():
-    return jobs_api_service.api_create_job()
+    return job_creation_api_service.api_create_job()
 
 
 @bp.get("/api/jobs/<job_id>")
 def api_job_status(job_id: str):
-    return jobs_api_service.api_job_status(job_id)
+    return job_query_api_service.api_job_status(job_id)
 
 
 @bp.get("/api/jobs/<job_id>/stream")
 def api_job_stream(job_id: str):
-    return jobs_api_service.api_job_stream(job_id)
+    return job_query_api_service.api_job_stream(job_id)
 
 
 @bp.get("/api/jobs")
 def api_job_history():
-    return jobs_api_service.api_job_history()
+    return job_query_api_service.api_job_history()
 
 
 @bp.get("/api/jobs/db")
@@ -43,47 +47,47 @@ def api_job_db_maintenance():
 
 @bp.delete("/api/jobs/<job_id>")
 def api_delete_job(job_id: str):
-    return jobs_api_service.api_delete_job(job_id)
+    return job_management_api_service.api_delete_job(job_id)
 
 
 @bp.patch("/api/jobs/<job_id>")
 def api_update_job(job_id: str):
-    return jobs_api_service.api_update_job(job_id)
+    return job_management_api_service.api_update_job(job_id)
 
 
 @bp.get("/api/jobs/stream")
 def api_job_history_stream():
-    return jobs_api_service.api_job_history_stream()
+    return job_query_api_service.api_job_history_stream()
 
 
 @bp.post("/api/jobs/<job_id>/interrupt")
 def api_interrupt_job(job_id: str):
-    return jobs_api_service.api_interrupt_job(job_id)
+    return job_management_api_service.api_interrupt_job(job_id)
 
 
 @bp.post("/api/jobs/<job_id>/resume")
 def api_resume_job(job_id: str):
-    return jobs_api_service.api_resume_job(job_id)
+    return job_management_api_service.api_resume_job(job_id)
 
 
 @bp.get("/api/jobs/<job_id>/plan")
 def api_get_job_plan(job_id: str):
-    return jobs_api_service.api_get_job_plan(job_id)
+    return job_plan_api_service.api_get_job_plan(job_id)
 
 
 @bp.put("/api/jobs/<job_id>/plan")
 def api_update_job_plan(job_id: str):
-    return jobs_api_service.api_update_job_plan(job_id)
+    return job_plan_api_service.api_update_job_plan(job_id)
 
 
 @bp.post("/api/jobs/<job_id>/plan/confirm")
 def api_confirm_job_plan(job_id: str):
-    return jobs_api_service.api_confirm_job_plan(job_id)
+    return job_plan_api_service.api_confirm_job_plan(job_id)
 
 
 @bp.post("/api/jobs/<job_id>/deliver")
 def api_deliver_job(job_id: str):
-    return jobs_api_service.api_deliver_job(job_id)
+    return job_delivery_api_service.api_deliver_job(job_id)
 
 
 @bp.post("/api/jobs/<job_id>/operations")

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from ppt_system.web.services.job_state_runtime import append_stage_log, update_page_state
+from ppt_system.web.services.job_state_transitions import append_stage_log, update_page_state
 
 
 def submit_reference_task(

@@ -357,7 +357,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             output_pptx.write_bytes(b"reference pptx")
             return {"page_count": 2}
 
-        with patch("ppt_system.web.services.jobs_api_service.export_reference_images_to_pptx", side_effect=fake_reference_export):
+        with patch("ppt_system.web.services.job_delivery_api_service.export_reference_images_to_pptx", side_effect=fake_reference_export):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "reference_ppt"},
@@ -441,7 +441,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
                 "description": "desc",
             }
 
-        with patch("ppt_system.web.services.jobs_api_service.export_editable_delivery", side_effect=fake_export):
+        with patch("ppt_system.web.services.job_delivery_api_service.export_editable_delivery", side_effect=fake_export):
             separate_response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "editable_ppt_separate"},
@@ -531,7 +531,7 @@ class JobApiPageRichnessTests(unittest.TestCase):
             stop_requested=False,
         )
 
-        with patch("ppt_system.web.services.jobs_api_service.export_editable_delivery", side_effect=AssertionError("不应重新导出")):
+        with patch("ppt_system.web.services.job_delivery_api_service.export_editable_delivery", side_effect=AssertionError("不应重新导出")):
             response = self.client.post(
                 f"/api/jobs/{job_id}/deliver",
                 json={"delivery_key": "editable_ppt_overlay"},

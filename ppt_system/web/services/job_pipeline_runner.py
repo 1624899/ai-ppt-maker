@@ -35,21 +35,22 @@ from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.app_config_runtime import build_export_options
 from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
 from ppt_system.web.services.job_snapshot_runtime import build_job_payload, write_job_snapshot
-from ppt_system.web.services.job_state_runtime import (
+from ppt_system.web.services.job_state_model import (
     _attach_page_evaluations,
-    append_stage_log,
     build_job_title,
-    ensure_job_not_stopped,
     extract_element_pages_from_state,
     extract_pages_from_state,
     extract_reference_pages_from_state,
+    get_job_target_from_state,
+)
+from ppt_system.web.services.job_state_store import load_job_state, mutate_job_state
+from ppt_system.web.services.job_state_transitions import (
+    append_stage_log,
+    ensure_job_not_stopped,
     finalize_job_completed,
     finalize_job_error,
     finalize_job_interrupted,
-    get_job_target_from_state,
-    load_job_state,
     mark_job_stopping,
-    mutate_job_state,
     reconcile_resume_state,
     should_stop_job,
     update_page_state,
