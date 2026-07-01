@@ -19,7 +19,8 @@ $EntryPoint = Join-Path $ProjectRoot "main.py"
 $FrontendDist = Join-Path $WebRoot "dist"
 $IconPath = Join-Path $ProjectRoot "packaging\windows\app.ico"
 $UninstallScript = Join-Path $ProjectRoot "packaging\windows\uninstall_ai_ppt_maker.ps1"
-$UninstallWizard = Join-Path $ProjectRoot "packaging\windows\卸载 AI PPT Maker.cmd"
+$UninstallWizardName = [string]::Concat([char]0x5378, [char]0x8F7D, " AI PPT Maker.cmd")
+$UninstallWizard = Join-Path $ProjectRoot (Join-Path "packaging\windows" $UninstallWizardName)
 
 function Invoke-Step {
   param(
@@ -115,13 +116,24 @@ try {
 
   Invoke-Step "Copy helper scripts" {
     $appOutputDir = Join-Path $DistRoot $AppName
-    if (Test-Path $UninstallScript) {
-      New-Item -ItemType Directory -Path $appOutputDir -Force | Out-Null
-      Copy-Item -LiteralPath $UninstallScript -Destination (Join-Path $appOutputDir "uninstall_ai_ppt_maker.ps1") -Force
+    New-Item -ItemType Directory -Path $appOutputDir -Force | Out-Null
+
+    if (-not (Test-Path -LiteralPath $UninstallScript -PathType Leaf)) {
+      throw "Missing uninstall helper script: $UninstallScript"
     }
-    if (Test-Path $UninstallWizard) {
-      New-Item -ItemType Directory -Path $appOutputDir -Force | Out-Null
-      Copy-Item -LiteralPath $UninstallWizard -Destination (Join-Path $appOutputDir "卸载 AI PPT Maker.cmd") -Force
+    if (-not (Test-Path -LiteralPath $UninstallWizard -PathType Leaf)) {
+      throw "Missing uninstall wizard script: $UninstallWizard"
+    }
+
+    $scriptDestination = Join-Path $appOutputDir "uninstall_ai_ppt_maker.ps1"
+    $wizardDestination = Join-Path $appOutputDir $UninstallWizardName
+    Copy-Item -LiteralPath $UninstallScript -Destination $scriptDestination -Force
+    Copy-Item -LiteralPath $UninstallWizard -Destination $wizardDestination -Force
+
+    foreach ($path in @($scriptDestination, $wizardDestination)) {
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Failed to copy helper script: $path"
+      }
     }
   }
 
@@ -129,7 +141,7 @@ try {
     Write-Host "Output directory: $DistRoot" -ForegroundColor Green
     Write-Host "The packaged app stores user data in %APPDATA%\AI PPT Maker by default." -ForegroundColor Green
     Write-Host "Set PPT_SYSTEM_DATA_MODE=portable before launch to use portable data mode." -ForegroundColor Green
-    Write-Host "Uninstall wizard: dist\$AppName\卸载 AI PPT Maker.cmd" -ForegroundColor Green
+    Write-Host "Uninstall wizard: dist\$AppName\$UninstallWizardName" -ForegroundColor Green
   }
 } finally {
   Pop-Location
