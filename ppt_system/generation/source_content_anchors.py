@@ -226,6 +226,17 @@ def _split_outline_sections(lines: list[str]) -> list[dict[str, Any]]:
 
     for line in lines:
         heading_info = _detect_heading_info(line)
+        if heading_info.get("heading_type") == "inline_fact":
+            heading_count += 1
+            if current is not None and (current["lines"] or not _looks_like_container_heading(current["title"])):
+                sections.append(current)
+            current = {
+                "title": heading_info["title"],
+                "lines": [heading_info["fact"]],
+                "page_no": heading_info.get("page_no"),
+            }
+            continue
+
         if heading_info:
             heading_count += 1
             if current is not None and (current["title"] or current["lines"]):
@@ -278,8 +289,46 @@ def _detect_heading_info(line: str) -> dict[str, Any]:
 
     numbered_heading = _HEADING_RE.match(line)
     if numbered_heading:
+        inline_fact = _split_numbered_inline_fact(line)
+        if inline_fact:
+            return {
+                "title": _shorten_title(inline_fact["title"]),
+                "fact": inline_fact["fact"],
+                "page_no": None,
+                "heading_type": "inline_fact",
+            }
         return {"title": _shorten_title(numbered_heading.group(1).strip()), "page_no": None, "heading_type": "section"}
     return {}
+
+
+def _split_numbered_inline_fact(line: str) -> dict[str, str]:
+    cleaned = _clean_fact_line(line)
+    for separator in ("：", ":"):
+        if separator not in cleaned:
+            continue
+        title, body = cleaned.split(separator, 1)
+        title = title.strip()
+        body = body.strip()
+        if _looks_like_numbered_inline_fact(title, body):
+            return {"title": title, "fact": cleaned}
+    return {}
+
+
+def _looks_like_numbered_inline_fact(title: str, body: str) -> bool:
+    if not title or not body:
+        return False
+    if len(title) > 36:
+        return False
+    if len(body) >= 8:
+        return True
+    return bool(re.search(r"[。！？!?；;]|\d", body))
+
+
+def _looks_like_container_heading(title: str) -> bool:
+    cleaned = str(title or "").strip()
+    if not cleaned:
+        return False
+    return cleaned.endswith(("：", ":"))
 
 
 def _break_inline_page_headings(content: str) -> str:

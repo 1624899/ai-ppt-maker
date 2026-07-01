@@ -540,6 +540,71 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("知识可维护、可复用，降低长期运营成本", facts)
         self.assertNotIn("为新人学习、测试支持、日常答疑提供统一入口：知识可维护", facts)
 
+    def test_numbered_inline_facts_keep_full_business_content(self) -> None:
+        content = """
+一、下一步计划：
+1、银保产品常态化：银保条线产品按产品智造新模式及UAT自动化标准化SOP开展测试工作。时间：长期
+2、个险产品推广：个险条线按产品类型验收完成后根据计划逐步开展推广应用。时间：7.1-8.31
+3、日常维护与功能迭代：遗留问题清零，持续做好日常维护及功能迭代。时间：长期
+4、组织变革与人才转型：制定定制化培训以适应测试角色转换。时间：7.15-8.15
+5、智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期
+""".strip()
+        anchors = build_source_content_anchors(content, page_count=1)
+        facts = "\n".join(fact for anchor in anchors for fact in anchor["facts"])
+
+        self.assertEqual(len(anchors), 5)
+        self.assertIn("银保产品常态化：银保条线产品按产品智造新模式及UAT自动化标准化SOP开展测试工作。时间：长期", facts)
+        self.assertIn("智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期", facts)
+        self.assertNotIn("...", facts)
+
+    def test_grounded_model_plan_is_preserved_after_source_anchor_validation(self) -> None:
+        content = """
+一、下一步计划：
+1、银保产品常态化：银保条线产品按产品智造新模式及UAT自动化标准化SOP开展测试工作。时间：长期
+2、个险产品推广：个险条线按产品类型验收完成后根据计划逐步开展推广应用。时间：7.1-8.31
+3、日常维护与功能迭代：遗留问题清零，持续做好日常维护及功能迭代。时间：长期
+4、组织变革与人才转型：制定定制化培训以适应测试角色转换。时间：7.15-8.15
+5、智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期
+""".strip()
+
+        plan = normalize_content_plan(
+            {
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "下一步计划",
+                        "summary": "围绕银保、个险、维护迭代、组织人才与智能化探索推进下一阶段工作。",
+                        "bullets": [
+                            "银保产品常态化：银保条线产品按产品智造新模式及UAT自动化标准化SOP开展测试工作。时间：长期",
+                            "个险产品推广：个险条线按产品类型验收完成后根据计划逐步开展推广应用。时间：7.1-8.31",
+                            "日常维护与功能迭代：遗留问题清零，持续做好日常维护及功能迭代。时间：长期",
+                            "组织变革与人才转型：制定定制化培训以适应测试角色转换。时间：7.15-8.15",
+                            "智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期",
+                        ],
+                        "source_anchor_ids": ["S01", "S02", "S03", "S04", "S05"],
+                        "layout_family": "grid_n_x_m",
+                        "page_richness": "high",
+                    }
+                ]
+            },
+            content=content,
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="",
+            style_guide=self.style_guide,
+            has_reference_images=False,
+            generation_options={"include_cover_page": False, "page_richness_default": "high"},
+        )
+
+        page = plan["pages"][0]
+        joined = "\n".join([page["title"], page["summary"], *page["bullets"]])
+        self.assertEqual(page["title"], "下一步计划")
+        self.assertEqual(len(page["bullets"]), 5)
+        self.assertIn("银保产品常态化：银保条线产品按产品智造新模式及UAT自动化标准化SOP开展测试工作。时间：长期", joined)
+        self.assertIn("智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期", joined)
+        self.assertNotIn("...", joined)
+
     def test_flat_paragraph_allows_ai_information_architecture_but_keeps_facts_grounded(self) -> None:
         content = (
             "本阶段完成保全事项梳理接入，沉淀19份业务文档，覆盖退保类、给付类、贷还款类、变更类4大类保全场景，"

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -522,21 +523,27 @@ def normalize_content_plan(
             raw_page=raw,
             content_budget=source_content_budget,
         )
-        bullets = raw.get("bullets", [])
-        if not isinstance(bullets, list):
-            bullets = []
-        bullets = [str(item).strip() for item in bullets if str(item).strip()]
+        raw_title = str(raw.get("title", "")).strip()
+        raw_summary = str(raw.get("summary", "")).strip()
+        bullets = _normalize_raw_bullets(raw.get("bullets"))
         if anchored_content.get("has_content"):
-            title = str(anchored_content.get("title") or fallback["title"]).strip()
-            summary = str(anchored_content.get("summary") or fallback["summary"]).strip()
-            bullets = [
+            anchored_title = str(anchored_content.get("title") or fallback["title"]).strip()
+            anchored_summary = str(anchored_content.get("summary") or fallback["summary"]).strip()
+            anchored_bullets = [
                 str(item).strip()
                 for item in anchored_content.get("bullets", [])
                 if str(item).strip()
             ]
+            title = _resolve_page_title(raw_title, anchored_title, selected_source_anchors)
+            if _raw_page_content_is_source_grounded(raw_summary, bullets, selected_source_anchors, source_content_budget):
+                summary = raw_summary or anchored_summary
+                bullets = bullets or anchored_bullets
+            else:
+                summary = anchored_summary
+                bullets = anchored_bullets
         else:
-            title = str(raw.get("title") or fallback["title"]).strip()
-            summary = str(raw.get("summary") or fallback["summary"]).strip()
+            title = str(raw_title or fallback["title"]).strip()
+            summary = str(raw_summary or fallback["summary"]).strip()
         if bullets:
             fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
@@ -664,6 +671,138 @@ _CONTENT_FAMILY_MAP: list[tuple[list[str], str]] = [
     (["上下", "层级", "分层", "垂直"], "split_top_bottom"),
     (["网格", "并列", "罗列", "清单", "多维"], "grid_n_x_m"),
 ]
+
+
+_ARABIC_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
+
+
+def _normalize_raw_bullets(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _resolve_page_title(raw_title: str, anchored_title: str, selected_anchors: list[dict[str, Any]]) -> str:
+    if raw_title and not _has_unsupported_numbers(raw_title, _join_anchor_source(selected_anchors)):
+        return raw_title
+    return anchored_title
+
+
+def _raw_page_content_is_source_grounded(
+    summary: str,
+    bullets: list[str],
+    selected_anchors: list[dict[str, Any]],
+    content_budget: Any,
+) -> bool:
+    """让模型保留动态规划权，同时阻止脱离源文的数字和事实。"""
+
+    raw_text = "\n".join([str(summary or "").strip(), *bullets]).strip()
+    if not raw_text or not selected_anchors:
+        return False
+
+    source_text = _join_anchor_source(selected_anchors)
+    if _has_unsupported_numbers(raw_text, source_text):
+        return False
+    if _text_grounded_score(raw_text, source_text) < 0.36:
+        return False
+
+    facts = _collect_anchor_facts(selected_anchors)
+    if not facts:
+        return True
+
+    covered_count = sum(1 for fact in facts if _fact_is_covered_by_text(fact, raw_text))
+    if _facts_are_section_like(facts):
+        return covered_count >= len(facts)
+
+    max_bullets = int(getattr(content_budget, "max_bullets", 0) or 0)
+    required_count = min(len(facts), max(1, max_bullets or len(facts)))
+    if len(facts) <= 2:
+        required_count = len(facts)
+    return covered_count >= required_count
+
+
+def _collect_anchor_facts(anchors: list[dict[str, Any]]) -> list[str]:
+    facts: list[str] = []
+    for anchor in anchors:
+        raw_facts = anchor.get("facts", [])
+        if isinstance(raw_facts, list):
+            facts.extend(str(item).strip() for item in raw_facts if str(item).strip())
+    return facts
+
+
+def _join_anchor_source(anchors: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for anchor in anchors:
+        for key in ("title", "source_text"):
+            value = str(anchor.get(key, "")).strip()
+            if value:
+                parts.append(value)
+        facts = anchor.get("facts", [])
+        if isinstance(facts, list):
+            parts.extend(str(item).strip() for item in facts if str(item).strip())
+    return "\n".join(parts)
+
+
+def _has_unsupported_numbers(text: str, source_text: str) -> bool:
+    source_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(source_text)}
+    source_numbers.discard("")
+    for number in _ARABIC_NUMBER_RE.findall(text):
+        normalized = _normalize_number_token(number)
+        if normalized and normalized not in source_numbers:
+            return True
+    return False
+
+
+def _normalize_number_token(value: str) -> str:
+    return str(value or "").strip().rstrip("%")
+
+
+def _text_grounded_score(query: str, source: str) -> float:
+    query_chars = _match_chars(query)
+    source_chars = _match_chars(source)
+    if not query_chars or not source_chars:
+        return 0.0
+    return len(query_chars & source_chars) / max(1, len(query_chars))
+
+
+def _fact_is_covered_by_text(fact: str, text: str) -> bool:
+    cleaned = str(fact or "").strip()
+    if not cleaned:
+        return False
+
+    heading = _fact_heading(cleaned)
+    if heading and _text_grounded_score(heading, text) >= 0.78:
+        return True
+
+    fact_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(cleaned)}
+    fact_numbers.discard("")
+    text_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(text)}
+    if fact_numbers and fact_numbers.issubset(text_numbers) and _text_grounded_score(cleaned, text) >= 0.28:
+        return True
+
+    return _text_grounded_score(cleaned, text) >= 0.52
+
+
+def _fact_heading(text: str) -> str:
+    cleaned = str(text or "").strip()
+    for separator in ("：", ":"):
+        if separator in cleaned:
+            return cleaned.split(separator, 1)[0].strip()
+    return ""
+
+
+def _facts_are_section_like(facts: list[str]) -> bool:
+    if len(facts) < 2:
+        return False
+    return sum(1 for fact in facts if _fact_heading(fact)) >= max(2, len(facts) - 1)
+
+
+def _match_chars(text: str) -> set[str]:
+    return {
+        char.lower()
+        for char in str(text)
+        if char.isalnum() or "\u4e00" <= char <= "\u9fff"
+    }
 
 
 def _infer_layout_family(title: str, summary: str, bullets: list[str], index: int) -> str:
