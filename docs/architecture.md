@@ -113,6 +113,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。用户输�
 ┌─────────────────────────┐
 │  ① 内容规划 (Planning)    │  content_agent.py
 │  - 分析长文结构            │  → style_guide + 逐页 plan
+│  - 源文事实锚点保真校验      │  LLM 动态规划 + 程序校验
 │  - 设计语法约束            │  design_grammar.py
 │  - 版式多样性保证          │  ≥3 种版式家族，相邻不重复
 └───────────┬─────────────┘
@@ -201,7 +202,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。用户输�
 | 文件 | 职责 |
 |------|------|
 | `__init__.py` | 包初始化标记 |
-| `content_agent.py` | **核心规划引擎**。调用对话 AI 分析长文，构建完整的多页内容规划，包括生成 `style_guide`（色彩、字体、视觉风格）和逐页 `plan`（标题、内容要点、版式建议、元素规划、源锚点分配和图像 prompt） |
+| `content_agent.py` | **核心规划引擎**。调用对话 AI 分析长文，构建完整的多页内容规划，包括生成 `style_guide`（色彩、字体、视觉风格）和逐页 `plan`（标题、内容要点、版式建议、元素规划、源锚点分配和图像 prompt）；归一化阶段优先保留通过源文事实校验的 LLM 动态规划结果，仅在数字或事实偏离源文时回退到锚点派生内容 |
 | `planner.py` | 规划构建工具集。估算页数、推断风格类型、为每页推断版式家族、去重版式序列、构建默认元素规划 |
 | `design_grammar.py` | **设计语法系统**。定义版式家族（grid、timeline、hub-spoke、split、process、hero cards）及其槽位模板、元素图元、变化策略；归一化版式分配与别名映射，强制页间多样性约束 |
 | `generation_prompts.py` | 图像生成 prompt 构建器。为每页构建原稿图和元素图的 prompt，支持多种压缩模式（baseline、compact、slot_brief），融合风格锚点、视觉引导和形状约束 |
@@ -213,7 +214,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。用户输�
 | `generation_options.py` | 生成选项解析。标准化生成选项（封面页开关、页面丰富度、风格参考遵循度），合并用户参数与配置默认值 |
 | `planning_constraints.py` | 规划约束生成器。生成文本约束规则注入规划 prompt，强制叙事结构、去重和源锚点覆盖 |
 | `planning_state.py` | 规划状态检查。检测任务的页面规划是否完整可恢复（所有页面有 prompt、页数正确） |
-| `source_content_anchors.py` | 源内容锚点解析。将用户输入文本解析为结构化的「事实锚点」（S01, S02…），通过检测标题、编号段落和分页拆分来映射锚点到页面 |
+| `source_content_anchors.py` | 源内容锚点解析。将用户输入文本解析为结构化的「事实锚点」（S01, S02…），通过检测标题、编号段落和分页拆分来映射锚点到页面；编号加冒号的业务条目会作为完整事实保留，短标题仅用于展示和匹配 |
 | `source_content_control.py` | 源内容预算控制。定义 `SourceContentBudget` 数据类，根据页面丰富度和事实数量解析每页的内容预算（最大要点数、摘要长度） |
 | `prompt_visual_guidance.py` | 视觉引导构建器。为 prompt 构建视觉引导文本，根据是否存在参考图和风格上下文调整语气 |
 | `reference_shape_constraints.py` | 参考图形状约束。生成 prompt 行来强制形状清晰度约束（连接线样式、元素边界、反贴纸规则） |

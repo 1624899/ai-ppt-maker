@@ -45,6 +45,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。你可以�
 
 ### 🧠 智能内容规划
 - 对话模型自动分析长文，生成风格指南（`style_guide`）和逐页规划
+- 源文事实锚点会无损保留编号条目、日期、数字和业务口径；LLM 负责动态规划页面结构，后处理只做事实校验与必要回退，避免机械截断原文要点
 - **设计语法系统**：归一化版式家族，确保页间版式多样性（≥3 种版式家族、相邻页不重复）
 - 支持 prompt 压缩策略，优化 Token 消耗
 
@@ -213,6 +214,8 @@ ai-ppt-maker/
 ├── ppt_system/                 # 核心库
 │   ├── generation/             # 内容规划、设计语法、Prompt 构建
 │   │   ├── content_agent.py    #   AI 内容规划与风格指南生成
+│   │   ├── source_content_anchors.py # 源文事实锚点解析与保真
+│   │   ├── source_content_control.py # 内容预算与事实承载控制
 │   │   ├── design_grammar.py   #   版式家族归一化与多样性约束
 │   │   ├── generation_prompts.py #  原稿图/元素图 Prompt 构建
 │   │   ├── page_evaluator.py   #   页面规划质量评估
