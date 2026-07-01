@@ -51,6 +51,8 @@ def _configure_runtime_environment() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _configure_runtime_environment()
+    from ppt_system.export.text_script_guard import validate_generated_text_script
+
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) != 1:
         print(json.dumps({"ok": False, "error": "usage: text_script_worker <script_path>"}, ensure_ascii=False), file=sys.stderr)
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
 
     script_path = Path(args[0]).resolve()
     try:
+        validate_generated_text_script(script_path)
         captured_stdout = io.StringIO()
         captured_stderr = io.StringIO()
         with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):

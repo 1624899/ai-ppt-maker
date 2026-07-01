@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, build_slide_layer_specs, normalize_layer_mode
 from ppt_system.export.export_artifact_policy import FINAL_PPTX_ARTIFACT_KIND
+from ppt_system.export.text_script_guard import validate_generated_text_script
 from ppt_system.export.text_script_schema import normalize_page_script
 from ppt_system.runtime.interruptible_execution import run_interruptible_process
 
@@ -34,6 +35,7 @@ def execute_generated_text_script(
     timeout_seconds: int = 180,
     stop_checker: StopChecker | None = None,
 ) -> Path:
+    validate_generated_text_script(script_path)
     worker_script = Path(__file__).with_name("text_script_worker.py")
     command = [sys.executable, str(worker_script), str(Path(script_path).resolve())]
     try:

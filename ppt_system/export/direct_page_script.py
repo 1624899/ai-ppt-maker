@@ -278,6 +278,8 @@ def _write_page_preview_script(
     script_path: Path,
 ) -> Path:
     """把当前 page_script 写成可执行的单页脚本文件。"""
+    normalized_page_script = normalize_page_script(str(page_script))
+    script_path.parent.mkdir(parents=True, exist_ok=True)
     script_source = build_project_script_source(
         project,
         work_dir,
@@ -285,7 +287,7 @@ def _write_page_preview_script(
         [
             {
                 "page_no": int(page_no),
-                "script": str(page_script),
+                "script": normalized_page_script,
                 "asset_adjustments": project.get("asset_adjustments", {}).get(str(int(page_no)), {}),
             }
         ],

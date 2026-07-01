@@ -17,6 +17,7 @@ from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
 from ppt_system.export.export_step_checkpoint import STEP_CHECKPOINT_DIR_NAME
 from ppt_system.export.direct_page_script import (
+    _write_page_preview_script,
     build_direct_page_refine_prompt,
     build_direct_page_prompt,
     prepare_direct_page_assets,
@@ -115,6 +116,32 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertIn("本轮只修文字", prompt)
         self.assertIn("asset_adjustments 固定返回空对象 {}", prompt)
         self.assertIn("请直接修正 page_script", prompt)
+
+    def test_write_page_preview_script_normalizes_page_script(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            script_path = work_dir / "page_01" / "generated_text_layout_preview_round_01.py"
+            project = {
+                "slide_width_inch": 10.0,
+                "image_width": 400,
+                "image_height": 240,
+                "default_font": {"font_name": "Microsoft YaHei", "font_size": 20, "color": "355C7D"},
+                "pages": [{"page_no": 1, "title": "预览页", "summary": "", "texts": []}],
+            }
+
+            _write_page_preview_script(
+                project=project,
+                work_dir=work_dir,
+                output_pptx=root / "preview.pptx",
+                page_no=1,
+                page_script='add_text(slide, "预览页", 10, 20, 120, 40, size=20, bold=true)',
+                script_path=script_path,
+            )
+
+            script_source = script_path.read_text(encoding="utf-8")
+            self.assertIn('add_text(slide, "预览页", 10, 20, 120, 40, size=20, bold=True)', script_source)
+            self.assertNotIn("bold=true", script_source)
 
     def test_prepare_assets_does_not_apply_global_asset_adjustment(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -345,6 +372,56 @@ def build_deck():
             self.assertIn("无法更新 PPT 文件", message)
             self.assertIn("请关闭该 PPT 文件后重新导出", message)
             self.assertNotIn("traceback:", message)
+
+    def test_execute_generated_script_rejects_web_app_entry_before_timeout(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            script_path = root / "generated_text_layout_preview_round_01.py"
+            script_path.write_text(
+                """
+from __future__ import annotations
+
+from ppt_system.web import create_app
+
+
+def build_deck():
+    return "never_reached.pptx"
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RuntimeError) as context:
+                execute_generated_text_script(script_path, timeout_seconds=1)
+
+            message = str(context.exception)
+            self.assertIn("生成脚本包含 Web 服务相关导入", message)
+            self.assertIn("不能导入或启动本地 Web 服务", message)
+
+    def test_execute_generated_script_rejects_app_run_before_timeout(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            script_path = root / "generated_text_layout_preview_round_01.py"
+            script_path.write_text(
+                """
+from __future__ import annotations
+
+
+def build_deck():
+    return "never_reached.pptx"
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=7860)
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RuntimeError) as context:
+                execute_generated_text_script(script_path, timeout_seconds=1)
+
+            message = str(context.exception)
+            self.assertIn("生成脚本包含 Web 服务启动调用", message)
+            self.assertIn("必须自然退出", message)
 
     def test_execute_generated_script_stops_running_worker(self) -> None:
         with TemporaryDirectory() as temp_dir:
