@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, GitBranch } from 'lucide-react';
-import clsx from 'clsx';
-import { WORKFLOW_MODE_OPTIONS, normalizeWorkflowMode } from '../../utils/workflowMode';
+
+import { WORKFLOW_MODE_OPTIONS, normalizeWorkflowMode } from '../../utils/workflowMode';import { uiClassName } from "../../utils/uiClassName";
 
 const MODE_ICONS = {
   auto: CheckCircle2,
-  guided: GitBranch,
+  guided: GitBranch
 };
 
 const WorkflowModeSwitch = ({ value, onChange, disabled = false }) => {
@@ -23,14 +23,14 @@ const WorkflowModeSwitch = ({ value, onChange, disabled = false }) => {
 
   return (
     <div
-      className={clsx(
+      className={uiClassName(
         'workflow-mode-switch',
         `workflow-mode-switch--${currentValue}`,
-        switching && 'is-switching',
-      )}
+        switching && 'is-switching')}
+
       role="radiogroup"
-      aria-label="生成工作流"
-    >
+      aria-label="生成工作流">
+      
       {WORKFLOW_MODE_OPTIONS.map((option) => {
         const Icon = MODE_ICONS[option.value] || CheckCircle2;
         const active = option.value === currentValue;
@@ -40,20 +40,20 @@ const WorkflowModeSwitch = ({ value, onChange, disabled = false }) => {
             type="button"
             role="radio"
             aria-checked={active}
-            className={clsx(`workflow-mode-switch__option--${option.value}`, active && 'is-active')}
+            className={uiClassName(`workflow-mode-switch__option--${option.value}`, active && 'is-active')}
             onClick={() => onChange?.(option.value)}
-            disabled={disabled}
-          >
+            disabled={disabled}>
+            
             <Icon size={16} />
             <span>
               <strong>{option.label}</strong>
               <small>{option.description}</small>
             </span>
-          </button>
-        );
+          </button>);
+
       })}
-    </div>
-  );
+    </div>);
+
 };
 
 export default WorkflowModeSwitch;

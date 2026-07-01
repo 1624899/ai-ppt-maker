@@ -1,0 +1,214 @@
+@media (prefers-reduced-motion: reduce) {
+  :global(*) ,
+  :global(*)::before,
+  :global(*)::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 1280px) {
+  :global(body) {
+    overflow: auto;
+  }
+
+  :global(#root) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .workspace-shell {
+    grid-template-columns: minmax(220px, 0.82fr) minmax(420px, 1.5fr);
+    align-items: start;
+    overflow: visible;
+  }
+
+  .ppt-studio {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 980px) {
+  .workspace-shell,
+  .ppt-studio__body {
+    grid-template-columns: 1fr;
+  }
+
+  .ppt-studio,
+  .task-center,
+  .agent-workspace {
+    grid-column: auto;
+  }
+
+  .preview-card {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 860px) {
+  :global(#root) {
+    padding: 10px;
+  }
+
+  .workspace-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .ppt-studio__body {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-card {
+    grid-row: auto;
+  }
+
+  .agent-workspace__header {
+    display: grid;
+  }
+
+  .agent-feedback-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-feedback-card .agent-avatar {
+    display: none;
+  }
+
+  .mode-switch {
+    justify-content: stretch;
+  }
+
+  .ppt-studio__header {
+    display: grid;
+  }
+
+  .image-preview-switch {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .mode-switch button,
+  .image-preview-switch button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .form-grid,
+  .page-outline,
+  .source-mode-switch,
+  .workflow-mode-switch,
+  .task-launch-panel__body,
+  .planning-editor__deck,
+  .page-plan-editor__grid,
+  .stage-progress__steps,
+  .settings-body,
+  .model-form__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-modal {
+    padding: 10px;
+  }
+
+  .settings-modal__shell,
+  .style-reference-modal__shell,
+  .content-editor-modal__shell {
+    max-height: calc(100vh - 20px);
+  }
+
+  .content-editor-modal {
+    padding: 10px;
+  }
+
+  .content-editor-modal__shell {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+    border-radius: 18px;
+  }
+
+  .content-editor-modal__body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(260px, 1fr) auto;
+  }
+
+  .content-editor-modal__side {
+    max-height: 260px;
+  }
+
+  .content-editor-modal__footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .task-launch-panel__head {
+    padding: 20px 18px 14px;
+  }
+
+  .task-launch-panel__body {
+    padding: 14px;
+  }
+
+  .task-launch-brief {
+    position: relative;
+    min-height: auto;
+  }
+
+  .settings-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .model-form__actions {
+    display: grid;
+  }
+
+  .chat-composer,
+  .markup-panel__body,
+  .style-reference-modal__body {
+    grid-template-columns: 1fr;
+  }
+
+  .markup-panel,
+  .style-reference-modal {
+    padding: 10px;
+  }
+
+  .markup-panel__shell {
+    max-height: calc(100vh - 20px);
+  }
+}
+
+@media (max-height: 760px) {
+  .content-editor-modal {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .content-editor-modal__shell {
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .content-editor-modal__header {
+    min-height: 62px;
+    padding: 12px 18px 10px;
+  }
+
+  .content-editor-modal__header h3 {
+    font-size: 17px;
+  }
+
+  .content-editor-modal__body {
+    padding: 10px 12px;
+  }
+
+  .content-editor-modal__footer {
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+}

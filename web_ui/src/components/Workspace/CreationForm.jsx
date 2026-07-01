@@ -1,35 +1,36 @@
 import { useEffect, useEffectEvent, useState } from 'react';
 import { FileImage, FileText, WandSparkles } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
+import { DEFAULT_GENERATION_CONFIG } from '../../utils/configDefaults';
 import { resolveIncludeCoverPage } from '../../utils/generationOptions';
 import { getJobMeta } from '../../utils/jobPresentation';
 import { getWorkflowSubmitLabel, getWorkflowModeFromJob, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
 import ContentEditorDialog from './ContentEditorDialog';
 import ImageUploadPreviewList from './ImageUploadPreviewList';
-import WorkflowModeSwitch from './WorkflowModeSwitch';
+import WorkflowModeSwitch from './WorkflowModeSwitch';import { uiClassName } from "../../utils/uiClassName";
 
 const RICHNESS_LEVELS = [
-  { value: 'low', label: '低' },
-  { value: 'medium', label: '中' },
-  { value: 'high', label: '高' },
-];
+{ value: 'low', label: '低' },
+{ value: 'medium', label: '中' },
+{ value: 'high', label: '高' }];
+
 
 const REFERENCE_STYLE_ADHERENCE_FALLBACKS = [
-  { value: 'loose', label: '宽松' },
-  { value: 'balanced', label: '适度' },
-  { value: 'strict', label: '严格' },
-];
+{ value: 'loose', label: '宽松' },
+{ value: 'balanced', label: '适度' },
+{ value: 'strict', label: '严格' }];
+
 
 const SOURCE_MODES = {
   PROMPT: 'prompt',
-  EXTERNAL_REFERENCE: 'external_reference',
+  EXTERNAL_REFERENCE: 'external_reference'
 };
 
 const RESIZE_MODE_OPTIONS = [
-  { value: 'stretch', label: '拉伸填满' },
-  { value: 'contain', label: '等比留白' },
-  { value: 'cover', label: '等比裁切' },
-];
+{ value: 'stretch', label: '拉伸填满' },
+{ value: 'contain', label: '等比留白' },
+{ value: 'cover', label: '等比裁切' }];
+
 
 const buildPageRichnessMap = (list) => {
   return list.reduce((acc, value, index) => {
@@ -54,7 +55,9 @@ const createInitialValues = (config, currentJob, workflowMode) => {
   const meta = getJobMeta(currentJob);
   const generationOptions = meta.generation_options || {};
   const richnessMap = generationOptions.page_richness_map || {};
-  const pageCount = Number(meta.page_count || currentJob?.page_count || config.default_pages || 4);
+  const pageCount = Number(
+    meta.page_count || currentJob?.page_count || config.default_pages || DEFAULT_GENERATION_CONFIG.defaultPages
+  );
   const sourceMode = String(meta.source_mode || currentJob?.source_mode || '');
   const existingContent = String(meta.content || currentJob?.content || '');
 
@@ -71,11 +74,11 @@ const createInitialValues = (config, currentJob, workflowMode) => {
     includeCoverPage: resolveIncludeCoverPage(config, currentJob),
     pageRichnessDefault: String(generationOptions.page_richness_default || 'medium'),
     referenceStyleAdherence: String(
-      generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced',
+      generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced'
     ),
     pageRichnessList: Array.from({ length: pageCount }, (_, index) => String(richnessMap[String(index + 1)] || '')),
     externalReferenceResizeMode: 'stretch',
-    externalReferenceCreateOnly: false,
+    externalReferenceCreateOnly: false
   };
 };
 
@@ -87,7 +90,7 @@ const CreationFormFields = ({
   submitLabel,
   onWorkflowModeChange,
   onCreated,
-  onParamsChange,
+  onParamsChange
 }) => {
   const [form, setForm] = useState(() => createInitialValues(config, currentJob, workflowMode));
   const [styleFiles, setStyleFiles] = useState([]);
@@ -111,7 +114,7 @@ const CreationFormFields = ({
       return {
         ...prev,
         pageCount,
-        pageRichnessList: resizeRichnessList(prev.pageRichnessList, pageCount),
+        pageRichnessList: resizeRichnessList(prev.pageRichnessList, pageCount)
       };
     });
   };
@@ -165,7 +168,7 @@ const CreationFormFields = ({
     try {
       const response = await fetch('/api/jobs', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -180,7 +183,7 @@ const CreationFormFields = ({
   };
 
   const presets = config?.image_presets || {};
-  const maxPages = Number(config?.max_pages || 20);
+  const maxPages = Number(config?.max_pages || DEFAULT_GENERATION_CONFIG.maxPages);
   const isExternalReferenceMode = form.sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE;
   const submitText = (() => {
     if (submitting) return '正在提交...';
@@ -190,22 +193,22 @@ const CreationFormFields = ({
     if (submitLabel) return submitLabel;
     return currentJob ? `基于当前任务${getWorkflowSubmitLabel(form.workflowMode)}` : getWorkflowSubmitLabel(form.workflowMode);
   })();
-  const referenceStyleAdherenceOptions = Array.isArray(config?.reference_style_adherence_options)
-    ? config.reference_style_adherence_options
-    : REFERENCE_STYLE_ADHERENCE_FALLBACKS;
+  const referenceStyleAdherenceOptions = Array.isArray(config?.reference_style_adherence_options) ?
+  config.reference_style_adherence_options :
+  REFERENCE_STYLE_ADHERENCE_FALLBACKS;
 
   return (
-    <form className="creation-form" onSubmit={handleSubmit}>
-      <div className="form-grid">
-        <div className="field field--full">
+    <form className={uiClassName("creation-form")} onSubmit={handleSubmit}>
+      <div className={uiClassName("form-grid")}>
+        <div className={uiClassName("field field--full")}>
           <span>任务来源</span>
-          <div className="source-mode-switch" role="tablist" aria-label="任务来源">
+          <div className={uiClassName("source-mode-switch")} role="tablist" aria-label="任务来源">
             <button
               type="button"
-              className={form.sourceMode === SOURCE_MODES.PROMPT ? 'is-active' : ''}
+              className={uiClassName(form.sourceMode === SOURCE_MODES.PROMPT ? 'is-active' : '')}
               onClick={() => updateForm('sourceMode', SOURCE_MODES.PROMPT)}
-              disabled={submitting}
-            >
+              disabled={submitting}>
+              
               <FileText size={18} />
               <span>
                 <strong>从文本生成</strong>
@@ -214,10 +217,10 @@ const CreationFormFields = ({
             </button>
             <button
               type="button"
-              className={form.sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE ? 'is-active' : ''}
+              className={uiClassName(form.sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE ? 'is-active' : '')}
               onClick={() => updateForm('sourceMode', SOURCE_MODES.EXTERNAL_REFERENCE)}
-              disabled={submitting}
-            >
+              disabled={submitting}>
+              
               <FileImage size={18} />
               <span>
                 <strong>从已有原稿图继续</strong>
@@ -227,99 +230,99 @@ const CreationFormFields = ({
           </div>
         </div>
 
-        {!isExternalReferenceMode && (
-          <div className="field field--full">
+        {!isExternalReferenceMode &&
+        <div className={uiClassName("field field--full")}>
             <span>生成工作流</span>
             <WorkflowModeSwitch
-              value={form.workflowMode}
-              onChange={(value) => updateForm('workflowMode', value)}
-              disabled={submitting}
-            />
+            value={form.workflowMode}
+            onChange={(value) => updateForm('workflowMode', value)}
+            disabled={submitting} />
+          
           </div>
-        )}
+        }
 
-        {isExternalReferenceMode ? (
-          <label className={compact ? 'field field--wide' : 'field field--full'}>
+        {isExternalReferenceMode ?
+        <label className={uiClassName(compact ? 'field field--wide' : 'field field--full')}>
             <span>任务标题</span>
             <input
-              type="text"
-              value={form.externalReferenceTitle}
-              onChange={(event) => updateForm('externalReferenceTitle', event.target.value)}
-              placeholder="例如：产品介绍页转可编辑 PPT..."
-              maxLength={60}
-              disabled={submitting}
-            />
-          </label>
-        ) : (
-          <div className={compact ? 'field field--wide' : 'field field--full'}>
-            <ContentEditorDialog
-              value={form.content}
-              onChange={(value) => updateForm('content', value)}
-              placeholder="粘贴汇报大纲、会议纪要或你想表达的 PPT 内容..."
-              required
-              rows={compact ? 5 : 7}
-              pageCount={form.pageCount}
-              maxPages={maxPages}
-              disabled={submitting}
-              onUseRecommendedPageCount={applyRecommendedPageCount}
-            />
-          </div>
-        )}
+            type="text"
+            value={form.externalReferenceTitle}
+            onChange={(event) => updateForm('externalReferenceTitle', event.target.value)}
+            placeholder="例如：产品介绍页转可编辑 PPT..."
+            maxLength={60}
+            disabled={submitting} />
+          
+          </label> :
 
-        {isExternalReferenceMode ? (
-          <div className="field field--full">
+        <div className={uiClassName(compact ? 'field field--wide' : 'field field--full')}>
+            <ContentEditorDialog
+            value={form.content}
+            onChange={(value) => updateForm('content', value)}
+            placeholder="粘贴汇报大纲、会议纪要或你想表达的 PPT 内容..."
+            required
+            rows={compact ? 5 : 7}
+            pageCount={form.pageCount}
+            maxPages={maxPages}
+            disabled={submitting}
+            onUseRecommendedPageCount={applyRecommendedPageCount} />
+          
+          </div>
+        }
+
+        {isExternalReferenceMode ?
+        <div className={uiClassName("field field--full")}>
             <span>原稿图</span>
             <ImageUploadPreviewList
-              files={referenceFiles}
-              onChange={setReferenceFiles}
-              accept="image/png,image/jpeg,image/webp"
-              disabled={submitting}
-              emptyTitle="上传已有原稿图"
-              emptyHint="支持 PNG、JPG、WEBP，多张图片会按选择顺序生成多页任务。"
-              addLabel="继续添加"
-              itemLabel="原稿图"
-            />
-          </div>
-        ) : (
-          <label className="field">
+            files={referenceFiles}
+            onChange={setReferenceFiles}
+            accept="image/png,image/jpeg,image/webp"
+            disabled={submitting}
+            emptyTitle="上传已有原稿图"
+            emptyHint="支持 PNG、JPG、WEBP，多张图片会按选择顺序生成多页任务。"
+            addLabel="继续添加"
+            itemLabel="原稿图" />
+          
+          </div> :
+
+        <label className={uiClassName("field")}>
             <span>页数</span>
             <input
-              type="number"
-              min="1"
-              max={maxPages}
-              value={form.pageCount}
-              onChange={(event) => {
-                const pageCount = clampPageCount(event.target.value || 1, maxPages);
-                setForm((prev) => ({
-                  ...prev,
-                  pageCount,
-                  pageRichnessList: resizeRichnessList(prev.pageRichnessList, pageCount),
-                }));
-              }}
-            />
+            type="number"
+            min="1"
+            max={maxPages}
+            value={form.pageCount}
+            onChange={(event) => {
+              const pageCount = clampPageCount(event.target.value || 1, maxPages);
+              setForm((prev) => ({
+                ...prev,
+                pageCount,
+                pageRichnessList: resizeRichnessList(prev.pageRichnessList, pageCount)
+              }));
+            }} />
+          
           </label>
-        )}
+        }
 
-        <label className="field">
+        <label className={uiClassName("field")}>
           <span>画幅</span>
           <select value={form.imagePreset} onChange={(event) => updateForm('imagePreset', event.target.value)} required>
-            {Object.entries(presets).map(([key, preset]) => (
-              <option key={key} value={key}>{preset.label}</option>
-            ))}
+            {Object.entries(presets).map(([key, preset]) =>
+            <option key={key} value={key}>{preset.label}</option>
+            )}
           </select>
         </label>
 
-        {!isExternalReferenceMode && (
-          <label className="field">
+        {!isExternalReferenceMode &&
+        <label className={uiClassName("field")}>
             <span>输出模式</span>
             <select value={form.jobTarget} onChange={(event) => updateForm('jobTarget', event.target.value)}>
               <option value="editable_ppt">可编辑元素</option>
               <option value="reference_only">图片版 PPT</option>
             </select>
           </label>
-        )}
+        }
 
-        <label className="field">
+        <label className={uiClassName("field")}>
           <span>图像质量</span>
           <select value={form.imageQuality} onChange={(event) => updateForm('imageQuality', event.target.value)}>
             <option value="medium">Medium</option>
@@ -329,119 +332,119 @@ const CreationFormFields = ({
           </select>
         </label>
 
-        {isExternalReferenceMode ? (
-          <>
-            <label className="field">
+        {isExternalReferenceMode ?
+        <>
+            <label className={uiClassName("field")}>
               <span>图片适配</span>
               <select
-                value={form.externalReferenceResizeMode}
-                onChange={(event) => updateForm('externalReferenceResizeMode', event.target.value)}
-              >
-                {RESIZE_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
+              value={form.externalReferenceResizeMode}
+              onChange={(event) => updateForm('externalReferenceResizeMode', event.target.value)}>
+              
+                {RESIZE_MODE_OPTIONS.map((option) =>
+              <option key={option.value} value={option.value}>{option.label}</option>
+              )}
               </select>
             </label>
 
-            <label className="checkbox-row checkbox-row--framed field--full">
+            <label className={uiClassName("checkbox-row checkbox-row--framed field--full")}>
               <input
-                type="checkbox"
-                checked={form.externalReferenceCreateOnly}
-                onChange={(event) => updateForm('externalReferenceCreateOnly', event.target.checked)}
-              />
+              type="checkbox"
+              checked={form.externalReferenceCreateOnly}
+              onChange={(event) => updateForm('externalReferenceCreateOnly', event.target.checked)} />
+            
               <span>只登记为原稿图任务，稍后再继续生成可编辑元素。</span>
             </label>
-          </>
-        ) : (
-          <>
-            <label className="checkbox-row checkbox-row--framed field--full">
+          </> :
+
+        <>
+            <label className={uiClassName("checkbox-row checkbox-row--framed field--full")}>
               <input
-                type="checkbox"
-                checked={form.includeCoverPage}
-                onChange={(event) => updateForm('includeCoverPage', event.target.checked)}
-              />
+              type="checkbox"
+              checked={form.includeCoverPage}
+              onChange={(event) => updateForm('includeCoverPage', event.target.checked)} />
+            
               <span>包含首页生成，第 1 页作为封面视觉基调。</span>
             </label>
 
-            <label className="field field--full">
+            <label className={uiClassName("field field--full")}>
               <span>风格补充</span>
               <input
-                type="text"
-                value={form.styleNotes}
-                onChange={(event) => updateForm('styleNotes', event.target.value)}
-                placeholder="例如：蓝白科技风、少文字、多流程图、商务汇报感..."
-              />
+              type="text"
+              value={form.styleNotes}
+              onChange={(event) => updateForm('styleNotes', event.target.value)}
+              placeholder="例如：蓝白科技风、少文字、多流程图、商务汇报感..." />
+            
             </label>
 
-            <div className="field field--full">
+            <div className={uiClassName("field field--full")}>
               <span>内容丰富度</span>
-              <div className="richness-control">
+              <div className={uiClassName("richness-control")}>
                 <select value={form.pageRichnessDefault} onChange={(event) => updateForm('pageRichnessDefault', event.target.value)}>
-                  {RICHNESS_LEVELS.map((level) => (
-                    <option key={level.value} value={level.value}>默认：{level.label}</option>
-                  ))}
+                  {RICHNESS_LEVELS.map((level) =>
+                <option key={level.value} value={level.value}>默认：{level.label}</option>
+                )}
                 </select>
-                <div className="richness-pages">
-                  {form.pageRichnessList.map((value, index) => (
-                    <select
-                      key={index}
-                      value={value}
-                      aria-label={`第 ${index + 1} 页丰富度`}
-                      onChange={(event) => {
-                        setForm((prev) => {
-                          const next = [...prev.pageRichnessList];
-                          next[index] = event.target.value;
-                          return { ...prev, pageRichnessList: next };
-                        });
-                      }}
-                    >
+                <div className={uiClassName("richness-pages")}>
+                  {form.pageRichnessList.map((value, index) =>
+                <select
+                  key={index}
+                  value={value}
+                  aria-label={`第 ${index + 1} 页丰富度`}
+                  onChange={(event) => {
+                    setForm((prev) => {
+                      const next = [...prev.pageRichnessList];
+                      next[index] = event.target.value;
+                      return { ...prev, pageRichnessList: next };
+                    });
+                  }}>
+                  
                       <option value="">第 {index + 1} 页默认</option>
-                      {RICHNESS_LEVELS.map((level) => (
-                        <option key={level.value} value={level.value}>第 {index + 1} 页：{level.label}</option>
-                      ))}
+                      {RICHNESS_LEVELS.map((level) =>
+                  <option key={level.value} value={level.value}>第 {index + 1} 页：{level.label}</option>
+                  )}
                     </select>
-                  ))}
+                )}
                 </div>
               </div>
             </div>
 
-            <label className="field field--full">
+            <label className={uiClassName("field field--full")}>
               <span>参考风格图约束强度</span>
               <select
-                value={form.referenceStyleAdherence}
-                onChange={(event) => updateForm('referenceStyleAdherence', event.target.value)}
-              >
-                {referenceStyleAdherenceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
+              value={form.referenceStyleAdherence}
+              onChange={(event) => updateForm('referenceStyleAdherence', event.target.value)}>
+              
+                {referenceStyleAdherenceOptions.map((option) =>
+              <option key={option.value} value={option.value}>{option.label}</option>
+              )}
               </select>
             </label>
 
-            <div className="field field--full">
+            <div className={uiClassName("field field--full")}>
               <span>参考风格图</span>
               <ImageUploadPreviewList
-                files={styleFiles}
-                onChange={setStyleFiles}
-                disabled={submitting}
-                emptyTitle="上传参考风格图，可选"
-                emptyHint={currentJob?.job_id ? '未上传新图时，会复用当前任务参考风格图。' : '支持多张图片一起约束风格。'}
-                addLabel="继续添加"
-                itemLabel="参考风格图"
-              />
+              files={styleFiles}
+              onChange={setStyleFiles}
+              disabled={submitting}
+              emptyTitle="上传参考风格图，可选"
+              emptyHint={currentJob?.job_id ? '未上传新图时，会复用当前任务参考风格图。' : '支持多张图片一起约束风格。'}
+              addLabel="继续添加"
+              itemLabel="参考风格图" />
+            
             </div>
           </>
-        )}
+        }
 
       </div>
 
-      {error && <div className="form-error">{error}</div>}
+      {error && <div className={uiClassName("form-error")}>{error}</div>}
 
-      <button type="submit" className="btn btn-primary creation-form__submit" disabled={submitting}>
+      <button type="submit" className={uiClassName("btn btn-primary creation-form__submit")} disabled={submitting}>
         <WandSparkles size={18} />
         <span>{submitText}</span>
       </button>
-    </form>
-  );
+    </form>);
+
 };
 
 const CreationForm = ({
@@ -451,12 +454,12 @@ const CreationForm = ({
   submitLabel,
   onWorkflowModeChange,
   onCreated,
-  onParamsChange,
+  onParamsChange
 }) => {
   const { config, loading } = useConfig();
 
   if (loading || !config) {
-    return <div className="empty-state">正在加载配置...</div>;
+    return <div className={uiClassName("empty-state")}>正在加载配置...</div>;
   }
 
   const formKey = `${currentJob?.job_id || 'new'}-${config.default_image_preset || 'default'}`;
@@ -470,9 +473,9 @@ const CreationForm = ({
       submitLabel={submitLabel}
       onWorkflowModeChange={onWorkflowModeChange}
       onCreated={onCreated}
-      onParamsChange={onParamsChange}
-    />
-  );
+      onParamsChange={onParamsChange} />);
+
+
 };
 
 export default CreationForm;

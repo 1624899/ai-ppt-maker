@@ -1,6 +1,6 @@
 import { useCallback, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';
+import { formatTaskTime, getPageCount, getStatusLabel } from '../../utils/jobPresentation';import { uiClassName } from "../../utils/uiClassName";
 
 const TOOLTIP_WIDTH = 196;
 const TOOLTIP_GAP = 8;
@@ -14,13 +14,13 @@ function getTooltipPosition(anchorEl) {
   const maxLeft = Math.max(VIEWPORT_PADDING, viewportWidth - TOOLTIP_WIDTH - VIEWPORT_PADDING);
   const left = Math.min(Math.max(VIEWPORT_PADDING, rect.left), maxLeft);
   const bottomTop = rect.bottom + TOOLTIP_GAP;
-  const top = bottomTop + TOOLTIP_ESTIMATED_HEIGHT > viewportHeight
-    ? Math.max(VIEWPORT_PADDING, rect.top - TOOLTIP_ESTIMATED_HEIGHT - TOOLTIP_GAP)
-    : bottomTop;
+  const top = bottomTop + TOOLTIP_ESTIMATED_HEIGHT > viewportHeight ?
+  Math.max(VIEWPORT_PADDING, rect.top - TOOLTIP_ESTIMATED_HEIGHT - TOOLTIP_GAP) :
+  bottomTop;
 
   return {
     left,
-    top,
+    top
   };
 }
 
@@ -42,25 +42,25 @@ const TaskMetaInfo = ({ job }) => {
 
   return (
     <span
-      className="task-card__meta-info"
+      className={uiClassName("task-card__meta-info")}
       aria-label={`任务信息：${summary}`}
       aria-describedby={tooltipVisible ? tooltipId : undefined}
       onMouseEnter={showTooltip}
       onMouseLeave={hideTooltip}
       onFocus={showTooltip}
-      onBlur={hideTooltip}
-    >
-      <span className="task-card__meta-text">{summary}</span>
+      onBlur={hideTooltip}>
+      
+      <span className={uiClassName("task-card__meta-text")}>{summary}</span>
       {tooltipVisible && typeof document !== 'undefined' && createPortal(
         <span
           id={tooltipId}
-          className="task-card__meta-tooltip"
+          className={uiClassName("task-card__meta-tooltip")}
           role="tooltip"
           style={{
             left: `${tooltipPosition.left}px`,
-            top: `${tooltipPosition.top}px`,
-          }}
-        >
+            top: `${tooltipPosition.top}px`
+          }}>
+          
           <span>
             <small>状态</small>
             <strong>{statusLabel}</strong>
@@ -74,10 +74,10 @@ const TaskMetaInfo = ({ job }) => {
             <strong>{updatedAtLabel}</strong>
           </span>
         </span>,
-        document.body,
+        document.body
       )}
-    </span>
-  );
+    </span>);
+
 };
 
 export default TaskMetaInfo;

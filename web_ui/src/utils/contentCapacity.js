@@ -1,3 +1,5 @@
+import { DEFAULT_GENERATION_CONFIG } from './configDefaults.js';
+
 const LIST_MARKER_PATTERN = /^\s*(?:[-*•●]|\d+[、.)]|[一二三四五六七八九十]+[、.、])/;
 const SENTENCE_SPLIT_PATTERN = /[\n。！？!?；;]+/;
 const SIGNAL_PATTERN = /(?:\d+(?:\.\d+)?%|\d{1,4}[/-]\d{1,2}|[A-Za-z]\d+|[A-Za-z]+款|覆盖率|通过率|失败|异常|报错|缺陷|风险|阻断|原因|根因|解决|改进|响应|待解决)/g;
@@ -125,7 +127,7 @@ const resolveRisk = ({ pageCount, recommendedMin, recommendedPageCount }) => {
   };
 };
 
-export function analyzeContentCapacity(content, { pageCount = 0, maxPages = 20 } = {}) {
+export function analyzeContentCapacity(content, { pageCount = 0, maxPages = DEFAULT_GENERATION_CONFIG.maxPages } = {}) {
   const text = normalizeText(content);
   const charCount = text.length;
   const lines = unique(text.split('\n').map((line) => line.trim()).filter(Boolean));
@@ -135,7 +137,7 @@ export function analyzeContentCapacity(content, { pageCount = 0, maxPages = 20 }
   const lineLikeUnits = hasListMarkers || lines.length >= 5 ? lines : segments;
   const unitCount = lineLikeUnits.length || (charCount > 0 ? 1 : 0);
   const signalCount = countMatches(text, SIGNAL_PATTERN);
-  const normalizedMaxPages = Math.max(1, Number(maxPages || 20));
+  const normalizedMaxPages = Math.max(1, Number(maxPages || DEFAULT_GENERATION_CONFIG.maxPages));
   const normalizedPageCount = Math.max(0, Number(pageCount || 0));
   const isUnstructuredLong = !hasListMarkers && lines.length <= 4 && (charCount >= 600 || (charCount >= 420 && signalCount >= 18));
   const recommendedPageCount = resolveRecommendedPageCount({

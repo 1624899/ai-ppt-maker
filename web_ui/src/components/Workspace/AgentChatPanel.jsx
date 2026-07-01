@@ -1,33 +1,33 @@
 import { useState } from 'react';
 import { Bot, CheckCircle2, LoaderCircle, MessageSquareText, MousePointer2, RotateCcw, SendHorizontal, UserRound } from 'lucide-react';
-import clsx from 'clsx';
+
 import { useAgentDraft } from '../../hooks/useAgentDraft';
 import { clearAgentConversation } from '../../utils/jobActions';
-import { getPageTitle } from '../../utils/jobPresentation';
+import { getPageTitle } from '../../utils/jobPresentation';import { uiClassName } from "../../utils/uiClassName";
 
 const QUICK_PROMPTS = ['这里有点乱', '层级不清楚', '文字太多', '视觉不够商务'];
 
 const normalizeServerMessages = (messages) => {
   if (!Array.isArray(messages)) return [];
-  return messages
-    .filter((message) => message && ['user', 'assistant'].includes(String(message.role || '')))
-    .map((message, index) => ({
-      id: message.turn_id || `${message.role}-${message.created_at || index}-${String(message.message || message.content || '').slice(0, 18)}`,
-      role: message.role,
-      message: message.message || message.content || '',
-      draft: message.draft || null,
-      agentMeta: message.agent_meta || null,
-    }))
-    .filter((message) => message.message);
+  return messages.
+  filter((message) => message && ['user', 'assistant'].includes(String(message.role || ''))).
+  map((message, index) => ({
+    id: message.turn_id || `${message.role}-${message.created_at || index}-${String(message.message || message.content || '').slice(0, 18)}`,
+    role: message.role,
+    message: message.message || message.content || '',
+    draft: message.draft || null,
+    agentMeta: message.agent_meta || null
+  })).
+  filter((message) => message.message);
 };
 
-const buildClientContext = (messages) => messages
-  .filter((message) => message.role === 'user' || message.role === 'assistant')
-  .slice(-8)
-  .map((message) => ({
-    role: message.role,
-    message: message.message,
-  }));
+const buildClientContext = (messages) => messages.
+filter((message) => message.role === 'user' || message.role === 'assistant').
+slice(-8).
+map((message) => ({
+  role: message.role,
+  message: message.message
+}));
 
 const AgentChatPanel = ({
   currentJob,
@@ -38,23 +38,23 @@ const AgentChatPanel = ({
   onDraftInstructionChange,
   onDraftConfirmed,
   onConversationCleared,
-  onOpenImageMarkup,
+  onOpenImageMarkup
 }) => {
   const [messages, setMessages] = useState(() => normalizeServerMessages(currentJob?.agent_conversation));
   const [input, setInput] = useState('');
-  const [pendingDraft, setPendingDraft] = useState(() => (
-    currentJob?.agent_pending_draft
-      ? { ...currentJob.agent_pending_draft, agent_meta: currentJob.agent_pending_draft_meta || null }
-      : null
-  ));
+  const [pendingDraft, setPendingDraft] = useState(() =>
+  currentJob?.agent_pending_draft ?
+  { ...currentJob.agent_pending_draft, agent_meta: currentJob.agent_pending_draft_meta || null } :
+  null
+  );
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState('');
   const { pending, error, createDraft } = useAgentDraft({ currentJob });
 
   const canSend = Boolean(input.trim()) && !pending;
   const canClear = Boolean(!pending && !clearing && currentJob?.job_id && (
-    messages.length > 0 || pendingDraft || input.trim() || draftInstruction
-  ));
+  messages.length > 0 || pendingDraft || input.trim() || draftInstruction)
+  );
   const selectedPageText = activePage ? `第 ${activePage.page_no} 页 · ${getPageTitle(activePage)}` : '未选择页面';
   const plannerLabel = pendingDraft?.agent_meta?.planner === 'model' ? '模型已理解' : '等待确认';
 
@@ -64,7 +64,7 @@ const AgentChatPanel = ({
     const userMessage = {
       id: `local-user-${messages.length}-${message.slice(0, 24)}`,
       role: 'user',
-      message,
+      message
     };
     setMessages((current) => [...current, userMessage]);
     setInput('');
@@ -75,7 +75,7 @@ const AgentChatPanel = ({
       page_no: activePage?.page_no,
       preview_type: previewType,
       annotations,
-      messages: buildClientContext(messages),
+      messages: buildClientContext(messages)
     });
     if (!response?.draft) return;
 
@@ -85,7 +85,7 @@ const AgentChatPanel = ({
       role: 'assistant',
       message: response.draft.summary,
       draft: response.draft,
-      agentMeta: response.agent_meta || null,
+      agentMeta: response.agent_meta || null
     };
     setMessages(serverMessages.length > 0 ? serverMessages : (current) => [...current, fallbackAssistant]);
     setPendingDraft({ ...response.draft, agent_meta: response.agent_meta || null });
@@ -116,110 +116,110 @@ const AgentChatPanel = ({
   };
 
   return (
-    <section className="agent-chat-window" aria-label="Agent 多轮对话">
-      <div className="agent-chat-window__head">
+    <section className={uiClassName("agent-chat-window")} aria-label="Agent 多轮对话">
+      <div className={uiClassName("agent-chat-window__head")}>
         <div>
-          <span className="eyebrow">Agent 对话</span>
+          <span className={uiClassName("eyebrow")}>Agent 对话</span>
           <h3>先理解问题，再整理改动</h3>
           <p>{selectedPageText} · 当前看的是 {previewType === 'reference' ? '原稿图' : '元素图'}</p>
         </div>
-        <div className="agent-chat-window__tools">
-          <button type="button" className="btn btn-secondary" onClick={clearConversation} disabled={!canClear}>
-            {clearing ? <LoaderCircle className="spin" size={16} /> : <RotateCcw size={16} />}
+        <div className={uiClassName("agent-chat-window__tools")}>
+          <button type="button" className={uiClassName("btn btn-secondary")} onClick={clearConversation} disabled={!canClear}>
+            {clearing ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <RotateCcw size={16} />}
             清空记录
           </button>
-          <button type="button" className="btn btn-secondary" onClick={onOpenImageMarkup} disabled={!activePage}>
+          <button type="button" className={uiClassName("btn btn-secondary")} onClick={onOpenImageMarkup} disabled={!activePage}>
             <MousePointer2 size={16} />
             框选标注
           </button>
         </div>
       </div>
 
-      <div className="quick-actions quick-actions--pending" aria-label="常用反馈">
-        {QUICK_PROMPTS.map((prompt) => (
-          <button type="button" key={prompt} onClick={() => submitMessage(prompt)} disabled={!activePage || pending}>
+      <div className={uiClassName("quick-actions quick-actions--pending")} aria-label="常用反馈">
+        {QUICK_PROMPTS.map((prompt) =>
+        <button type="button" key={prompt} onClick={() => submitMessage(prompt)} disabled={!activePage || pending}>
             {prompt}
           </button>
-        ))}
+        )}
       </div>
 
-      <div className="chat-thread">
-        {messages.map((message) => (
-          <article
-            key={message.id}
-            className={clsx('chat-bubble', message.role === 'user' ? 'chat-bubble--user' : 'chat-bubble--agent')}
-          >
-            <span className="chat-bubble__icon">
+      <div className={uiClassName("chat-thread")}>
+        {messages.map((message) =>
+        <article
+          key={message.id}
+          className={uiClassName('chat-bubble', message.role === 'user' ? 'chat-bubble--user' : 'chat-bubble--agent')}>
+          
+            <span className={uiClassName("chat-bubble__icon")}>
               {message.role === 'user' ? <UserRound size={15} /> : <Bot size={15} />}
             </span>
             <p>{message.message}</p>
           </article>
-        ))}
-        {messages.length === 0 && !pending && (
-          <div className="chat-thread__empty">
+        )}
+        {messages.length === 0 && !pending &&
+        <div className={uiClassName("chat-thread__empty")}>
             选择一个预设问题，或直接输入反馈发送给模型。
           </div>
-        )}
-        {pending && (
-          <article className="chat-bubble chat-bubble--agent">
-            <span className="chat-bubble__icon"><LoaderCircle className="spin" size={15} /></span>
+        }
+        {pending &&
+        <article className={uiClassName("chat-bubble chat-bubble--agent")}>
+            <span className={uiClassName("chat-bubble__icon")}><LoaderCircle className={uiClassName("spin")} size={15} /></span>
             <p>我正在把你的描述整理成可执行的编辑草案...</p>
           </article>
-        )}
+        }
       </div>
 
-      {pendingDraft && (
-        <div className="agent-draft-card">
-          <div className="agent-draft-card__head">
+      {pendingDraft &&
+      <div className={uiClassName("agent-draft-card")}>
+          <div className={uiClassName("agent-draft-card__head")}>
             <span>{plannerLabel}</span>
             <strong>{pendingDraft.edit_kind === 'text' ? '文字优化' : pendingDraft.edit_kind === 'style' ? '整套风格' : '原稿图/排版'}</strong>
           </div>
           <p>{pendingDraft.summary}</p>
           <ul>
-            {(pendingDraft.changes || []).slice(0, 4).map((change) => (
-              <li key={change}>{change}</li>
-            ))}
+            {(pendingDraft.changes || []).slice(0, 4).map((change) =>
+          <li key={change}>{change}</li>
+          )}
           </ul>
           <label>
             可带入编辑页的具体改动
             <textarea
-              value={draftInstruction || pendingDraft.instruction || ''}
-              onChange={(event) => onDraftInstructionChange(event.target.value)}
-              placeholder="确认前也可以手动补充更精确的修改要求"
-            />
+            value={draftInstruction || pendingDraft.instruction || ''}
+            onChange={(event) => onDraftInstructionChange(event.target.value)}
+            placeholder="确认前也可以手动补充更精确的修改要求" />
+          
           </label>
-          <button type="button" className="btn btn-primary" onClick={confirmDraft}>
+          <button type="button" className={uiClassName("btn btn-primary")} onClick={confirmDraft}>
             <CheckCircle2 size={17} />
             同意，进入编辑页
           </button>
         </div>
-      )}
+      }
 
-      <div className="chat-composer">
+      <div className={uiClassName("chat-composer")}>
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="描述原稿图哪里有问题，例如：右侧模块太挤，图标有点像后台系统，整体希望更像咨询汇报..."
-        />
-        <button type="button" className="btn btn-primary chat-composer__send" onClick={() => submitMessage()} disabled={!canSend || !activePage}>
-          {pending ? <LoaderCircle className="spin" size={17} /> : <SendHorizontal size={17} />}
+          placeholder="描述原稿图哪里有问题，例如：右侧模块太挤，图标有点像后台系统，整体希望更像咨询汇报..." />
+        
+        <button type="button" className={uiClassName("btn btn-primary chat-composer__send")} onClick={() => submitMessage()} disabled={!canSend || !activePage}>
+          {pending ? <LoaderCircle className={uiClassName("spin")} size={17} /> : <SendHorizontal size={17} />}
           发送给 Agent 理解
         </button>
       </div>
 
-      {error && <div className="form-error">{error}</div>}
-      {clearError && <div className="form-error">{clearError}</div>}
-      {!activePage && (
-        <div className="empty-state">
+      {error && <div className={uiClassName("form-error")}>{error}</div>}
+      {clearError && <div className={uiClassName("form-error")}>{clearError}</div>}
+      {!activePage &&
+      <div className={uiClassName("empty-state")}>
           先在右侧选择一页原稿图，Agent 才能把“这里”“那块”这类描述落到具体页面。
         </div>
-      )}
-      <div className="agent-chat-window__hint">
+      }
+      <div className={uiClassName("agent-chat-window__hint")}>
         <MessageSquareText size={15} />
         <span>确认前不会触发生成流水线；确认后会跳到编辑页并填好改动内容。</span>
       </div>
-    </section>
-  );
+    </section>);
+
 };
 
 export default AgentChatPanel;

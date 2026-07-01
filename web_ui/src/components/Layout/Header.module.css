@@ -1,0 +1,186 @@
+.topbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(520px, auto);
+  gap: 14px;
+  align-items: center;
+  min-height: 68px;
+  padding: 10px 16px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 20px;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(26px) saturate(150%);
+}
+
+.brandBlock,
+.actions {
+  display: flex;
+  align-items: center;
+}
+
+.brandBlock {
+  gap: 13px;
+}
+
+.brandMark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 15px;
+  box-shadow: 0 16px 28px rgba(33, 104, 229, 0.18);
+}
+
+.brandMark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brandBlock h1 {
+  font-size: 21px;
+  letter-spacing: 0;
+}
+
+.brandBlock p,
+.task span,
+.task em {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.task {
+  position: absolute;
+  top: 50%;
+  left: calc(50% - 34px);
+  z-index: 1;
+  display: grid;
+  width: min(200px, 18vw);
+  min-width: 0;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.task strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task em {
+  font-style: normal;
+}
+
+.actions {
+  position: relative;
+  z-index: 2;
+  gap: 10px;
+  justify-content: flex-end;
+  min-width: 0;
+  justify-self: end;
+}
+
+.configDrawer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  width: min(320px, 32vw);
+  min-height: 46px;
+  padding: 8px 13px;
+  color: var(--primary-strong);
+  text-align: left;
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.08), rgba(15, 159, 143, 0.05)),
+    rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(31, 94, 255, 0.2);
+  border-radius: 18px;
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+
+.configDrawer:hover,
+.configDrawer.isOpen {
+  transform: translateY(-1px);
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.12), rgba(15, 159, 143, 0.08)),
+    #ffffff;
+  border-color: rgba(31, 94, 255, 0.34);
+  box-shadow: 0 14px 28px rgba(31, 94, 255, 0.13);
+}
+
+.configDrawer span {
+  display: grid;
+  min-width: 0;
+}
+
+.configDrawer strong,
+.configDrawer small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.configDrawer strong {
+  font-size: 13px;
+}
+
+.configDrawer small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .task {
+    position: static;
+    width: auto;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: stretch;
+    text-align: left;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .task {
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .actions {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .actions :global(.btn) {
+    flex: 1;
+  }
+
+  .configDrawer {
+    order: -1;
+    width: 100%;
+    flex: 1 0 100%;
+  }
+}

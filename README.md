@@ -244,9 +244,9 @@ ai-ppt-maker/
 │   └── src/
 │       ├── components/
 │       │   ├── Workspace/      #   核心工作区组件
-│       │   ├── Forms/          #   表单组件
-│       │   ├── Layout/         #   布局组件
-│       │   └── Motion/         #   动画组件
+│       │   ├── Layout/         #   顶栏与设置弹窗
+│       │   ├── Motion/         #   动画组件
+│       │   └── styles/         #   CSS Modules 组件样式
 │       ├── hooks/              #   自定义 Hooks
 │       └── utils/              #   工具函数
 ├── tools/                      # 维护与诊断工具

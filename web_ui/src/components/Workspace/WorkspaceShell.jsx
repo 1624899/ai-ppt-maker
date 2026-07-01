@@ -13,11 +13,11 @@ import { useJobs } from '../../hooks/useJobs';
 import { PLAN_CONFIRM_PENDING_KEY, usePlanningDraft } from '../../hooks/usePlanningDraft';
 import { getJobPages, getPageImage, getPageImageKind, getPageImageOptions } from '../../utils/jobPresentation';
 import { mergeJobState } from '../../utils/jobStateMerge';
-import { getWorkflowModeFromJob, isAwaitingPlanConfirmation, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';
+import { getWorkflowModeFromJob, isAwaitingPlanConfirmation, normalizeWorkflowMode, WORKFLOW_MODE_AUTO } from '../../utils/workflowMode';import { uiClassName } from "../../utils/uiClassName";
 
-const buildAnnotationScopeKey = (jobId, pageNo, previewType, imageRef) => (
-  jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}:${imageRef || ''}` : ''
-);
+const buildAnnotationScopeKey = (jobId, pageNo, previewType, imageRef) =>
+jobId && pageNo ? `${jobId}:${pageNo}:${previewType || 'reference'}:${imageRef || ''}` : '';
+
 
 const WorkspaceShell = () => {
   const { config } = useConfig();
@@ -47,21 +47,21 @@ const WorkspaceShell = () => {
   const safeSelectedPageIndex = pages.length > 0 ? Math.min(selectedPageIndex, pages.length - 1) : 0;
   const activePage = pages[safeSelectedPageIndex] || pages[0];
   const previewOptions = getPageImageOptions(activePage);
-  const selectedPreview = previewOptions.find((option) => option.key === selectedPreviewType && option.src)
-    || previewOptions.find((option) => option.src)
-    || null;
+  const selectedPreview = previewOptions.find((option) => option.key === selectedPreviewType && option.src) ||
+  previewOptions.find((option) => option.src) ||
+  null;
   const activeImage = selectedPreview?.src || getPageImage(activePage);
   const activeImageKind = selectedPreview?.label || getPageImageKind(activePage);
   const annotationScopeKey = buildAnnotationScopeKey(
     currentJob?.job_id,
     activePage?.page_no,
     selectedPreview?.key || selectedPreviewType,
-    activeImage,
+    activeImage
   );
-  const imageAnnotations = annotationScopeKey ? (annotationsByScope[annotationScopeKey] || []) : [];
-  const planConfirmPending = unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id
-    ? unsavedPlanPending
-    : '';
+  const imageAnnotations = annotationScopeKey ? annotationsByScope[annotationScopeKey] || [] : [];
+  const planConfirmPending = unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id ?
+  unsavedPlanPending :
+  '';
 
   useEffect(() => {
     if (!autoSelectedRef.current && !currentJobId && jobs.length > 0) {
@@ -87,7 +87,7 @@ const WorkspaceShell = () => {
       return mergeJobState(current, {
         ...summary,
         title: summary.title || current.title,
-        pinned_at: summary.pinned_at || current.pinned_at || '',
+        pinned_at: summary.pinned_at || current.pinned_at || ''
       });
     });
   }, [currentJobId, jobs, setCurrentJob]);
@@ -173,7 +173,7 @@ const WorkspaceShell = () => {
 
   const selectJob = (jobId) => {
     if (jobId === currentJobId) return;
-    setCurrentJob((current) => (current?.job_id === jobId ? current : null));
+    setCurrentJob((current) => current?.job_id === jobId ? current : null);
     setCurrentJobId(jobId);
     setSelectedPageIndex(0);
     setSelectedPreviewType('reference');
@@ -181,15 +181,15 @@ const WorkspaceShell = () => {
   };
 
   const handleJobRenamed = (job) => {
-    setJobs((current) => current.map((item) => (item.job_id === job.job_id ? { ...item, ...job } : item)));
+    setJobs((current) => current.map((item) => item.job_id === job.job_id ? { ...item, ...job } : item));
     if (currentJobId === job.job_id) {
-      setCurrentJob((current) => (current ? { ...current, title: job.title } : current));
+      setCurrentJob((current) => current ? { ...current, title: job.title } : current);
     }
     refreshJobs().catch(console.error);
   };
 
   const handleJobChanged = (job) => {
-    setJobs((current) => current.map((item) => (item.job_id === job.job_id ? { ...item, ...job } : item)));
+    setJobs((current) => current.map((item) => item.job_id === job.job_id ? { ...item, ...job } : item));
     if (currentJobId === job.job_id) {
       mergeCurrentJob(job);
     }
@@ -215,7 +215,7 @@ const WorkspaceShell = () => {
     if (!annotationScopeKey) return;
     setAnnotationsByScope((current) => ({
       ...current,
-      [annotationScopeKey]: annotations,
+      [annotationScopeKey]: annotations
     }));
   };
 
@@ -232,9 +232,9 @@ const WorkspaceShell = () => {
         onJobsRefresh={refreshJobs}
         onConfirmCurrentPlan={confirmCurrentPlan}
         planDraftDirty={planningDraft.dirty}
-        planActionPending={planningDraft.pending === PLAN_CONFIRM_PENDING_KEY || planConfirmPending !== ''}
-      />
-      <div className="workspace-shell">
+        planActionPending={planningDraft.pending === PLAN_CONFIRM_PENDING_KEY || planConfirmPending !== ''} />
+      
+      <div className={uiClassName("workspace-shell")}>
         <TaskCenter
           jobs={jobs}
           loading={jobsLoading}
@@ -243,19 +243,19 @@ const WorkspaceShell = () => {
           onCreateTask={createTask}
           onJobRenamed={handleJobRenamed}
           onJobPinned={handleJobChanged}
-          onJobDeleted={handleJobDeleted}
-        />
+          onJobDeleted={handleJobDeleted} />
+        
         <AnimatePresence mode="wait" initial={false}>
-        {taskLaunchOpen ? (
+        {taskLaunchOpen ?
           <TaskLaunchPanel
             key={`task-launch-${taskLaunchSourceJob?.job_id || 'new'}`}
             sourceJob={taskLaunchSourceJob}
             workflowMode={workflowMode}
             onWorkflowModeChange={updateWorkflowMode}
             onCreated={handleJobCreated}
-            onClose={() => setTaskLaunchOpen(false)}
-          />
-        ) : (
+            onClose={() => setTaskLaunchOpen(false)} /> :
+
+
           <AgentWorkspace
             key="agent-workspace"
             currentJob={currentJob}
@@ -268,9 +268,9 @@ const WorkspaceShell = () => {
             onJobUpdated={mergeCurrentJob}
             onCreateTask={createTask}
             onConfirmCurrentPlan={confirmCurrentPlan}
-            onOpenImageMarkup={() => setImageMarkupOpen(true)}
-          />
-        )}
+            onOpenImageMarkup={() => setImageMarkupOpen(true)} />
+
+          }
         </AnimatePresence>
         <PPTStudio
           currentJob={currentJob}
@@ -284,16 +284,16 @@ const WorkspaceShell = () => {
           onPreviewTypeChange={setSelectedPreviewType}
           onJobUpdated={mergeCurrentJob}
           onConfirmCurrentPlan={confirmCurrentPlan}
-          onOpenImageMarkup={() => setImageMarkupOpen(true)}
-        />
+          onOpenImageMarkup={() => setImageMarkupOpen(true)} />
+        
       </div>
       <UnsavedPlanConfirmModal
         open={unsavedPlanConfirmOpen && unsavedPlanConfirmJobId === currentJob?.job_id}
         pending={planConfirmPending}
         onSaveAndConfirm={confirmDirtyPlan}
         onDiscardAndConfirm={confirmSavedPlan}
-        onCancel={cancelPlanConfirm}
-      />
+        onCancel={cancelPlanConfirm} />
+      
       <ImageMarkupPanel
         open={imageMarkupOpen}
         image={activeImage}
@@ -301,10 +301,10 @@ const WorkspaceShell = () => {
         previewLabel={activeImageKind}
         annotations={imageAnnotations}
         onAnnotationsChange={updateImageAnnotations}
-        onClose={() => setImageMarkupOpen(false)}
-      />
-    </>
-  );
+        onClose={() => setImageMarkupOpen(false)} />
+      
+    </>);
+
 };
 
 export default WorkspaceShell;

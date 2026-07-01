@@ -10,12 +10,10 @@ export const useJobDetail = (jobId) => {
   const visibleError = errorState?.jobId === jobId ? errorState.error : null;
   const shouldStream = useMemo(() => {
     return shouldOpenJobDetailStream(jobId, visibleJob);
-  }, [jobId, visibleJob?.job_id, visibleJob?.status]);
+  }, [jobId, visibleJob]);
 
   useEffect(() => {
     if (!jobId) {
-      setJob(null);
-      setErrorState(null);
       return undefined;
     }
 

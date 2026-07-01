@@ -2,17 +2,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Activity, CheckCircle2, Eye, EyeOff, Loader2, Plus, Trash2, X } from 'lucide-react';
-import clsx from 'clsx';
-import { useModelConfigs } from '../../hooks/useModelConfigs';
+
+import { useModelConfigs } from '../../hooks/useModelConfigs';import { uiClassName } from "../../utils/uiClassName";
 
 const DEFAULT_BASE_URL = 'https://your-api-endpoint.com/v1';
 const DEFAULT_CHAT_MODEL = 'gpt-5.5';
 const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 
 const MODEL_TYPES = [
-  { value: 'chat', label: '对话模型', description: '内容规划、脚本生成与评估使用' },
-  { value: 'image', label: '生图模型', description: 'PPT 页面原稿图生成使用' },
-];
+{ value: 'chat', label: '对话模型', description: '内容规划、脚本生成与评估使用' },
+{ value: 'image', label: '生图模型', description: 'PPT 页面原稿图生成使用' }];
+
 
 const createModelDefaults = (modelType) => {
   if (modelType === 'chat') {
@@ -22,7 +22,7 @@ const createModelDefaults = (modelType) => {
       api_key: '',
       model: DEFAULT_CHAT_MODEL,
       temperature: 0.3,
-      max_tokens: 5000,
+      max_tokens: 5000
     };
   }
   return {
@@ -30,7 +30,7 @@ const createModelDefaults = (modelType) => {
     base_url: DEFAULT_BASE_URL,
     api_key: '',
     model: DEFAULT_IMAGE_MODEL,
-    output_format: 'png',
+    output_format: 'png'
   };
 };
 
@@ -45,7 +45,7 @@ const createFormValues = (modelType, item = null) => {
     temperature: item?.temperature ?? defaults.temperature ?? 0.3,
     max_tokens: item?.max_tokens ?? defaults.max_tokens ?? 5000,
     output_format: item?.output_format || defaults.output_format || 'png',
-    api_key_configured: Boolean(item?.api_key_configured),
+    api_key_configured: Boolean(item?.api_key_configured)
   };
 };
 
@@ -58,7 +58,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
     saveModelConfig,
     activateModelConfig,
     deleteModelConfig,
-    testModelConfig,
+    testModelConfig
   } = useModelConfigs(isOpen);
   const [activeModelType, setActiveModelType] = useState('chat');
   const [selectedModelId, setSelectedModelId] = useState('');
@@ -111,7 +111,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
       base_url: form.base_url.trim(),
       api_key: form.api_key.trim(),
       model: form.model.trim(),
-      enabled: true,
+      enabled: true
     };
     if (activeModelType === 'chat') {
       payload.temperature = Number(form.temperature || 0.3);
@@ -166,8 +166,8 @@ const SettingsModal = ({ isOpen, onClose }) => {
         modelType: activeModelType,
         payload: {
           ...collectPayload(),
-          id: form.id,
-        },
+          id: form.id
+        }
       });
       const elapsedText = Number.isFinite(result.elapsed_ms) ? `（${result.elapsed_ms}ms）` : '';
       setMessage(`${result.message || '连通测试通过'}${elapsedText}`);
@@ -204,197 +204,197 @@ const SettingsModal = ({ isOpen, onClose }) => {
 
   return (
     <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          className="settings-modal"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <button type="button" className="settings-modal__backdrop" aria-label="关闭设置" onClick={onClose} />
+      {isOpen &&
+      <motion.div
+        className={uiClassName("settings-modal")}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}>
+        
+          <button type="button" className={uiClassName("settings-modal__backdrop")} aria-label="关闭设置" onClick={onClose} />
           <motion.section
-            className="settings-modal__shell"
-            initial={{ scale: 0.96, y: 18 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.96, y: 18 }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="模型配置"
-          >
-            <header className="settings-modal__head">
+          className={uiClassName("settings-modal__shell")}
+          initial={{ scale: 0.96, y: 18 }}
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0.96, y: 18 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="模型配置">
+          
+            <header className={uiClassName("settings-modal__head")}>
               <div>
                 <h2>模型配置</h2>
                 <p>管理 OpenAI-compatible 对话模型与生图模型。</p>
               </div>
-              <button type="button" className="icon-button" onClick={onClose} title="关闭" aria-label="关闭">
+              <button type="button" className={uiClassName("icon-button")} onClick={onClose} title="关闭" aria-label="关闭">
                 <X size={18} />
               </button>
             </header>
 
-            <div className="settings-tabs" role="tablist" aria-label="模型类型">
-              {MODEL_TYPES.map((type) => (
-                <button
-                  type="button"
-                  key={type.value}
-                  className={clsx('tab-button', activeModelType === type.value && 'is-active')}
-                  onClick={() => {
-                    setActiveModelType(type.value);
-                    setSelectedModelId('');
-                    setIsCreating(false);
-                  }}
-                >
+            <div className={uiClassName("settings-tabs")} role="tablist" aria-label="模型类型">
+              {MODEL_TYPES.map((type) =>
+            <button
+              type="button"
+              key={type.value}
+              className={uiClassName('tab-button', activeModelType === type.value && 'is-active')}
+              onClick={() => {
+                setActiveModelType(type.value);
+                setSelectedModelId('');
+                setIsCreating(false);
+              }}>
+              
                   <strong>{type.label}</strong>
                   <span>{type.description}</span>
                 </button>
-              ))}
+            )}
             </div>
 
-            {loading && !modelConfigs ? (
-              <div className="settings-loading">
-                <Loader2 className="spin" size={24} />
+            {loading && !modelConfigs ?
+          <div className={uiClassName("settings-loading")}>
+                <Loader2 className={uiClassName("spin")} size={24} />
                 <span>正在加载模型配置...</span>
-              </div>
-            ) : error ? (
-              <div className="settings-empty is-error">{error}</div>
-            ) : (
-              <div className="settings-body">
-                <aside className="model-list" aria-label="模型配置列表">
-                  {items.length === 0 && (
-                    <article className="model-item">
+              </div> :
+          error ?
+          <div className={uiClassName("settings-empty is-error")}>{error}</div> :
+
+          <div className={uiClassName("settings-body")}>
+                <aside className={uiClassName("model-list")} aria-label="模型配置列表">
+                  {items.length === 0 &&
+              <article className={uiClassName("model-item")}>
                       <h3>暂无模型配置</h3>
                       <p>新建后填写 Base URL、模型名和 API Key。</p>
                     </article>
-                  )}
-                  {items.map((item) => (
-                    <article
-                      key={item.id}
-                      className={clsx('model-item', item.id === activeId && 'is-active', item.id === form.id && !isCreating && 'is-selected')}
-                    >
-                      <button type="button" className="model-item__main" onClick={() => selectModel(item)}>
-                        <span className="model-item__head">
+              }
+                  {items.map((item) =>
+              <article
+                key={item.id}
+                className={uiClassName('model-item', item.id === activeId && 'is-active', item.id === form.id && !isCreating && 'is-selected')}>
+                
+                      <button type="button" className={uiClassName("model-item__main")} onClick={() => selectModel(item)}>
+                        <span className={uiClassName("model-item__head")}>
                           <strong>{item.name}</strong>
-                          {item.id === activeId && (
-                            <em>
+                          {item.id === activeId &&
+                    <em>
                               <CheckCircle2 size={13} />
                               启用中
                             </em>
-                          )}
+                    }
                         </span>
                         <span>{item.model}</span>
                         <small>{item.base_url}</small>
                       </button>
-                      <div className="model-item__actions">
+                      <div className={uiClassName("model-item__actions")}>
                         <button type="button" onClick={() => handleActivate(item.id)} disabled={item.id === activeId}>
                           设为启用
                         </button>
-                        <button type="button" className="is-danger" onClick={() => handleDelete(item.id)} title="删除">
+                        <button type="button" className={uiClassName("is-danger")} onClick={() => handleDelete(item.id)} title="删除">
                           <Trash2 size={14} />
                         </button>
                       </div>
                     </article>
-                  ))}
-                  <button type="button" className={clsx('add-model-card', isCreating && 'is-selected')} onClick={startCreate}>
+              )}
+                  <button type="button" className={uiClassName('add-model-card', isCreating && 'is-selected')} onClick={startCreate}>
                     <Plus size={20} />
                     <span>{activeModelType === 'chat' ? '新建对话模型' : '新建生图模型'}</span>
                   </button>
                 </aside>
 
-                <form className="model-form" onSubmit={handleSave}>
+                <form className={uiClassName("model-form")} onSubmit={handleSave}>
                   <input type="hidden" value={form.id} readOnly />
-                  <label className="field">
+                  <label className={uiClassName("field")}>
                     <span>配置名称</span>
                     <input value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
                   </label>
-                  <label className="field">
+                  <label className={uiClassName("field")}>
                     <span>Base URL</span>
                     <input
-                      value={form.base_url}
-                      onChange={(event) => updateForm('base_url', event.target.value)}
-                      placeholder={DEFAULT_BASE_URL}
-                    />
+                  value={form.base_url}
+                  onChange={(event) => updateForm('base_url', event.target.value)}
+                  placeholder={DEFAULT_BASE_URL} />
+                
                     <small>填写兼容 OpenAI Response 格式的服务端点地址。</small>
                   </label>
-                  <div className="model-form__grid">
-                    <label className="field">
+                  <div className={uiClassName("model-form__grid")}>
+                    <label className={uiClassName("field")}>
                       <span>API Key</span>
-                      <span className="secret-input-shell">
+                      <span className={uiClassName("secret-input-shell")}>
                         <input
-                          type={showApiKey ? 'text' : 'password'}
-                          autoComplete="off"
-                          value={form.api_key}
-                          onChange={(event) => updateForm('api_key', event.target.value)}
-                        />
-                        {(form.api_key_configured || form.api_key) && (
-                          <button
-                            type="button"
-                            className="secret-preview-toggle"
-                            onClick={() => setShowApiKey((value) => !value)}
-                            title={showApiKey ? '隐藏完整密钥' : '显示完整密钥'}
-                            aria-label={showApiKey ? '隐藏完整密钥' : '显示完整密钥'}
-                          >
+                      type={showApiKey ? 'text' : 'password'}
+                      autoComplete="off"
+                      value={form.api_key}
+                      onChange={(event) => updateForm('api_key', event.target.value)} />
+                    
+                        {(form.api_key_configured || form.api_key) &&
+                    <button
+                      type="button"
+                      className={uiClassName("secret-preview-toggle")}
+                      onClick={() => setShowApiKey((value) => !value)}
+                      title={showApiKey ? '隐藏完整密钥' : '显示完整密钥'}
+                      aria-label={showApiKey ? '隐藏完整密钥' : '显示完整密钥'}>
+                      
                             {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
-                        )}
+                    }
                       </span>
                     </label>
-                    <label className="field">
+                    <label className={uiClassName("field")}>
                       <span>模型名</span>
                       <input value={form.model} onChange={(event) => updateForm('model', event.target.value)} placeholder="直接填写模型名" />
                     </label>
                   </div>
 
-                  {activeModelType === 'chat' ? (
-                    <div className="model-form__grid">
-                      <label className="field">
+                  {activeModelType === 'chat' ?
+              <div className={uiClassName("model-form__grid")}>
+                      <label className={uiClassName("field")}>
                         <span>Temperature</span>
                         <input
-                          type="number"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                          value={form.temperature}
-                          onChange={(event) => updateForm('temperature', event.target.value)}
-                        />
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={form.temperature}
+                    onChange={(event) => updateForm('temperature', event.target.value)} />
+                  
                       </label>
-                      <label className="field">
+                      <label className={uiClassName("field")}>
                         <span>Max tokens</span>
                         <input
-                          type="number"
-                          min="512"
-                          step="256"
-                          value={form.max_tokens}
-                          onChange={(event) => updateForm('max_tokens', event.target.value)}
-                        />
+                    type="number"
+                    min="512"
+                    step="256"
+                    value={form.max_tokens}
+                    onChange={(event) => updateForm('max_tokens', event.target.value)} />
+                  
                       </label>
-                    </div>
-                  ) : (
-                    <label className="field">
+                    </div> :
+
+              <label className={uiClassName("field")}>
                       <span>输出格式</span>
                       <input value={form.output_format} onChange={(event) => updateForm('output_format', event.target.value)} placeholder="png" />
                     </label>
-                  )}
+              }
 
-                  <div className="model-form__actions">
-                    <p className="model-form__message">{message}</p>
-                    <div className="model-form__action-buttons">
-                      <button type="button" className="btn btn-secondary" disabled={saving || testing} onClick={handleTestConnectivity}>
-                        {testing ? <Loader2 className="spin" size={16} /> : <Activity size={16} />}
+                  <div className={uiClassName("model-form__actions")}>
+                    <p className={uiClassName("model-form__message")}>{message}</p>
+                    <div className={uiClassName("model-form__action-buttons")}>
+                      <button type="button" className={uiClassName("btn btn-secondary")} disabled={saving || testing} onClick={handleTestConnectivity}>
+                        {testing ? <Loader2 className={uiClassName("spin")} size={16} /> : <Activity size={16} />}
                         <span>{testing ? '测试中...' : '连通测试'}</span>
                       </button>
-                      <button type="submit" className="btn btn-primary" disabled={saving || testing}>
-                        {saving && <Loader2 className="spin" size={16} />}
+                      <button type="submit" className={uiClassName("btn btn-primary")} disabled={saving || testing}>
+                        {saving && <Loader2 className={uiClassName("spin")} size={16} />}
                         <span>{saving ? '保存中...' : '保存配置'}</span>
                       </button>
                     </div>
                   </div>
                 </form>
               </div>
-            )}
+          }
           </motion.section>
         </motion.div>
-      )}
-    </AnimatePresence>
-  );
+      }
+    </AnimatePresence>);
+
 };
 
 export default SettingsModal;

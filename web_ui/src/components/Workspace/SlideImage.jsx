@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { FileImage, ImageOff, Loader2 } from 'lucide-react';
-import clsx from 'clsx';
+import { FileImage, ImageOff, Loader2 } from 'lucide-react';import { uiClassName } from "../../utils/uiClassName";
+
 
 const isMiniVariant = (variant) => variant === 'mini';
 
@@ -14,7 +14,7 @@ const SlideImage = ({
   emptyDescription = '生成完成后会自动显示页面预览。',
   errorTitle = '预览加载失败',
   sourceLabel,
-  showMeta = false,
+  showMeta = false
 }) => {
   const [loadedImage, setLoadedImage] = useState({ src: '', size: null });
   const [failedSrc, setFailedSrc] = useState('');
@@ -30,63 +30,63 @@ const SlideImage = ({
 
   return (
     <div
-      className={clsx(
+      className={uiClassName(
         'slide-image',
         `slide-image--${variant}`,
         loadState === 'loaded' && 'is-loaded',
         loadState === 'error' && 'is-error',
         showLoading && 'is-loading',
-        className,
-      )}
-    >
-      {showImage && (
-        <img
-          src={src}
-          alt={alt || emptyTitle}
-          loading={isMiniVariant(variant) ? 'lazy' : 'eager'}
-          decoding="async"
-          onLoad={(event) => {
-            setLoadedImage({
-              src,
-              size: {
-                width: event.currentTarget.naturalWidth,
-                height: event.currentTarget.naturalHeight,
-              },
-            });
-            setFailedSrc('');
-          }}
-          onError={() => setFailedSrc(src)}
-        />
-      )}
+        className)}>
 
-      {showState && (
-        <div className="slide-image__state">
-          {isMiniVariant(variant) && !src ? (
-            <span className="slide-image__initial">{String(emptyTitle || 'P').slice(0, 1)}</span>
-          ) : loadState === 'error' ? (
-            <ImageOff size={isMiniVariant(variant) ? 16 : 26} />
-          ) : showLoading ? (
-            <Loader2 className="spin" size={isMiniVariant(variant) ? 16 : 24} />
-          ) : (
-            <FileImage size={isMiniVariant(variant) ? 16 : 26} />
-          )}
-          {!isMiniVariant(variant) && (
-            <span>
+      
+      {showImage &&
+      <img
+        src={src}
+        alt={alt || emptyTitle}
+        loading={isMiniVariant(variant) ? 'lazy' : 'eager'}
+        decoding="async"
+        onLoad={(event) => {
+          setLoadedImage({
+            src,
+            size: {
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight
+            }
+          });
+          setFailedSrc('');
+        }}
+        onError={() => setFailedSrc(src)} />
+
+      }
+
+      {showState &&
+      <div className={uiClassName("slide-image__state")}>
+          {isMiniVariant(variant) && !src ?
+        <span className={uiClassName("slide-image__initial")}>{String(emptyTitle || 'P').slice(0, 1)}</span> :
+        loadState === 'error' ?
+        <ImageOff size={isMiniVariant(variant) ? 16 : 26} /> :
+        showLoading ?
+        <Loader2 className={uiClassName("spin")} size={isMiniVariant(variant) ? 16 : 24} /> :
+
+        <FileImage size={isMiniVariant(variant) ? 16 : 26} />
+        }
+          {!isMiniVariant(variant) &&
+        <span>
               <strong>{loadState === 'error' ? errorTitle : emptyTitle}</strong>
               {loadState !== 'error' && emptyDescription && <small>{emptyDescription}</small>}
             </span>
-          )}
+        }
         </div>
-      )}
+      }
 
-      {loadState === 'loaded' && (sourceLabel || (showMeta && size)) && (
-        <div className="slide-image__meta">
+      {loadState === 'loaded' && (sourceLabel || showMeta && size) &&
+      <div className={uiClassName("slide-image__meta")}>
           {sourceLabel && <span>{sourceLabel}</span>}
           {showMeta && size && <span>{size.width} × {size.height}</span>}
         </div>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 };
 
 export default SlideImage;

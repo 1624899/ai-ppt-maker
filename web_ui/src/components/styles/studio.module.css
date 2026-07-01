@@ -1,0 +1,317 @@
+.mode-switch,
+.studio-card__head,
+.agent-card__title-row,
+.job-controls {
+  display: flex;
+  align-items: center;
+}
+
+.ppt-studio__header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.ppt-studio__header > div {
+  min-width: 0;
+}
+
+.task-center__body,
+.agent-workspace__body,
+.ppt-studio__body {
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.agent-card,
+.studio-card,
+.conversation-card,
+.edit-block,
+.planning-editor__deck,
+.page-plan-editor,
+.stage-progress {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.preview-actions button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-edit-preview .slide-image {
+  min-height: 220px;
+}
+
+.studio-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.preview-card {
+  padding: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 251, 255, 0.76)),
+    rgba(255, 255, 255, 0.8);
+}
+
+.studio-card__head {
+  justify-content: space-between;
+}
+
+.studio-card__head > div {
+  display: grid;
+}
+
+.icon-link {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.slide-image {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text-muted);
+  background:
+    linear-gradient(135deg, rgba(21, 32, 51, 0.05), rgba(31, 94, 255, 0.06)),
+    var(--bg-canvas);
+  border: 1px solid var(--border-light);
+}
+
+.slide-image::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.42) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.42) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.42) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.42) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  opacity: 0.28;
+}
+
+.slide-image--preview {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.88), transparent 32%),
+    linear-gradient(135deg, rgba(21, 32, 51, 0.04), rgba(31, 94, 255, 0.08)),
+    var(--bg-canvas);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+    0 18px 34px rgba(58, 79, 115, 0.12);
+}
+
+.slide-image--mini {
+  aspect-ratio: 16 / 9;
+  border-radius: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.slide-image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.slide-image--mini img {
+  object-fit: cover;
+}
+
+.slide-image__state {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.slide-image__state span {
+  display: grid;
+  gap: 2px;
+}
+
+.slide-image__state strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.slide-image__state small {
+  max-width: 220px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.slide-image__initial {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: #fff;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--primary), var(--teal));
+  border-radius: 9px;
+}
+
+.slide-image__meta {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.slide-image__meta span {
+  padding: 4px 7px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(21, 32, 51, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+}
+
+.slide-image.is-error {
+  color: var(--danger);
+  background:
+    linear-gradient(135deg, rgba(207, 75, 75, 0.08), rgba(255, 255, 255, 0.76)),
+    var(--danger-soft);
+}
+
+.page-list {
+  max-height: 35vh;
+  overflow-y: auto;
+}
+
+.page-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 9px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.page-item:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(31, 94, 255, 0.18);
+  box-shadow: var(--shadow-xs);
+}
+
+.page-item.is-active {
+  border-color: rgba(31, 94, 255, 0.64);
+  background:
+    linear-gradient(135deg, rgba(31, 94, 255, 0.14), rgba(15, 159, 143, 0.08)),
+    #fff;
+  box-shadow: 0 14px 30px rgba(31, 94, 255, 0.17);
+}
+
+.page-item.is-active::before {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 0;
+  width: 4px;
+  content: "";
+  background: linear-gradient(180deg, var(--primary), var(--teal));
+  border-radius: 0 999px 999px 0;
+}
+
+.page-item.is-active .page-item__thumb {
+  box-shadow: 0 0 0 2px rgba(31, 94, 255, 0.5), 0 8px 18px rgba(31, 94, 255, 0.14);
+}
+
+.page-item.is-active .page-item__text strong {
+  color: var(--primary-strong);
+}
+
+.page-item__thumb {
+  width: 82px;
+  align-self: center;
+}
+
+.page-item__text {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+}
+
+.page-item__text strong,
+.page-item__text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-item__text strong {
+  font-size: 13px;
+}
+
+.export-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: rgba(245, 248, 252, 0.72);
+  border: 1px solid rgba(198, 211, 231, 0.42);
+  border-radius: var(--radius-md);
+}
+
+.export-item > .btn,
+.export-item > button {
+  white-space: nowrap;
+}
+
+.export-item > svg {
+  color: var(--primary);
+}
+
+.export-item > span {
+  display: grid;
+  min-width: 0;
+}
+
+.export-fallback {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  color: var(--text-muted);
+  text-align: left;
+  border-radius: var(--radius-md);
+}
+
+.export-fallback small {
+  color: var(--text-soft);
+  font-size: 11px;
+}

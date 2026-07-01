@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';import { uiClassName } from "../../utils/uiClassName";
 
 const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 8;
@@ -11,7 +11,7 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const getViewportSize = () => ({
   width: window.innerWidth || document.documentElement.clientWidth,
-  height: window.innerHeight || document.documentElement.clientHeight,
+  height: window.innerHeight || document.documentElement.clientHeight
 });
 
 const getMenuPosition = (anchorEl, menuEl) => {
@@ -28,7 +28,7 @@ const getMenuPosition = (anchorEl, menuEl) => {
 
   return {
     left: clamp(preferredLeft, VIEWPORT_GAP, maxLeft),
-    top: clamp(hasRoomBelow ? belowTop : aboveTop, VIEWPORT_GAP, maxTop),
+    top: clamp(hasRoomBelow ? belowTop : aboveTop, VIEWPORT_GAP, maxTop)
   };
 };
 
@@ -92,22 +92,22 @@ const TaskActionMenu = ({ open, anchorEl, onClose, children }) => {
 
   return createPortal(
     <AnimatePresence>
-      {open && (
-        <motion.div
-          ref={menuRef}
-          className="task-action-menu"
-          role="menu"
-          initial={{ opacity: 0, scale: 0.95, y: -5 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -5 }}
-          transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.55 }}
-          style={{ visibility: 'hidden', transformOrigin: 'top right' }}
-        >
+      {open &&
+      <motion.div
+        ref={menuRef}
+        className={uiClassName("task-action-menu")}
+        role="menu"
+        initial={{ opacity: 0, scale: 0.95, y: -5 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: -5 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.55 }}
+        style={{ visibility: 'hidden', transformOrigin: 'top right' }}>
+        
           {children}
         </motion.div>
-      )}
+      }
     </AnimatePresence>,
-    document.body,
+    document.body
   );
 };
 

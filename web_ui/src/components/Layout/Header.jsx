@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { CheckCircle2, ChevronUp, LoaderCircle, Pause, Play, Plus, RotateCcw, Settings, SlidersHorizontal } from 'lucide-react';
 import clsx from 'clsx';
 import SettingsModal from './SettingsModal';
+import styles from './Header.module.css';
 import pptStudioIcon from '../../assets/ppt-studio-icon.png';
 import { getJobTitle, getStatusLabel } from '../../utils/jobPresentation';
 import { TASK_LAUNCH_CLOSE_LABEL, TASK_LAUNCH_CREATE_LABEL, TASK_LAUNCH_FROM_CURRENT_LABEL } from '../../utils/taskLaunchLabels';
 import { getTaskLaunchSummaryText } from '../../utils/taskLaunchSummary';
 import { getTopbarTaskAction } from '../../utils/topbarTaskAction';
 import { useJobActions } from '../../hooks/useJobActions';
+import { uiClassName } from '../../utils/uiClassName';
 
 const ACTION_ICONS = {
   pause: Pause,
@@ -68,9 +70,9 @@ const Header = ({
 
   return (
     <>
-      <header className="app-topbar">
-        <div className="brand-block">
-          <div className="brand-mark">
+      <header className={styles.topbar}>
+        <div className={styles.brandBlock}>
+          <div className={styles.brandMark}>
             <img src={pptStudioIcon} alt="" />
           </div>
           <div>
@@ -79,16 +81,16 @@ const Header = ({
           </div>
         </div>
 
-        <div className="topbar-task">
+        <div className={styles.task}>
           <span>当前任务</span>
           <strong>{currentJob ? getJobTitle(currentJob) : '准备创建新任务'}</strong>
           <em>{currentJob ? getStatusLabel(currentJob.status) : '未开始'}</em>
         </div>
 
-        <div className="topbar-actions">
+        <div className={styles.actions}>
           <button
             type="button"
-            className={clsx('topbar-config-drawer', taskLaunchOpen && 'is-open')}
+            className={clsx(styles.configDrawer, taskLaunchOpen && styles.isOpen)}
             onClick={() => {
               if (taskLaunchOpen) {
                 onCloseTaskLaunch?.();
@@ -106,17 +108,17 @@ const Header = ({
               <small>{taskLaunchOpen && taskLaunchSourceJob ? getJobTitle(taskLaunchSourceJob) : launchSummary}</small>
             </span>
           </button>
-          <button className="btn btn-secondary" onClick={() => setIsSettingsOpen(true)}>
+          <button className={uiClassName('btn btn-secondary')} onClick={() => setIsSettingsOpen(true)}>
             <Settings size={18} />
             <span>设置</span>
           </button>
           <button
             type="button"
-            className={clsx('btn', taskAction.className)}
+            className={uiClassName('btn', taskAction.className)}
             onClick={handleTaskAction}
             disabled={taskAction.disabled}
           >
-            <TaskActionIcon size={18} className={taskAction.icon === 'loader' ? 'spin' : undefined} />
+            <TaskActionIcon size={18} className={uiClassName(taskAction.icon === 'loader' && 'spin')} />
             <span>{taskAction.type === 'confirm-plan' && planDraftDirty && !planActionPending ? '用当前修改继续' : taskAction.label}</span>
           </button>
         </div>

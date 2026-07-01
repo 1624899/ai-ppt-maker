@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, History, Layers3, LoaderCircle, MessageSquareText, MousePointer2, SlidersHorizontal, Sparkles, WandSparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import clsx from 'clsx';
+
 import { ScaleButton } from '../Motion/MotionUI';
 import AgentChatPanel from './AgentChatPanel';
 import AgentFeedbackCard from './AgentFeedbackCard';
@@ -19,9 +19,9 @@ import {
   getPageSummary,
   getPageTitle,
   getRecentJobOperations,
-  getStatusLabel,
-} from '../../utils/jobPresentation';
-import { getTaskLaunchSummaryText } from '../../utils/taskLaunchSummary';
+  getStatusLabel } from
+'../../utils/jobPresentation';
+import { getTaskLaunchSummaryText } from '../../utils/taskLaunchSummary';import { uiClassName } from "../../utils/uiClassName";
 
 const AgentWorkspace = ({
   currentJob,
@@ -34,7 +34,7 @@ const AgentWorkspace = ({
   onJobUpdated,
   onCreateTask,
   onConfirmCurrentPlan,
-  onOpenImageMarkup,
+  onOpenImageMarkup
 }) => {
   const [mode, setMode] = useState('chat');
   const [draftInstruction, setDraftInstruction] = useState('');
@@ -46,19 +46,19 @@ const AgentWorkspace = ({
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
   const [imageEditPending, setImageEditPending] = useState('');
   const [imageEditError, setImageEditError] = useState('');
-  const latestCandidate = activePage
-    ? getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType)
-    : null;
+  const latestCandidate = activePage ?
+  getLatestImageEditCandidate(currentJob, activePage.page_no, selectedPreviewType) :
+  null;
   const activePreviewLabel = selectedPreviewType === 'element' ? '元素图' : selectedPreviewType === 'preview' ? '预览图' : '原稿图';
-  const applyCandidateLabel = selectedPreviewType === 'element'
-    ? '替换元素图并重建 PPT'
-    : selectedPreviewType === 'reference'
-      ? '替换原稿图并重建后续'
-      : `替换${activePreviewLabel}`;
+  const applyCandidateLabel = selectedPreviewType === 'element' ?
+  '替换元素图并重建 PPT' :
+  selectedPreviewType === 'reference' ?
+  '替换原稿图并重建后续' :
+  `替换${activePreviewLabel}`;
   const latestCandidateApplied = isImageEditCandidateApplied(latestCandidate);
-  const generateCandidateLabel = latestCandidateApplied
-    ? `基于当前${activePreviewLabel}再生成`
-    : '重新生成预览';
+  const generateCandidateLabel = latestCandidateApplied ?
+  `基于当前${activePreviewLabel}再生成` :
+  '重新生成预览';
   const forcedPlanningMode = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const activeMode = forcedPlanningMode ? 'planning' : mode;
 
@@ -85,7 +85,7 @@ const AgentWorkspace = ({
         page_no: activePage.page_no,
         preview_type: selectedPreviewType,
         instruction,
-        annotations: imageAnnotations,
+        annotations: imageAnnotations
       });
       onJobUpdated?.(updatedJob);
     } catch (err) {
@@ -110,88 +110,88 @@ const AgentWorkspace = ({
   };
 
   return (
-    <main className="workspace-panel agent-workspace">
-      <div className="workspace-panel__header agent-workspace__header">
+    <main className={uiClassName("workspace-panel agent-workspace")}>
+      <div className={uiClassName("workspace-panel__header agent-workspace__header")}>
         <div>
-          <span className="eyebrow">创作工作区</span>
+          <span className={uiClassName("eyebrow")}>创作工作区</span>
           <h2>{currentJob ? getJobTitle(currentJob) : '创建你的下一份 PPT'}</h2>
           <p>{currentJob ? `${getStatusLabel(currentJob.status)} · ${getTaskLaunchSummaryText(currentJob)}` : '先配置任务边界，再进入对话、规划和单页编辑。'}</p>
         </div>
-        <div className="mode-switch" role="tablist" aria-label="工作模式">
-          <ScaleButton className={clsx(activeMode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
+        <div className={uiClassName("mode-switch")} role="tablist" aria-label="工作模式">
+          <ScaleButton className={uiClassName(activeMode === 'chat' && 'is-active')} onClick={() => setMode('chat')}>
             <MessageSquareText size={16} />
             对话
           </ScaleButton>
-          <ScaleButton className={clsx(activeMode === 'planning' && 'is-active')} onClick={() => setMode('planning')} disabled={!currentJob}>
+          <ScaleButton className={uiClassName(activeMode === 'planning' && 'is-active')} onClick={() => setMode('planning')} disabled={!currentJob}>
             <Layers3 size={16} />
             规划
           </ScaleButton>
-          <ScaleButton className={clsx(activeMode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
+          <ScaleButton className={uiClassName(activeMode === 'edit' && 'is-active')} onClick={() => setMode('edit')} disabled={!activePage}>
             <SlidersHorizontal size={16} />
             编辑
           </ScaleButton>
         </div>
       </div>
 
-      <div className="agent-workspace__body">
+      <div className={uiClassName("agent-workspace__body")}>
         {currentJob && <StageProgress job={currentJob} dense />}
 
         <AgentFeedbackCard
           summary={agentSummary}
           pages={pages}
           selectedPageIndex={selectedPageIndex}
-          onSelectPage={onSelectPage}
-        />
+          onSelectPage={onSelectPage} />
+        
 
         <AnimatePresence mode="wait">
-          {activeMode === 'chat' ? (
-            <motion.section 
-              key="chat"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="chat-stage"
-            >
-            {!currentJob && (
-              <div className="agent-card agent-card--launch-empty">
-                <div className="agent-card__title-row">
+          {activeMode === 'chat' ?
+          <motion.section
+            key="chat"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className={uiClassName("chat-stage")}>
+            
+            {!currentJob &&
+            <div className={uiClassName("agent-card agent-card--launch-empty")}>
+                <div className={uiClassName("agent-card__title-row")}>
                   <Sparkles size={18} />
                   <h3>先创建任务 Brief</h3>
                 </div>
                 <p>生成参数已经从对话区独立出来。先在启动配置里确定内容、页数、风格和生成工作流，提交后这里会进入 Agent 对话与后续编辑。</p>
-                <ScaleButton className="btn btn-primary ai-glow-button" onClick={onCreateTask}>
+                <ScaleButton className={uiClassName("btn btn-primary ai-glow-button")} onClick={onCreateTask}>
                   <Sparkles size={16} />
                   创建 PPT 任务
                 </ScaleButton>
               </div>
-            )}
+            }
 
-            {currentJob && (
-              <>
+            {currentJob &&
+            <>
                 <AgentChatPanel
-                  key={currentJob.job_id}
-                  currentJob={currentJob}
-                  activePage={activePage}
-                  previewType={selectedPreviewType}
-                  annotations={imageAnnotations}
-                  draftInstruction={draftInstruction}
-                  onDraftInstructionChange={setDraftInstruction}
-                  onDraftConfirmed={confirmAgentDraft}
-                  onConversationCleared={(updatedJob) => {
-                    setAgentDraft(null);
-                    if (updatedJob?.job_id) onJobUpdated(updatedJob);
-                  }}
-                  onOpenImageMarkup={onOpenImageMarkup}
-                />
-                {recentOperations.length > 0 && (
-                  <section className="operation-feed">
-                    <div className="section-title">
+                key={currentJob.job_id}
+                currentJob={currentJob}
+                activePage={activePage}
+                previewType={selectedPreviewType}
+                annotations={imageAnnotations}
+                draftInstruction={draftInstruction}
+                onDraftInstructionChange={setDraftInstruction}
+                onDraftConfirmed={confirmAgentDraft}
+                onConversationCleared={(updatedJob) => {
+                  setAgentDraft(null);
+                  if (updatedJob?.job_id) onJobUpdated(updatedJob);
+                }}
+                onOpenImageMarkup={onOpenImageMarkup} />
+              
+                {recentOperations.length > 0 &&
+              <section className={uiClassName("operation-feed")}>
+                    <div className={uiClassName("section-title")}>
                       <History size={15} />
                       <span>最近操作</span>
                     </div>
-                    {recentOperations.map((operation) => (
-                      <article className="operation-item" key={operation.operation_id}>
+                    {recentOperations.map((operation) =>
+                <article className={uiClassName("operation-item")} key={operation.operation_id}>
                         <strong>{operation.label || operation.type}</strong>
                         <span>
                           {[getOperationStatusLabel(operation.status), getOperationExecutionLabel(operation.execution)].filter(Boolean).join(' · ')}
@@ -199,139 +199,139 @@ const AgentWorkspace = ({
                           {operation.message || operation.instruction || '已同步到任务状态'}
                         </span>
                       </article>
-                    ))}
-                  </section>
                 )}
+                  </section>
+              }
               </>
-            )}
-            </motion.section>
-          ) : activeMode === 'planning' ? (
-            <motion.section
-              key="planning"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="planning-stage"
-            >
+            }
+            </motion.section> :
+          activeMode === 'planning' ?
+          <motion.section
+            key="planning"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className={uiClassName("planning-stage")}>
+            
               <PlanningEditor
-                currentJob={currentJob}
-                config={config}
-                planningDraft={planningDraft}
-                onJobUpdated={onJobUpdated}
-                onConfirmCurrentPlan={onConfirmCurrentPlan}
-              />
-            </motion.section>
-          ) : (
-            <motion.section 
-              key="edit"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="edit-stage"
-            >
-            {activePage ? (
-              <>
-                <div className="edit-stage__title">
+              currentJob={currentJob}
+              config={config}
+              planningDraft={planningDraft}
+              onJobUpdated={onJobUpdated}
+              onConfirmCurrentPlan={onConfirmCurrentPlan} />
+            
+            </motion.section> :
+
+          <motion.section
+            key="edit"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className={uiClassName("edit-stage")}>
+            
+            {activePage ?
+            <>
+                <div className={uiClassName("edit-stage__title")}>
                   <span>正在编辑：第 {activePage.page_no} 页</span>
                   <h3>{getPageTitle(activePage)}</h3>
                   {getPageSummary(activePage) && <p>{getPageSummary(activePage)}</p>}
                 </div>
 
-                {agentDraft && (
-                  <div className="agent-draft-strip">
+                {agentDraft &&
+              <div className={uiClassName("agent-draft-strip")}>
                     <span>来自 Agent 对话</span>
                     <strong>{agentDraft.summary}</strong>
                   </div>
-                )}
+              }
 
-                <div className="edit-block">
+                <div className={uiClassName("edit-block")}>
                   <span>文字描述调整</span>
                   <label>
                     修改要求
                     <textarea
-                      value={draftInstruction}
-                      onChange={(event) => setDraftInstruction(event.target.value)}
-                      placeholder={`描述第 ${activePage.page_no} 页要怎么改，例如：右侧模块更清晰，主标题更短，整体更像咨询汇报...`}
-                    />
+                    value={draftInstruction}
+                    onChange={(event) => setDraftInstruction(event.target.value)}
+                    placeholder={`描述第 ${activePage.page_no} 页要怎么改，例如：右侧模块更清晰，主标题更短，整体更像咨询汇报...`} />
+                  
                   </label>
                 </div>
 
-                <div className="edit-block">
+                <div className={uiClassName("edit-block")}>
                   <span>标注编辑预览</span>
-                  {imageAnnotations?.length ? (
-                    <div className="annotation-preview-list">
-                      {imageAnnotations.map((annotation, index) => (
-                        <span key={annotation.id || `${annotation.label}-${index}`}>
+                  {imageAnnotations?.length ?
+                <div className={uiClassName("annotation-preview-list")}>
+                      {imageAnnotations.map((annotation, index) =>
+                  <span key={annotation.id || `${annotation.label}-${index}`}>
                           {annotation.label || `区域 ${index + 1}`}
                         </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="annotation-preview-empty">当前没有框选标注，将只按文字描述编辑。</div>
                   )}
-                  <ScaleButton className="btn btn-secondary edit-stage__markup-button ai-glow-button" onClick={onOpenImageMarkup}>
+                    </div> :
+
+                <div className={uiClassName("annotation-preview-empty")}>当前没有框选标注，将只按文字描述编辑。</div>
+                }
+                  <ScaleButton className={uiClassName("btn btn-secondary edit-stage__markup-button ai-glow-button")} onClick={onOpenImageMarkup}>
                     <MousePointer2 size={16} />
                     标注编辑
                   </ScaleButton>
                 </div>
 
-                <div className="edit-block image-edit-preview">
-                  <div className="image-edit-preview__head">
+                <div className={uiClassName("edit-block image-edit-preview")}>
+                  <div className={uiClassName("image-edit-preview__head")}>
                     <span>编辑生成预览</span>
-                    {latestCandidate && (
-                      <strong>{latestCandidateApplied ? '已替换' : '待确认替换'}</strong>
-                    )}
+                    {latestCandidate &&
+                  <strong>{latestCandidateApplied ? '已替换' : '待确认替换'}</strong>
+                  }
                   </div>
                   <SlideImage
-                    src={latestCandidate?.image || ''}
-                    alt={latestCandidate ? `第 ${activePage.page_no} 页编辑预览` : '编辑生成预览'}
-                    loading={imageEditPending === 'generate'}
-                    emptyTitle={imageEditPending === 'generate' ? '正在生成预览' : '等待编辑生成'}
-                    emptyDescription={`会基于当前${activePreviewLabel}、修改要求和可选标注生成一张新图。`}
-                    sourceLabel={latestCandidate?.preview_label || activePreviewLabel}
-                    showMeta
-                  />
-                  {latestCandidate?.instruction && (
-                    <p className="image-edit-preview__instruction">{latestCandidate.instruction}</p>
-                  )}
-                  {latestCandidateApplied && selectedPreviewType !== 'preview' && (
-                    <p className="image-edit-preview__instruction">
+                  src={latestCandidate?.image || ''}
+                  alt={latestCandidate ? `第 ${activePage.page_no} 页编辑预览` : '编辑生成预览'}
+                  loading={imageEditPending === 'generate'}
+                  emptyTitle={imageEditPending === 'generate' ? '正在生成预览' : '等待编辑生成'}
+                  emptyDescription={`会基于当前${activePreviewLabel}、修改要求和可选标注生成一张新图。`}
+                  sourceLabel={latestCandidate?.preview_label || activePreviewLabel}
+                  showMeta />
+                
+                  {latestCandidate?.instruction &&
+                <p className={uiClassName("image-edit-preview__instruction")}>{latestCandidate.instruction}</p>
+                }
+                  {latestCandidateApplied && selectedPreviewType !== 'preview' &&
+                <p className={uiClassName("image-edit-preview__instruction")}>
                       已替换{activePreviewLabel}。继续生成预览时，会基于当前替换后的图片重新编辑。
                     </p>
-                  )}
+                }
                 </div>
 
-                <div className="edit-actions">
+                <div className={uiClassName("edit-actions")}>
                   <ScaleButton
-                    className="btn btn-primary ai-glow-button"
-                    onClick={generateImageEditCandidate}
-                    disabled={imageEditPending !== '' || isRunning || !draftInstruction.trim()}
-                  >
-                    {imageEditPending === 'generate' ? <LoaderCircle className="spin" size={16} /> : <WandSparkles size={16} />}
+                  className={uiClassName("btn btn-primary ai-glow-button")}
+                  onClick={generateImageEditCandidate}
+                  disabled={imageEditPending !== '' || isRunning || !draftInstruction.trim()}>
+                  
+                    {imageEditPending === 'generate' ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <WandSparkles size={16} />}
                     {imageEditPending === 'generate' ? '正在生成预览' : generateCandidateLabel}
                   </ScaleButton>
                   <ScaleButton
-                    className="btn btn-secondary"
-                    onClick={applyLatestCandidate}
-                    disabled={imageEditPending !== '' || !latestCandidate || latestCandidateApplied}
-                  >
-                    {imageEditPending === 'apply' ? <LoaderCircle className="spin" size={16} /> : <CheckCircle2 size={16} />}
+                  className={uiClassName("btn btn-secondary")}
+                  onClick={applyLatestCandidate}
+                  disabled={imageEditPending !== '' || !latestCandidate || latestCandidateApplied}>
+                  
+                    {imageEditPending === 'apply' ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <CheckCircle2 size={16} />}
                     {imageEditPending === 'apply' ? '替换并提交中...' : applyCandidateLabel}
                   </ScaleButton>
                 </div>
-                {imageEditError && <div className="form-error">{imageEditError}</div>}
-              </>
-            ) : (
-              <div className="empty-state">右侧选择一页后，这里会显示该页编辑属性。</div>
-            )}
+                {imageEditError && <div className={uiClassName("form-error")}>{imageEditError}</div>}
+              </> :
+
+            <div className={uiClassName("empty-state")}>右侧选择一页后，这里会显示该页编辑属性。</div>
+            }
             </motion.section>
-          )}
+          }
         </AnimatePresence>
       </div>
-    </main>
-  );
+    </main>);
+
 };
 
 export default AgentWorkspace;

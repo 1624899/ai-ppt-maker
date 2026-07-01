@@ -23,7 +23,9 @@ Vite 只负责前端热更新；任务创建、模型配置、任务流、产物
 ## 主要目录
 
 - `src/components/Workspace/`：创作工作区、PPT Studio、Agent 对话、图片标注和任务操作。
-- `src/components/Layout/`：应用外壳、侧栏、设置弹窗和结果面板。
+- `src/components/Layout/`：顶部应用栏和设置弹窗。
+- `src/components/styles/`：按领域拆分的 CSS Modules，承载工作区组件样式。
 - `src/hooks/`：任务列表、任务详情、模型配置、任务操作和 Agent 草案请求。
 - `src/utils/`：任务 API、展示模型、图片编辑候选和顶栏动作。
+- `src/index.css`：全局基础样式，仅保留设计变量、重置、原生控件和滚动条。
 - `dist/`：生产构建产物，不手写维护。

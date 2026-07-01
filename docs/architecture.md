@@ -20,7 +20,7 @@
   - [5.11 前端 — 入口与配置 (web_ui/)](#511-前端--入口与配置-web_ui)
   - [5.12 前端 — 布局组件 (web_ui/src/components/Layout/)](#512-前端--布局组件-web_uisrccomponentslayout)
   - [5.13 前端 — 工作区组件 (web_ui/src/components/Workspace/)](#513-前端--工作区组件-web_uisrccomponentsworkspace)
-  - [5.14 前端 — 表单与动画组件](#514-前端--表单与动画组件)
+  - [5.14 前端 — 动画组件](#514-前端--动画组件)
   - [5.15 前端 — 自定义 Hooks (web_ui/src/hooks/)](#515-前端--自定义-hooks-web_uisrchooks)
   - [5.16 前端 — 工具函数 (web_ui/src/utils/)](#516-前端--工具函数-web_uisrcutils)
   - [5.17 维护工具 (tools/)](#517-维护工具-tools)
@@ -418,8 +418,8 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 | `eslint.config.js` | ESLint 扁平配置。强制 React Hooks 规则和 React Refresh for Vite |
 | `src/main.jsx` | React 19 入口。在 `StrictMode` 中将 `<App />` 渲染到 `#root` DOM 节点 |
 | `src/App.jsx` | 根组件。渲染 `<WorkspaceShell />` |
-| `src/index.css` | 全局设计系统。CSS 变量（颜色、阴影、圆角）、排版、重置、滚动条和全部组件级 class 样式 |
-| `src/App.css` | 遗留 Vite 脚手架 CSS，当前应用基本未使用 |
+| `src/index.css` | 全局基础样式。仅保留 CSS 变量（颜色、阴影、圆角）、排版、重置、原生控件和滚动条样式 |
+| `src/components/styles/*.module.css` | 工作区共享 CSS Modules。按 shared、tasks、workspace、forms、studio、overlays、responsive 拆分组件样式，避免全局 class 命名冲突 |
 
 ---
 
@@ -428,6 +428,7 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 | 文件 | 职责 |
 |------|------|
 | `Header.jsx` | 顶部应用栏。品牌 Logo、当前任务标题/状态、设置按钮、任务启动切换、上下文感知操作按钮（创建/暂停/续跑/确认计划） |
+| `Header.module.css` | 顶部应用栏局部样式。封装 Header 的品牌区、当前任务区、操作区和响应式布局 |
 | `SettingsModal.jsx` | 设置模态框。管理 OpenAI 兼容模型配置（对话 & 图像模型）：创建、编辑、激活、删除、测试连通性 |
 
 ---
@@ -462,7 +463,7 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 
 ---
 
-### 5.14 前端 — 表单与动画组件
+### 5.14 前端 — 动画组件
 
 | 文件 | 职责 |
 |------|------|
@@ -489,6 +490,8 @@ Flask Blueprint 路由定义，负责 HTTP 请求分发。
 | 文件 | 职责 |
 |------|------|
 | `jobActions.js` | API 客户端函数。所有任务相关端点的请求封装：提交操作、获取/更新/确认计划、提交操作、Agent 草案、图片编辑候选、清空对话 |
+| `configDefaults.js` | 前端配置默认值。集中维护配置接口不可用时的生成默认值（默认页数、最大页数），避免表单与容量分析各自硬编码 |
+| `uiClassName.js` | CSS Module 类名映射工具。将旧 JSX class token 映射到拆分后的 CSS Modules，统一处理字符串、数组和条件对象形式 |
 | `jobPresentation.js` | 任务展示辅助。状态/阶段标签、任务标题推导、页面合并（plan + reference + element 产物）、图片 URL 解析、页面摘要、操作格式化、进度计算、Agent 摘要构建 |
 | `jobStateMerge.js` | 任务状态深度合并。处理对象字段合并、阶段数组按 key/index 合并、交付结果失效时清除交付动作 |
 | `planningDraft.js` | 计划数据标准化。`normalizePagePlan`（强制所有字段为安全类型）、`normalizePlan`、`renumberPlanPages`、`createBlankPagePlan` |
