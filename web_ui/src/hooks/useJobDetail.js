@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { mergeJobState } from '../utils/jobStateMerge';
-import { isActiveJobStatus, shouldOpenJobDetailStream } from '../utils/jobDetailStream';
+import { shouldKeepJobDetailStream, shouldOpenJobDetailStream } from '../utils/jobDetailStream';
 
 export const useJobDetail = (jobId) => {
   const [job, setJob] = useState(null);
@@ -58,7 +58,7 @@ export const useJobDetail = (jobId) => {
         const data = JSON.parse(event.data);
         if (!cancelled) {
           setJob((current) => mergeJobState(current, data));
-          if (!isActiveJobStatus(data?.status)) {
+          if (!shouldKeepJobDetailStream(data)) {
             closedAfterTerminalState = true;
             source.close();
           }

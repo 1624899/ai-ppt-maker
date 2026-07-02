@@ -33,6 +33,7 @@ from ppt_system.jobs.job_targets import get_terminal_stage, should_continue_afte
 from ppt_system.runtime import runtime_context
 from ppt_system.web.services.job_artifact_paths import resolve_job_artifact_path
 from ppt_system.web.services.app_config_runtime import build_export_options
+from ppt_system.web.services.job_event_bus import JOB_EVENT_BUS
 from ppt_system.web.services.job_image_tasks import submit_elements_task, submit_reference_task
 from ppt_system.web.services.job_snapshot_runtime import build_job_payload, write_job_snapshot
 from ppt_system.web.services.job_state_model import (
@@ -66,6 +67,13 @@ from ppt_system.web.services.workflow_policy import (
 
 def _jobs_db_path() -> Path:
     return runtime_context.JOBS_DB_PATH
+
+
+def _finalize_interrupted_pipeline(job_dir: Path, job_id: str, stage_key: str) -> None:
+    finalize_job_interrupted(job_dir, job_id, stage_key, INTERRUPTED_MESSAGE)
+    update_job_record(_jobs_db_path(), job_id, status="interrupted", current_stage=stage_key, stop_requested=False)
+    clear_job_stop_request(job_dir, job_id)
+    JOB_EVENT_BUS.notify_job_changed(job_id)
 
 
 def run_job_pipeline(
@@ -721,9 +729,7 @@ def run_job_pipeline(
             summary=f"已完成可编辑元素生成，共 {len(element_results)} 页，可继续导出可编辑PPT",
         )
     except JobInterruptedError as exc:
-        finalize_job_interrupted(job_dir, job_id, str(exc), INTERRUPTED_MESSAGE)
-        update_job_record(_jobs_db_path(), job_id, status="interrupted", current_stage=str(exc), stop_requested=False)
-        clear_job_stop_request(job_dir, job_id)
+        _finalize_interrupted_pipeline(job_dir, job_id, str(exc))
     except Exception as exc:
         stage_key = "reference_generation"
         current_state = load_job_state(job_id, job_dir) or {}
