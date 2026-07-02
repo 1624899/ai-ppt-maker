@@ -9,6 +9,8 @@ from typing import Any, Callable
 from ppt_system.export.export_layer_mode import OVERLAY_LAYER_MODE, build_slide_layer_specs, normalize_layer_mode
 from ppt_system.export.export_artifact_policy import FINAL_PPTX_ARTIFACT_KIND
 from ppt_system.export.text_script_guard import validate_generated_text_script
+from ppt_system.export.text_script_runtime_modules import TEXT_SCRIPT_RUNTIME_MODULES as GENERATED_SCRIPT_RUNTIME_MODULES
+from ppt_system.export.text_script_worker_mode import TEXT_SCRIPT_WORKER_ARG
 from ppt_system.export.text_script_schema import normalize_page_script
 from ppt_system.runtime.interruptible_execution import run_interruptible_process
 
@@ -36,8 +38,7 @@ def execute_generated_text_script(
     stop_checker: StopChecker | None = None,
 ) -> Path:
     validate_generated_text_script(script_path)
-    worker_script = Path(__file__).with_name("text_script_worker.py")
-    command = [sys.executable, str(worker_script), str(Path(script_path).resolve())]
+    command = _build_text_script_worker_command(script_path)
     try:
         completed = _run_interruptible_subprocess(
             command,
@@ -107,6 +108,18 @@ def _run_interruptible_subprocess(
             "stderr": subprocess.PIPE,
         },
     )
+
+
+def _build_text_script_worker_command(script_path: Path) -> list[str]:
+    resolved_script_path = str(Path(script_path).resolve())
+    if _is_frozen_executable():
+        return [sys.executable, TEXT_SCRIPT_WORKER_ARG, resolved_script_path]
+    worker_script = Path(__file__).with_name("text_script_worker.py")
+    return [sys.executable, str(worker_script), resolved_script_path]
+
+
+def _is_frozen_executable() -> bool:
+    return bool(getattr(sys, "frozen", False))
 
 
 def _decode_subprocess_output(raw_output: Any) -> str:
@@ -188,6 +201,10 @@ from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 from ppt_system.export.export_artifact_policy import save_presentation_artifact
 from ppt_system.export.text_style_runtime import should_wrap_text
+
+
+# 运行时模块清单供 PyInstaller hidden-import 使用，保证动态生成脚本也能导入。
+TEXT_SCRIPT_RUNTIME_MODULES = {tuple(GENERATED_SCRIPT_RUNTIME_MODULES)!r}
 
 
 # 基于原稿图像素坐标映射到 16:9 PPT 页面坐标。

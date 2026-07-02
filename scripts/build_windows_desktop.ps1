@@ -91,6 +91,9 @@ try {
       "web_ui\dist${separator}web_ui\dist",
       "docs\readme-assets${separator}docs\readme-assets"
     )
+    $textScriptRuntimeModules = @(
+      & $BuildPython -c "from ppt_system.export.text_script_runtime_modules import TEXT_SCRIPT_RUNTIME_MODULES; print('\n'.join(TEXT_SCRIPT_RUNTIME_MODULES))"
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $args = @(
       "-m", "PyInstaller",
       "--noconfirm",
@@ -103,6 +106,9 @@ try {
     )
     foreach ($item in $addData) {
       $args += @("--add-data", $item)
+    }
+    foreach ($module in $textScriptRuntimeModules) {
+      $args += @("--hidden-import", [string]$module)
     }
     if (Test-Path $IconPath) {
       $args += @("--icon", $IconPath)

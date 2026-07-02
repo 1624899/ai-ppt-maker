@@ -24,11 +24,13 @@ from ppt_system.export.direct_page_script import (
 )
 from ppt_system.export.export_pipeline import export_project_to_pptx
 from ppt_system.export.text_script_runtime import (
+    _build_text_script_worker_command,
     build_project_script_source,
     execute_generated_text_script,
     normalize_asset_adjustments,
     normalize_page_script,
 )
+from ppt_system.export.text_script_runtime_modules import TEXT_SCRIPT_RUNTIME_MODULES
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
@@ -307,6 +309,22 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
             text_shapes = [shape for shape in slide.shapes if hasattr(shape, "text") and shape.text]
             self.assertEqual(text_shapes[0].text_frame.auto_size, MSO_AUTO_SIZE.NONE)
 
+    def test_generated_script_runtime_modules_cover_template_imports(self) -> None:
+        self.assertIn("ppt_system.export.export_artifact_policy", TEXT_SCRIPT_RUNTIME_MODULES)
+        self.assertIn("ppt_system.export.text_style_runtime", TEXT_SCRIPT_RUNTIME_MODULES)
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            script_source = build_project_script_source(
+                {"image_width": 400, "image_height": 240, "pages": [{"page_no": 1, "texts": []}]},
+                root,
+                root / "result.pptx",
+                [{"page_no": 1, "script": ""}],
+            )
+
+        self.assertIn("from ppt_system.export.text_style_runtime import should_wrap_text", script_source)
+        self.assertIn("TEXT_SCRIPT_RUNTIME_MODULES =", script_source)
+
     def test_execute_generated_script_resolves_project_imports_from_external_cwd(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -342,6 +360,17 @@ def build_deck():
 
             self.assertTrue(output_path.exists())
             self.assertIn(output_path.read_text(encoding="utf-8"), {"True", "False"})
+
+    def test_frozen_worker_command_uses_worker_mode_argument(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            script_path = Path(temp_dir) / "generated_text_layout_preview_round_01.py"
+            with patch("ppt_system.export.text_script_runtime.sys.executable", r"C:\Program Files\AI PPT Maker\AI PPT Maker.exe"):
+                with patch("ppt_system.export.text_script_runtime.sys.frozen", True, create=True):
+                    command = _build_text_script_worker_command(script_path)
+
+            self.assertEqual(command[0], r"C:\Program Files\AI PPT Maker\AI PPT Maker.exe")
+            self.assertEqual(command[1], "--text-script-worker")
+            self.assertEqual(command[2], str(script_path.resolve()))
 
     def test_execute_generated_script_reports_artifact_lock_message_without_traceback(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -461,7 +490,7 @@ def build_deck():
             self.assertFalse(output_path.exists())
             self.assertGreater(checks["count"], 0)
 
-    def test_execute_generated_script_stops_child_process_tree(self) -> None:
+    def test_execute_generated_script_rejects_child_process_launch(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             marker_path = root / "started.txt"
@@ -505,14 +534,15 @@ def build_deck():
             def stop_after_child_starts() -> bool:
                 return child_marker_path.exists()
 
-            with self.assertRaises(InterruptedError):
+            with self.assertRaises(RuntimeError) as context:
                 execute_generated_text_script(
                     script_path,
                     timeout_seconds=10,
                     stop_checker=stop_after_child_starts,
                 )
 
-            time.sleep(0.5)
+            message = str(context.exception)
+            self.assertIn("生成脚本包含进程启动相关导入", message)
             self.assertFalse(output_path.exists())
 
     def test_generated_script_can_split_assets_and_texts_into_two_slides(self) -> None:

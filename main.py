@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import webbrowser
 
+from ppt_system.export.text_script_worker_mode import get_text_script_worker_args, is_text_script_worker_mode
+
+
+if is_text_script_worker_mode(sys.argv):
+    from ppt_system.export.text_script_worker import main as text_script_worker_main
+
+    raise SystemExit(text_script_worker_main(get_text_script_worker_args(sys.argv)))
+
 from ppt_system.runtime import runtime_context
-from ppt_system.web.services.static_assets import build_static_asset_version
 from ppt_system.web import create_app
+from ppt_system.web.services.static_assets import build_static_asset_version
 
 
 def static_asset_version() -> str:

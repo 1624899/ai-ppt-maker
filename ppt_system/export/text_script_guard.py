@@ -13,6 +13,10 @@ WEB_IMPORT_PREFIXES = (
     "ppt_system.web",
 )
 WEB_IMPORT_NAMES = {"main"}
+PROCESS_IMPORT_PREFIXES = (
+    "subprocess",
+    "multiprocessing",
+)
 SERVER_RECEIVER_NAMES = {"app", "application", "server", "flask_app"}
 SERVER_CALL_NAMES = {"run_simple", "serve"}
 SERVER_METHOD_NAMES = {"run", "serve_forever"}
@@ -51,6 +55,14 @@ def validate_generated_text_script(script_path: Path) -> None:
             "文字布局脚本只能生成 PPT 文件，不能导入或启动本地 Web 服务。请重新生成该页文字脚本。"
         )
 
+    process_import = _find_process_import(module)
+    if process_import is not None:
+        name, lineno = process_import
+        raise GeneratedTextScriptValidationError(
+            f"生成脚本包含进程启动相关导入：{name}，第 {lineno} 行。\n"
+            "文字布局脚本只能生成 PPT 文件，不能启动额外子进程。请重新生成该页文字脚本。"
+        )
+
     server_call = _find_server_launch_call(module)
     if server_call is not None:
         name, lineno = server_call
@@ -65,15 +77,23 @@ def _defines_build_deck(module: ast.Module) -> bool:
 
 
 def _find_web_import(module: ast.Module) -> tuple[str, int] | None:
+    return _find_import_matching(module, _is_web_import_name)
+
+
+def _find_process_import(module: ast.Module) -> tuple[str, int] | None:
+    return _find_import_matching(module, _is_process_import_name)
+
+
+def _find_import_matching(module: ast.Module, matcher) -> tuple[str, int] | None:
     for node in ast.walk(module):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 name = str(alias.name)
-                if _is_web_import_name(name):
+                if matcher(name):
                     return name, int(getattr(node, "lineno", 0) or 0)
         elif isinstance(node, ast.ImportFrom):
             module_name = str(node.module or "")
-            if _is_web_import_name(module_name):
+            if matcher(module_name):
                 return module_name, int(getattr(node, "lineno", 0) or 0)
     return None
 
@@ -83,6 +103,11 @@ def _is_web_import_name(name: str) -> bool:
     if normalized in WEB_IMPORT_NAMES:
         return True
     return any(normalized == prefix or normalized.startswith(f"{prefix}.") for prefix in WEB_IMPORT_PREFIXES)
+
+
+def _is_process_import_name(name: str) -> bool:
+    normalized = str(name).strip()
+    return any(normalized == prefix or normalized.startswith(f"{prefix}.") for prefix in PROCESS_IMPORT_PREFIXES)
 
 
 def _find_server_launch_call(module: ast.Module) -> tuple[str, int] | None:
