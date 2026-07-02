@@ -13,7 +13,6 @@ from ppt_system.export.export_step_checkpoint import STEP_CHECKPOINT_DIR_NAME
 from ppt_system.export.export_pipeline import export_project_to_pptx
 from ppt_system.export.text_script_runtime import execute_generated_text_script
 from ppt_system.export.export_asset_checkpoint import ASSET_CHECKPOINT_FILE_NAME
-from ppt_system.export.direct_page_script import _write_page_preview_script as write_page_preview_script
 
 
 class FakeChatProvider:
@@ -266,63 +265,6 @@ def test_export_project_to_pptx_reuses_asset_prepare_checkpoint_after_later_fail
         assert len(second_run_provider.calls) == 0
         assert (work_dir / "page_01" / CHECKPOINT_FILE_NAME).exists()
         assert result["logical_page_count"] == 1
-
-
-def test_export_project_refreshes_initial_script_when_preview_script_is_invalid() -> None:
-    with TemporaryDirectory() as temp_dir:
-        root = Path(temp_dir)
-        work_dir = root / "work"
-        output_pptx = root / "result.pptx"
-        visual_path = root / "visual_01.png"
-        reference_path = root / "reference_01.png"
-
-        _create_test_image(visual_path, alpha=True)
-        _create_test_image(reference_path, alpha=False)
-        project = _build_single_page_project(visual_path, reference_path)
-        provider = FakeChatProvider(
-            [
-                {"page_script": 'add_text(slide, "首轮缓存稿", 12, 14, 130, 36, size=20)'},
-                {"page_script": 'add_text(slide, "刷新后的稿", 18, 22, 150, 40, size=22)'},
-            ]
-        )
-        write_calls = {"count": 0}
-
-        def write_bad_preview_once(**kwargs):
-            write_calls["count"] += 1
-            script_path = Path(kwargs["script_path"])
-            if write_calls["count"] == 1:
-                script_path.parent.mkdir(parents=True, exist_ok=True)
-                script_path.write_text(
-                    """
-from __future__ import annotations
-
-from pathlib import Path
-from ppt_system.web import create_app
-
-
-def build_deck():
-    return Path("invalid_preview.pptx")
-""".lstrip(),
-                    encoding="utf-8",
-                )
-                return script_path
-            return write_page_preview_script(**kwargs)
-
-        with patch("ppt_system.export.direct_project_script._write_page_preview_script", side_effect=write_bad_preview_once):
-            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=None):
-                result = export_project_to_pptx(
-                    project,
-                    work_dir,
-                    output_pptx,
-                    chat_provider=provider,  # type: ignore[arg-type]
-                )
-
-        final_script = Path(result["text_script_path"]).read_text(encoding="utf-8")
-        assert output_pptx.exists()
-        assert len(provider.calls) == 2
-        assert write_calls["count"] == 2
-        assert "刷新后的稿" in final_script
-        assert "首轮缓存稿" not in final_script
 
 
 def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failure() -> None:

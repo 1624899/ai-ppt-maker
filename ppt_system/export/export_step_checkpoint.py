@@ -114,23 +114,6 @@ def save_export_step_checkpoint(
     return checkpoint_path
 
 
-def delete_export_step_checkpoint(
-    page_dir: Path,
-    *,
-    step_name: str,
-    signature: dict[str, Any],
-) -> bool:
-    """删除指定子步骤缓存，用于发现缓存内容不可用后触发重新生成。"""
-    checkpoint_path = build_export_step_checkpoint_path(page_dir, step_name=step_name, signature=signature)
-    try:
-        checkpoint_path.unlink()
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
-    return True
-
-
 def build_export_step_checkpoint_path(page_dir: Path, *, step_name: str, signature: dict[str, Any]) -> Path:
     normalized_step_name = _normalize_step_name(step_name)
     signature_hash = stable_hash_payload(signature)[:16]

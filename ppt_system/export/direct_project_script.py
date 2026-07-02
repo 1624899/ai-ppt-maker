@@ -25,7 +25,6 @@ from ppt_system.export.export_page_resume import (
 from ppt_system.export.export_step_checkpoint import (
     build_export_step_signature,
     build_file_content_signature,
-    delete_export_step_checkpoint,
     load_export_step_checkpoint,
     save_export_step_checkpoint,
     stable_hash_payload,
@@ -42,7 +41,6 @@ from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.export.text_script_runtime import normalize_asset_adjustments, normalize_page_script
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
-from ppt_system.export.text_script_guard import GeneratedTextScriptValidationError
 from ppt_system.image.canvas_normalization import ensure_image_canvas_size
 from ppt_system.image.text_placeholder_detection import load_text_placeholders, save_text_placeholders
 
@@ -251,7 +249,6 @@ def _load_cached_initial_page_script(
     try:
         return normalize_page_script(str(checkpoint.payload.get("page_script", "")))
     except RuntimeError:
-        delete_export_step_checkpoint(page_dir, step_name="initial_script", signature=step_signature)
         return None
 
 
@@ -268,7 +265,6 @@ def _generate_initial_page_script_with_checkpoint(
     page_logger: PageLogger | None,
     page_no: int,
     stop_checker: StopChecker | None = None,
-    force_refresh: bool = False,
 ) -> str:
     step_inputs = _build_initial_script_step_inputs(
         reference_image=reference_image,
@@ -284,9 +280,7 @@ def _generate_initial_page_script_with_checkpoint(
         provider=provider,
         inputs=step_inputs,
     )
-    if force_refresh:
-        delete_export_step_checkpoint(page_dir, step_name="initial_script", signature=step_signature)
-    cached_script = None if force_refresh else _load_cached_initial_page_script(page_dir=page_dir, step_signature=step_signature)
+    cached_script = _load_cached_initial_page_script(page_dir=page_dir, step_signature=step_signature)
     if cached_script is not None:
         _log_page(page_logger, page_no, "命中首轮文字脚本子步骤缓存")
         return cached_script
@@ -343,7 +337,6 @@ def _load_cached_refine_page_script(
     try:
         page_script = normalize_page_script(str(checkpoint.payload.get("page_script", "")))
     except RuntimeError:
-        delete_export_step_checkpoint(page_dir, step_name=step_name, signature=step_signature)
         return None
     raw_adjustments = checkpoint.payload.get("asset_adjustments", fallback_asset_adjustments)
     return page_script, normalize_asset_adjustments(raw_adjustments)
@@ -701,63 +694,17 @@ def _generate_direct_project_page_script(
         refine_completed = False
         candidate_script = current_script
         candidate_adjustments = current_asset_adjustments
-        refreshed_initial_script = False
         try:
-            while True:
-                try:
-                    _write_page_preview_script(
-                        project=preview_project,
-                        work_dir=work_dir,
-                        output_pptx=preview_artifacts.pptx_path,
-                        page_no=page_no,
-                        page_script=current_script,
-                        script_path=preview_artifacts.script_path,
-                    )
-                except RuntimeError:
-                    if refreshed_initial_script or int(round_index) != 0:
-                        raise
-                    _log_page(page_logger, page_no, "检测到首轮文字脚本缓存不可用，重新生成首轮文字脚本")
-                    current_script = _generate_initial_page_script_with_checkpoint(
-                        provider=provider,
-                        page_dir=page_dir,
-                        page_signature=page_signature,
-                        reference_image=reference_image,
-                        visual_image=visual_image,
-                        image_width=image_width,
-                        image_height=image_height,
-                        text_placeholders=text_placeholders,
-                        page_logger=page_logger,
-                        page_no=page_no,
-                        stop_checker=stop_checker,
-                        force_refresh=True,
-                    )
-                    candidate_script = current_script
-                    refreshed_initial_script = True
-                    continue
-                preview_script_started_at = time.perf_counter()
-                try:
-                    preview_pptx = execute_generated_text_script(preview_artifacts.script_path, stop_checker=stop_checker)
-                    break
-                except GeneratedTextScriptValidationError:
-                    if refreshed_initial_script or int(round_index) != 0:
-                        raise
-                    _log_page(page_logger, page_no, "检测到预览脚本缓存不可用，重新生成首轮文字脚本")
-                    current_script = _generate_initial_page_script_with_checkpoint(
-                        provider=provider,
-                        page_dir=page_dir,
-                        page_signature=page_signature,
-                        reference_image=reference_image,
-                        visual_image=visual_image,
-                        image_width=image_width,
-                        image_height=image_height,
-                        text_placeholders=text_placeholders,
-                        page_logger=page_logger,
-                        page_no=page_no,
-                        stop_checker=stop_checker,
-                        force_refresh=True,
-                    )
-                    candidate_script = current_script
-                    refreshed_initial_script = True
+            _write_page_preview_script(
+                project=preview_project,
+                work_dir=work_dir,
+                output_pptx=preview_artifacts.pptx_path,
+                page_no=page_no,
+                page_script=current_script,
+                script_path=preview_artifacts.script_path,
+            )
+            preview_script_started_at = time.perf_counter()
+            preview_pptx = execute_generated_text_script(preview_artifacts.script_path, stop_checker=stop_checker)
             _ensure_not_stopped(stop_checker)
             _log_page(
                 page_logger,
