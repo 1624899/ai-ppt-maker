@@ -10,7 +10,7 @@ class SourceContentAnchorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.style_guide = fallback_style_guide("蓝白科技汇报", has_reference_images=False)
 
-    def test_structured_report_keeps_source_facts_when_model_rewrites_numbers(self) -> None:
+    def test_normalize_content_plan_preserves_ai_page_content_when_numbers_differ(self) -> None:
         content = """
 一、本阶段工作总体情况
 本阶段围绕保全测试智能助手的落地应用，重点推进了保全事项梳理接入、公司环境部署验证、演示效果优化、知识库建设和核心能力完善等工作。
@@ -71,18 +71,15 @@ class SourceContentAnchorTests(unittest.TestCase):
 
         page_two = plan["pages"][1]
         joined = "\n".join([page_two["summary"], *page_two["bullets"]])
-        self.assertIn("覆盖 4大类 类保全事项", joined)
-        self.assertIn("退保类：一般退保、犹豫期撤保、减保、简单减保、高利率退保、死亡退保、万能账户余额部分提取", joined)
-        self.assertIn("变更类：复效、减额交清、保单垫交还款、强制终止、合同转换、合并客户、保险期间变更、保全业务回退", joined)
-        self.assertNotIn("18 类保全事项", joined)
+        self.assertIn("18 类保全事项", joined)
+        self.assertIn("覆盖退保类、给付类、贷还款类、变更类等主要保全场景", joined)
+        self.assertNotIn("覆盖 4大类 类保全事项", joined)
         self.assertEqual(page_two["source_anchor_ids"], ["S02"])
         body_text = "\n".join(str(item.get("text", "")) for item in page_two["texts"])
-        self.assertIn("覆盖 4大类 类保全事项", body_text)
-        self.assertNotIn("18 类保全事项", body_text)
-        self.assertIn("覆盖 4大类 类保全事项", page_two["image_prompt"])
-        self.assertNotIn("18 类保全事项", page_two["image_prompt"])
+        self.assertIn("18 类保全事项", body_text)
+        self.assertIn("18 类保全事项", page_two["image_prompt"])
 
-    def test_unstructured_paragraph_still_anchors_facts_and_allows_model_page_selection(self) -> None:
+    def test_unstructured_paragraph_keeps_ai_information_architecture(self) -> None:
         content = (
             "本阶段完成支付网关灰度验证，覆盖 3 个核心渠道，日均处理 120 万笔交易。"
             "监控侧新增 12 个告警指标，并把异常定位时间从 30 分钟压缩到 8 分钟。"
@@ -124,13 +121,11 @@ class SourceContentAnchorTests(unittest.TestCase):
 
         first_page_text = "\n".join([plan["pages"][0]["summary"], *plan["pages"][0]["bullets"]])
         second_page_text = "\n".join([plan["pages"][1]["summary"], *plan["pages"][1]["bullets"]])
-        self.assertIn("覆盖 3 个核心渠道", first_page_text)
-        self.assertIn("日均处理 120 万笔交易", first_page_text)
-        self.assertIn("12 个告警指标", first_page_text)
-        self.assertIn("跨境支付和批量退款两个场景", second_page_text)
-        self.assertNotIn("5 个渠道", first_page_text)
-        self.assertNotIn("150 万笔", first_page_text)
-        self.assertNotIn("三个新场景", second_page_text)
+        self.assertIn("5 个渠道", first_page_text)
+        self.assertIn("150 万笔", first_page_text)
+        self.assertIn("三个新场景", second_page_text)
+        self.assertEqual(plan["pages"][0]["source_anchor_ids"], ["S01", "S02"])
+        self.assertEqual(plan["pages"][1]["source_anchor_ids"], ["S03", "S04"])
 
     def test_planning_prompt_exposes_source_anchor_ids_for_model_page_planning(self) -> None:
         content = "一、覆盖情况\n已完成 6 个系统验证。\n二、后续计划\n继续推进 2 个场景。"
@@ -152,12 +147,12 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("S01｜覆盖情况", prompt)
         self.assertIn("S02｜后续计划", prompt)
         self.assertIn('"source_anchor_ids": ["S01"]', prompt)
-        self.assertIn("内容规划约束", prompt)
+        self.assertIn("内容规划原则", prompt)
+        self.assertIn("版式与结构", prompt)
         self.assertIn("不按输入章节号、源文页号或锚点顺序做一一映射", prompt)
-        self.assertIn("source_anchor_ids 必须写明每页承载的事实锚点", prompt)
-        self.assertIn("可以组合多个相关锚点", prompt)
-        self.assertIn("内容把控规则", prompt)
-        self.assertIn("输入偏长时做重点突出和语义总结", prompt)
+        self.assertIn("source_anchor_ids 可填写本页参考到的锚点", prompt)
+        self.assertIn("可以合并表达或用“其他要点”概括", prompt)
+        self.assertIn("内容偏多时主动概括、合并和突出重点", prompt)
 
     def test_planning_prompt_guides_model_to_merge_source_anchors_when_page_count_is_smaller(self) -> None:
         content = """
@@ -226,14 +221,12 @@ class SourceContentAnchorTests(unittest.TestCase):
         )
 
         page = plan["pages"][0]
-        joined = "\n".join([page["summary"], *page["bullets"]])
-        self.assertLessEqual(len(page["bullets"]), 6)
-        self.assertIn("已覆盖 4 个业务域", joined)
-        self.assertIn("沉淀 26 条测试关注点", joined)
-        self.assertIn("验证 3 套环境", joined)
-        self.assertNotIn("9 个业务域", joined)
-        self.assertNotIn("80 条测试关注点", joined)
-        self.assertIn("长内容页", page["style_constraints"])
+        joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
+        self.assertEqual(page["bullets"], ["新增 9 个业务域", "沉淀 80 条测试关注点", "覆盖 6 套环境"])
+        self.assertIn("9 个业务域", joined)
+        self.assertIn("80 条测试关注点", joined)
+        self.assertIn("允许容纳更多信息模块", page["image_prompt"])
+        self.assertEqual(page["style_constraints"], "")
 
     def test_short_source_content_only_adds_light_layout_support_when_richness_is_high(self) -> None:
         content = "本阶段完成短信电子签名认证指引。"
@@ -264,13 +257,12 @@ class SourceContentAnchorTests(unittest.TestCase):
         )
 
         page = plan["pages"][0]
-        joined = "\n".join([page["summary"], *page["bullets"]])
-        self.assertIn("本阶段完成短信电子签名认证指引", joined)
-        self.assertIn("围绕上述信息组织页面表达", joined)
-        self.assertNotIn("12 个渠道", joined)
-        self.assertNotIn("40% 时间", joined)
-        self.assertLessEqual(len(page["bullets"]), 2)
-        self.assertIn("短内容页", page["style_constraints"])
+        joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
+        self.assertIn("12 个渠道", joined)
+        self.assertIn("40% 时间", joined)
+        self.assertEqual(len(page["bullets"]), 2)
+        self.assertIn("允许容纳更多信息模块", page["image_prompt"])
+        self.assertEqual(page["style_constraints"], "")
 
     def test_markdown_page_headings_do_not_leak_into_previous_page(self) -> None:
         content = """
@@ -337,9 +329,9 @@ class SourceContentAnchorTests(unittest.TestCase):
         )
 
         page_one_text = "\n".join([plan["pages"][0]["summary"], *plan["pages"][0]["bullets"], plan["pages"][0]["image_prompt"]])
-        self.assertIn("沉淀19份业务文档，覆盖4大类保全场景", page_one_text)
-        self.assertNotIn("第二页：保全知识库建设与资产化", page_one_text)
-        self.assertNotIn("第一页：本阶段重点工作综述", page_one_text)
+        self.assertIn("第二页：保全知识库建设与资产化", page_one_text)
+        self.assertIn("第一页：本阶段重点工作综述", page_one_text)
+        self.assertEqual(plan["pages"][0]["source_anchor_ids"], ["S01", "S02"])
         self.assertNotIn("**", page_one_text)
         self.assertNotIn("*保全事项覆盖持续扩大", page_one_text)
 
@@ -434,7 +426,7 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("保全事项覆盖全面达成：实现常用保全项覆盖进度100%", second_page_facts)
         self.assertIn("深度集成与推广：形成“问题输入 → 规则匹配 → 步骤提示 → 结果校验”的测试闭环", second_page_facts)
 
-    def test_structured_page_summary_keeps_all_core_work_modules(self) -> None:
+    def test_structured_page_summary_keeps_ai_selected_modules(self) -> None:
         content = """
 第一页：本阶段重点工作综述
 总体定位
@@ -479,13 +471,11 @@ class SourceContentAnchorTests(unittest.TestCase):
 
         page = plan["pages"][0]
         joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
-        self.assertIn("总体定位", joined)
         self.assertIn("保全事项覆盖持续扩大", joined)
-        self.assertIn("业务功能贴近使用场景", joined)
-        self.assertIn("公司环境验证与演示优化", joined)
-        self.assertIn("知识库由资料堆积转向可用资产", joined)
+        self.assertIn("模型只提覆盖", joined)
+        self.assertNotIn("公司环境验证与演示优化", joined)
 
-    def test_many_structured_modules_are_grouped_without_silent_omission(self) -> None:
+    def test_many_structured_modules_preserve_ai_summary_without_forced_grouping(self) -> None:
         facts = [f"模块{i}：事实{i}说明。" for i in range(1, 11)]
         content = "第一页：多模块综述\n" + "\n".join(
             f"模块{i}\n事实{i}说明。" for i in range(1, 11)
@@ -515,15 +505,11 @@ class SourceContentAnchorTests(unittest.TestCase):
 
         page = plan["pages"][0]
         joined = "\n".join([page["summary"], *page["bullets"], page["image_prompt"]])
-        for fact in facts[:7]:
-            self.assertIn(fact, joined)
-        self.assertIn("其他要点", joined)
-        self.assertIn("模块10：事实10", joined)
-        self.assertIn("其他要点", page["image_prompt"])
-        self.assertIn("模块10：事实10", page["image_prompt"])
+        self.assertIn("多模块综述", page["title"])
+        self.assertEqual(page["bullets"], [])
+        self.assertNotIn("其他要点", joined)
         body_text = "\n".join(str(item.get("text", "")) for item in page["texts"])
-        self.assertIn("其他要点", body_text)
-        self.assertIn("模块10", body_text)
+        self.assertIn("多模块综述", body_text)
 
     def test_comma_separated_short_fact_is_not_treated_as_heading(self) -> None:
         content = """
@@ -605,7 +591,7 @@ class SourceContentAnchorTests(unittest.TestCase):
         self.assertIn("智能化探索：自动化是智能化的底座，智能化是自动化的升级目标。包括需求智能分析与案例生成、智能测试数据服务、智能验收决策、智能质量检测闭环等。时间：7.1-长期", joined)
         self.assertNotIn("...", joined)
 
-    def test_flat_paragraph_allows_ai_information_architecture_but_keeps_facts_grounded(self) -> None:
+    def test_flat_paragraph_preserves_ai_information_architecture_without_rewriting_content(self) -> None:
         content = (
             "本阶段完成保全事项梳理接入，沉淀19份业务文档，覆盖退保类、给付类、贷还款类、变更类4大类保全场景，"
             "完成公司环境联调和部署验证，确认系统在内网可稳定运行，Demo经过多轮优化，回答展示、会话管理、追问建议和结果展示更加清晰，"
@@ -655,10 +641,10 @@ class SourceContentAnchorTests(unittest.TestCase):
         )
 
         first_page_text = "\n".join([plan["pages"][0]["summary"], *plan["pages"][0]["bullets"], plan["pages"][0]["image_prompt"]])
-        self.assertIn("沉淀19份业务文档", first_page_text)
-        self.assertIn("内网可稳定运行", first_page_text)
-        self.assertNotIn("覆盖率100%", first_page_text)
-        self.assertNotIn("新增10个模块", first_page_text)
+        self.assertIn("覆盖率100%", first_page_text)
+        self.assertIn("新增10个模块", first_page_text)
+        self.assertEqual(plan["pages"][0]["source_anchor_ids"], ["S01", "S02"])
+        self.assertEqual(plan["pages"][1]["layout_family"], "split_left_right")
 
 
 if __name__ == "__main__":

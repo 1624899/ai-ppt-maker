@@ -9,8 +9,12 @@ from ppt_system.generation.prompt_visual_guidance import (
     build_reference_visual_consistency_guidance,
     build_template_quality_guidance,
     build_visual_requirement_line,
+    has_explicit_style_context,
 )
-from ppt_system.generation.reference_shape_constraints import build_shape_clarity_prompt_lines
+from ppt_system.generation.reference_shape_constraints import (
+    build_compact_shape_clarity_line,
+    build_shape_clarity_prompt_lines,
+)
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_prompt_lines,
     normalize_reference_style_adherence,
@@ -179,13 +183,21 @@ def build_compact_reference_prompt(
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
-    anchor = build_style_anchor(style_guide)
+    anchor = build_style_anchor(style_guide, style_notes=style_notes)
     page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
     adherence = normalize_reference_style_adherence(reference_style_adherence, "balanced")
 
     lines = [
         f"生成一张 {image_width}x{image_height}、16:9 的中文 PPT 单页效果图，文字必须清晰可读。",
+        f"页面主题：{title}",
     ]
+    if summary:
+        lines.append(f"核心表达：{summary}")
+    if bullets:
+        lines.append("必须体现的要点：")
+        lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
+    if slots:
+        lines.append(f"信息分区：{'；'.join(slots[:4])}")
     if has_reference_images:
         lines.extend(
             build_reference_style_adherence_prompt_lines(
@@ -193,37 +205,25 @@ def build_compact_reference_prompt(
                 has_reference_images=has_reference_images,
             )
         )
-        if adherence == "loose":
-            lines.append("让新页面看起来明显属于同一套模板体系，但可以围绕内容重新安排模块重心。")
-        elif adherence == "strict":
-            lines.append("优先遵守原稿图的模板秩序与视觉密度，不要随意改写模块骨架。")
-        else:
-            lines.append("让新页面延续同一套模板体系，同时为本页内容保留适度变化空间。")
     else:
-        lines.append(build_no_reference_visual_guidance(style_notes, style_guide, mode="compact"))
-    lines.append(f"页面主题：{title}")
-    if summary:
-        lines.append(f"核心表达：{summary}")
+        visual_guidance = build_no_reference_visual_guidance(style_notes, style_guide, mode="compact")
+        if visual_guidance:
+            lines.append(visual_guidance)
     if visual_suggestion:
         lines.append(f"本页视觉建议：{visual_suggestion}")
-    if bullets:
-        lines.append("必须体现的要点：")
-        lines.extend(f"- {bullet}" for bullet in select_prompt_bullets(bullets))
-    if slots:
-        lines.append(f"建议的信息分区：{'；'.join(slots[:4])}")
     if adherence == "strict" and has_reference_images:
-        lines.append(f"组织方式请严格贴合 {layout_family} 的版式骨架，并优先沿用原稿图的模块秩序与卡片节奏。")
+        lines.append(f"版式：严格贴合 {layout_family} 的骨架和原稿图模块秩序。")
     elif adherence == "loose" and has_reference_images:
-        lines.append(f"组织方式可参考 {layout_family}，但具体模块数量、箭头方向、图标组合和局部编排可由你围绕内容重新设计。")
+        lines.append(f"版式：参考 {layout_family}，模块数量和局部编排可按内容重组。")
     else:
-        lines.append(f"组织方式可参考 {layout_family}，在统一框架下调整具体模块数量、箭头方向、图标组合和局部编排。")
-    lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
+        lines.append(f"版式：参考 {layout_family}，按内容复杂度自适应模块数量和局部编排。")
+    lines.append(f"信息密度：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
-        lines.append(f"统一视觉锚点：{anchor}")
+        lines.append(f"视觉锚点：{anchor}")
     if style_notes:
-        lines.append(f"补充风格说明：{style_notes}")
-    lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
-    lines.append("不要乱码，不要堆满装饰，优先让信息关系清楚。")
+        lines.append(f"用户风格说明：{style_notes}")
+    lines.append(build_compact_shape_clarity_line(style_guide))
+    lines.append("不要乱码、不要堆装饰，优先让信息关系清楚。")
     return "\n".join(lines)
 
 
@@ -244,7 +244,7 @@ def build_slot_brief_reference_prompt(
     layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
-    anchor = build_style_anchor(style_guide)
+    anchor = build_style_anchor(style_guide, style_notes=style_notes)
     page_richness = normalize_page_richness_level(page.get("page_richness", "medium"))
     adherence = normalize_reference_style_adherence(reference_style_adherence, "balanced")
 
@@ -259,7 +259,9 @@ def build_slot_brief_reference_prompt(
             )
         )
     else:
-        lines.append(build_no_reference_visual_guidance(style_notes, style_guide, mode="slot_brief"))
+        visual_guidance = build_no_reference_visual_guidance(style_notes, style_guide, mode="slot_brief")
+        if visual_guidance:
+            lines.append(visual_guidance)
     lines.append(f"页面标题：{title}")
     if summary:
         lines.append(f"页面任务：{summary}")
@@ -280,12 +282,12 @@ def build_slot_brief_reference_prompt(
     else:
         lines.append(f"版式以 {layout_family} 为基准约束，保持框架统一，同时允许细节做适度调整。")
         lines.append("请在统一框架下决定视觉重心、流程方向、卡片分组和图标组合。")
-    lines.append(f"内容丰富度要求：{build_page_richness_render_guidance(page_richness)}")
+    lines.append(f"信息密度：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
-        lines.append(f"统一视觉锚点：{anchor}")
+        lines.append(f"视觉锚点：{anchor}")
     if style_notes:
-        lines.append(f"补充风格说明：{style_notes}")
-    lines.extend(build_shape_clarity_prompt_lines(style_guide, detail="compact"))
+        lines.append(f"用户风格说明：{style_notes}")
+    lines.append(build_compact_shape_clarity_line(style_guide))
     lines.append(build_template_quality_guidance(style_notes, style_guide))
     return "\n".join(lines)
 
@@ -466,8 +468,15 @@ def collect_visual_suggestion(page: dict[str, Any]) -> str:
     return str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip()
 
 
-def build_style_anchor(style_guide: dict[str, Any] | None = None) -> str:
+def build_style_anchor(style_guide: dict[str, Any] | None = None, *, style_notes: str = "") -> str:
     style_guide = style_guide or {}
+    if not has_explicit_style_context(style_notes, style_guide):
+        return ""
+
+    # fallback 风格锚点多为通用模板话；最终 prompt 用用户风格说明即可。
+    if str(style_guide.get("source", "")).strip() == "fallback":
+        return ""
+
     prompt_anchor = str(style_guide.get("prompt_anchor", "")).strip()
     if prompt_anchor:
         return prompt_anchor

@@ -64,8 +64,8 @@ class PageRichnessTests(unittest.TestCase):
 
         self.assertEqual(plan["pages"][0]["page_richness"], "low")
         self.assertEqual(plan["pages"][1]["page_richness"], "high")
-        self.assertIn("信息密度偏低", plan["pages"][0]["style_constraints"])
-        self.assertIn("信息密度偏高", plan["pages"][1]["style_constraints"])
+        self.assertEqual(plan["pages"][0]["style_constraints"], "")
+        self.assertEqual(plan["pages"][1]["style_constraints"], "")
         self.assertIn("控制视觉元素与文字块数量", plan["pages"][0]["image_prompt"])
         self.assertIn("允许容纳更多信息模块、节点、图表分区或说明标签", plan["pages"][1]["image_prompt"])
 

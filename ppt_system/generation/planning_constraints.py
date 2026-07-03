@@ -10,7 +10,7 @@ def build_content_planning_constraints(source_anchor_count: int, page_count: int
     ]
     if source_anchor_count > 0:
         lines.append(
-            "- source_anchor_ids 必须写明每页承载的事实锚点；一页可以承载多个相关锚点，但不能新增锚点外事实。"
+            "- source_anchor_ids 用于标记每页主要参考的事实锚点；一页可以承载多个相关锚点，但内容判断以输入原文为准。"
         )
     if source_anchor_count > page_count > 0:
         lines.append(

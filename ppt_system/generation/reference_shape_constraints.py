@@ -23,6 +23,14 @@ def build_shape_clarity_prompt_lines(
     return lines[:3]
 
 
+def build_compact_shape_clarity_line(style_guide: dict[str, Any] | None = None) -> str:
+    """生成给生图模型的简洁元素边界说明。"""
+
+    dashed_allowed = _style_prefers_dashed_connectors(style_guide or {})
+    connector = "连接线按参考风格处理，箭头关系清楚" if dashed_allowed else "不要主动增加虚线装饰，必要连接线和箭头关系清楚"
+    return f"元素边界清楚、相邻模块留出可识别间隔，{connector}。"
+
+
 def _build_connector_constraint(dashed_allowed: bool) -> str:
     if dashed_allowed:
         return (

@@ -33,7 +33,7 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
         )
 
         self.assertIn("不要主动增加虚线装饰", prompt)
-        self.assertIn("相邻元素留可识别间隔", prompt)
+        self.assertIn("相邻模块留出可识别间隔", prompt)
 
     def test_slot_brief_prompt_preserves_dashed_lines_when_style_requires(self) -> None:
         prompt = build_reference_prompt_by_mode(
@@ -52,8 +52,8 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
             reference_style_adherence="strict",
         )
 
-        self.assertIn("参考风格含虚线时可保留", prompt)
-        self.assertIn("关键箭头与连接关系清楚", prompt)
+        self.assertIn("连接线按参考风格处理", prompt)
+        self.assertIn("箭头关系清楚", prompt)
         self.assertIn("严格锁定原稿图的版芯比例", prompt)
 
     def test_baseline_prompt_discourages_soft_edges_and_blurry_borders(self) -> None:
@@ -87,8 +87,8 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
             reference_style_adherence="balanced",
         )
 
-        self.assertIn("不因切分新增卡片、容器或描边", prompt)
-        self.assertIn("先服从参考版式和内容语义", prompt)
+        self.assertIn("元素边界清楚", prompt)
+        self.assertIn("相邻模块留出可识别间隔", prompt)
         self.assertNotIn("优先使用闭合且清晰的卡片", prompt)
         self.assertNotIn("关键箭头优先使用清晰实线", prompt)
         self.assertNotIn("整页都做成厚重硬框", prompt)

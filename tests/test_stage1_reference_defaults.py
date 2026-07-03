@@ -65,7 +65,7 @@ class Stage1ReferenceDefaultsTests(unittest.TestCase):
 
         self.assertEqual(plan["pages"][0]["reference_mode"], "generation")
         self.assertEqual(plan["pages"][1]["reference_mode"], "generation")
-        self.assertIn("统一框架下调整", plan["pages"][0]["image_prompt"])
+        self.assertIn("按内容复杂度自适应模块数量", plan["pages"][0]["image_prompt"])
 
     def test_empty_style_notes_do_not_leak_inferred_business_style_into_prompt(self) -> None:
         result = {

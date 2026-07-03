@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +23,6 @@ from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.generation.planning_constraints import build_content_planning_constraints
 from ppt_system.generation.page_richness import (
     DEFAULT_PAGE_RICHNESS,
-    build_page_richness_planning_guidance,
     build_page_richness_prompt_lines,
     normalize_page_richness_level,
     resolve_page_richness_map,
@@ -32,21 +30,11 @@ from ppt_system.generation.page_richness import (
 from ppt_system.generation.planner import infer_style_type
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_planning_guidance,
-    get_reference_style_adherence_label,
 )
 from ppt_system.generation.style_runtime import apply_text_theme
-from ppt_system.generation.source_content_control import (
-    build_source_content_control_prompt,
-    count_anchor_facts,
-    count_anchor_source_chars,
-    resolve_source_content_budget,
-)
 from ppt_system.generation.source_content_anchors import (
-    build_page_content_from_source_anchors,
     build_source_content_anchors,
     format_source_anchors_for_prompt,
-    has_meaningful_source_anchors,
-    resolve_page_source_anchors,
 )
 from ppt_system.generation.text_layout import build_layout_slots_by_family, build_text_boxes_from_slots, build_text_layouts
 from ppt_system.generation.title_extraction import resolve_plan_title
@@ -345,72 +333,57 @@ def build_planning_prompt(
         explicit_map=generation_options.get("page_richness_map", {}),
     )
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
-    reference_style_adherence_label = get_reference_style_adherence_label(reference_style_adherence)
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
-    prompt_anchor = style_guide.get("prompt_anchor", "")
-    style_core = style_guide.get("style_core", {})
     layout_families = style_guide.get("layout_families", [])
     element_primitives = style_guide.get("element_primitives", [])
-    variation_policy = style_guide.get("variation_policy", {})
-    negative_rules = style_guide.get("negative_rules", [])
     source_anchors = source_anchors or build_source_content_anchors(content, page_count)
-
-    core_lines: list[str] = []
-    if isinstance(style_core, dict):
-        for key in ["background_tone", "palette", "title_style", "card_style", "icon_style", "line_style"]:
-            val = style_core.get(key, "")
-            if isinstance(val, list):
-                val = "、".join(val)
-            if val:
-                core_lines.append(f"- {key}：{val}")
+    style_direction = (
+        style_notes.strip()
+        if style_notes.strip()
+        else "未指定固定风格，请你根据内容性质、主题和受众选择合适的视觉方向。"
+    )
+    cover_policy = (
+        "第 1 页可以作为首页/封面页，但仍需承担明确表达职责。"
+        if include_cover_page
+        else "不生成纯封面；第 1 页直接进入正文核心观点、结构或要点。"
+    )
 
     return f"""
-请根据下面的 PPT 内容，拆成 {page_count} 页，并输出严格 JSON。
+请基于下面的 PPT 内容完成整套内容规划，拆成 {page_count} 页，并只输出严格 JSON。
 
 输入内容：
 {content}
 
-源文事实锚点：
+可参考的源文定位锚点（辅助追溯，不要求机械分页）：
 {format_source_anchors_for_prompt(source_anchors)}
 
-参考风格补充：
-{style_notes or "用户没有填写风格补充，请根据内容自行判断。"}
+风格方向：
+{style_direction}
 
-参考风格图片数量：{style_image_count}
-原稿图约束强度：{reference_style_adherence_label}
-画幅：16:9
-像素参考：{image_width}x{image_height}
-首页图策略：{"第 1 页允许作为 PPT 首页图/封面页，用于建立视觉基调" if include_cover_page else "不生成单独首页图；第 1 页必须直接进入正文内容"}
-第一阶段提示策略：系统会在原稿图生成阶段使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里不要求你为每页写成长篇最终 prompt。
+页面与生成参数：
+- 目标页数：{page_count}
+- 画幅：16:9，像素参考：{image_width}x{image_height}
+- 首页策略：{cover_policy}
+- 原稿图数量：{style_image_count}
+- 原稿图约束：{build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
+- 后续原稿图阶段会使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里的 image_prompt 只写本页独有视觉重点，可为空。
 
-统一风格锚点：
-{prompt_anchor}
-
-风格核心：
-{chr(10).join(core_lines) if core_lines else "使用默认风格"}
-
-可用版式家族：
-{'、'.join(layout_families)}
-
-元素原语：
-{'、'.join(element_primitives)}
-
-变化策略：
-- 相邻页不能重复同一 layout_family
-- 整套页至少覆盖 {variation_policy.get('min_distinct_layout_families', 3)} 种以上骨架
-- 同一 layout_family 最多连续重复 {variation_policy.get('same_layout_max_repeat', 1)} 次
-
-每页内容丰富度要求：
+内容丰富度：
 {chr(10).join(build_page_richness_prompt_lines(page_richness_map)) if page_richness_map else "- 所有页面使用中等丰富度"}
 
-内容把控规则：
-{build_source_content_control_prompt()}
+内容规划原则：
+- 直接基于“输入内容”完成整套 PPT 规划；源文事实锚点只作为定位参考，不要机械按锚点顺序分页。
+- 每页必须有明确且唯一的内容职责，title、summary、bullets 要讲同一个主题。
+- 内容偏多时主动概括、合并和突出重点；内容偏少时只做与原文相关的轻量丰富，不新增无关事项、数字或结论。
+- 不要无故删除输入中的关键要点；如果一页承载多个要点，可以合并表达或用“其他要点”概括剩余同类信息。
+- source_anchor_ids 可填写本页参考到的锚点，供追溯使用；不能为了匹配锚点而牺牲你对页面主题和版式的整体判断。
 
-内容规划约束：
+版式与结构：
+- 可用 layout_family：{'、'.join(layout_families)}
+- 可用 element_primitives：{'、'.join(element_primitives)}
+- 每页选择最适合内容语义的 layout_family，尽量避免相邻页重复。
+- layout_slots 写语义分区，不写坐标；element_plan 写本页适合的图形/图标方向。
 {build_content_planning_constraints(len(source_anchors), page_count)}
-
-禁止事项：
-{format_style_list(negative_rules)}
 
 JSON 格式必须如下：
 {{
@@ -440,22 +413,10 @@ JSON 格式必须如下：
 要求：
 1. pages 数量必须正好是 {page_count}。
 2. 每页必须选择一个 layout_family，必须从可用版式家族中选择，不能写成模板编号。
-3. 相邻页不能重复同一 layout_family。
-4. 整套页至少覆盖 3 种以上不同的 layout_family。
-5. source_anchor_ids 必须从“源文事实锚点”中选择并服务于本页主题；可以组合多个相关锚点，但不要按锚点顺序机械映射。
-6. title、summary、bullets 只能压缩或摘取所选 source_anchor_ids 中的事实，不得把“4 大类”改成事项数量，不得自行计算、补写或改写数字口径。
-7. page_richness 不能作为盲目扩充或缩减依据：偏长内容要做重点突出和语义总结，偏短内容只允许少量承接性表达以服务排版。
-8. 必须继承 element_primitives，每页按本页内容重新生成具体图形。
-9. 不允许复用原稿图的具体构图，每页必须有 difference_from_previous。
-10. layout_slots 是语义槽位，描述本页信息分区的含义，不是固定像素坐标。
-11. image_prompt 可以为空；如果填写，也只写本页独有的视觉重点，避免重复整套固定风格。
-12. 文字要出现在图中，因为这是第一阶段带文字原稿图。
-13. logo/icon 属于视觉元素，不要把它们描述成要删除的文字。
-14. 如果存在参考风格图，页面结构需要保持统一风格锚点，但允许为了表达本页内容调整局部构图与信息模块。
-15. {build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
-16. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
-17. page_richness 必须填写为 low、medium、high 之一，并与该页丰富度要求保持一致。
-18. {"如果第 1 页作为首页图，内容应承担封面/总题页职责，同时仍需与全套风格一致。" if include_cover_page else "不要生成只有标题、日期、Logo 或一句口号的封面页；第 1 页必须直接呈现正文核心观点、结构或要点。"}
+3. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
+4. page_richness 必须为 low、medium、high 之一，并与上面的丰富度要求一致。
+5. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
+6. 文字会出现在第一阶段原稿图中，请保证标题和正文适合直接上屏。
 """.strip()
 
 
@@ -484,7 +445,6 @@ def normalize_content_plan(
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     resolved_prompt_mode = "slot_brief" if has_reference_images else "compact"
     source_anchors = build_source_content_anchors(content, page_count)
-    use_source_anchoring = has_meaningful_source_anchors(content, source_anchors, page_count)
     fallback_pages = build_text_layouts(
         content,
         page_count=page_count,
@@ -504,46 +464,15 @@ def normalize_content_plan(
     for index in range(page_count):
         fallback = fallback_pages[index]
         raw = pages_input[index] if index < len(pages_input) and isinstance(pages_input[index], dict) else {}
-        selected_source_anchors = (
-            resolve_page_source_anchors(raw, index, page_count, source_anchors)
-            if use_source_anchoring
-            else []
-        )
         page_richness = normalize_page_richness_level(
             raw.get("page_richness") or page_richness_map.get(str(index + 1)),
             page_richness_map.get(str(index + 1), DEFAULT_PAGE_RICHNESS),
         )
-        source_content_budget = resolve_source_content_budget(
-            page_richness,
-            fact_count=count_anchor_facts(selected_source_anchors),
-            source_char_count=count_anchor_source_chars(selected_source_anchors),
-        )
-        anchored_content = build_page_content_from_source_anchors(
-            selected_source_anchors,
-            raw_page=raw,
-            content_budget=source_content_budget,
-        )
         raw_title = str(raw.get("title", "")).strip()
         raw_summary = str(raw.get("summary", "")).strip()
         bullets = _normalize_raw_bullets(raw.get("bullets"))
-        if anchored_content.get("has_content"):
-            anchored_title = str(anchored_content.get("title") or fallback["title"]).strip()
-            anchored_summary = str(anchored_content.get("summary") or fallback["summary"]).strip()
-            anchored_bullets = [
-                str(item).strip()
-                for item in anchored_content.get("bullets", [])
-                if str(item).strip()
-            ]
-            title = _resolve_page_title(raw_title, anchored_title, selected_source_anchors)
-            if _raw_page_content_is_source_grounded(raw_summary, bullets, selected_source_anchors, source_content_budget):
-                summary = raw_summary or anchored_summary
-                bullets = bullets or anchored_bullets
-            else:
-                summary = anchored_summary
-                bullets = anchored_bullets
-        else:
-            title = str(raw_title or fallback["title"]).strip()
-            summary = str(raw_summary or fallback["summary"]).strip()
+        title = str(raw_title or fallback["title"]).strip()
+        summary = str(raw_summary or fallback["summary"]).strip()
         if bullets:
             fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
@@ -591,14 +520,6 @@ def normalize_content_plan(
         style_constraints = str(raw.get("style_constraints", "")).strip()
         reference_mode = "edit_with_refs" if has_reference_images else "generation"
         prompt_profile = str(raw.get("prompt_profile", "compressed")).strip()
-        richness_guidance = build_page_richness_planning_guidance(page_richness)
-        content_control_guidance = str(anchored_content.get("content_control", {}).get("guidance", "")).strip()
-        if content_control_guidance:
-            richness_guidance = f"{richness_guidance}；{content_control_guidance}"
-        if style_constraints:
-            style_constraints = f"{style_constraints}；内容丰富度要求：{richness_guidance}"
-        else:
-            style_constraints = f"内容丰富度要求：{richness_guidance}"
 
         texts = fallback.get("texts", [])
         fallback_family = fallback.get("layout_family", "split_left_right")
@@ -620,7 +541,6 @@ def normalize_content_plan(
             "title": title,
             "summary": summary,
             "bullets": bullets,
-            "source_anchor_ids": anchored_content.get("source_anchor_ids", []),
             "layout_intent": str(raw.get("layout_intent", "")).strip(),
             "layout_family": layout_family,
             "layout_slots": layout_slots,
@@ -631,6 +551,7 @@ def normalize_content_plan(
             "reference_mode": reference_mode,
             "prompt_profile": prompt_profile,
             "reference_style_adherence": reference_style_adherence,
+            "source_anchor_ids": _normalize_source_anchor_ids(raw.get("source_anchor_ids"), source_anchors),
             "texts": texts,
         }
         planner_image_prompt = str(raw.get("image_prompt", "")).strip()
@@ -673,136 +594,24 @@ _CONTENT_FAMILY_MAP: list[tuple[list[str], str]] = [
 ]
 
 
-_ARABIC_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
-
-
 def _normalize_raw_bullets(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
 
 
-def _resolve_page_title(raw_title: str, anchored_title: str, selected_anchors: list[dict[str, Any]]) -> str:
-    if raw_title and not _has_unsupported_numbers(raw_title, _join_anchor_source(selected_anchors)):
-        return raw_title
-    return anchored_title
+def _normalize_source_anchor_ids(value: Any, source_anchors: list[dict[str, Any]]) -> list[str]:
+    if isinstance(value, str):
+        candidates = [value.strip()] if value.strip() else []
+    elif isinstance(value, list):
+        candidates = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        return []
 
-
-def _raw_page_content_is_source_grounded(
-    summary: str,
-    bullets: list[str],
-    selected_anchors: list[dict[str, Any]],
-    content_budget: Any,
-) -> bool:
-    """让模型保留动态规划权，同时阻止脱离源文的数字和事实。"""
-
-    raw_text = "\n".join([str(summary or "").strip(), *bullets]).strip()
-    if not raw_text or not selected_anchors:
-        return False
-
-    source_text = _join_anchor_source(selected_anchors)
-    if _has_unsupported_numbers(raw_text, source_text):
-        return False
-    if _text_grounded_score(raw_text, source_text) < 0.36:
-        return False
-
-    facts = _collect_anchor_facts(selected_anchors)
-    if not facts:
-        return True
-
-    covered_count = sum(1 for fact in facts if _fact_is_covered_by_text(fact, raw_text))
-    if _facts_are_section_like(facts):
-        return covered_count >= len(facts)
-
-    max_bullets = int(getattr(content_budget, "max_bullets", 0) or 0)
-    required_count = min(len(facts), max(1, max_bullets or len(facts)))
-    if len(facts) <= 2:
-        required_count = len(facts)
-    return covered_count >= required_count
-
-
-def _collect_anchor_facts(anchors: list[dict[str, Any]]) -> list[str]:
-    facts: list[str] = []
-    for anchor in anchors:
-        raw_facts = anchor.get("facts", [])
-        if isinstance(raw_facts, list):
-            facts.extend(str(item).strip() for item in raw_facts if str(item).strip())
-    return facts
-
-
-def _join_anchor_source(anchors: list[dict[str, Any]]) -> str:
-    parts: list[str] = []
-    for anchor in anchors:
-        for key in ("title", "source_text"):
-            value = str(anchor.get(key, "")).strip()
-            if value:
-                parts.append(value)
-        facts = anchor.get("facts", [])
-        if isinstance(facts, list):
-            parts.extend(str(item).strip() for item in facts if str(item).strip())
-    return "\n".join(parts)
-
-
-def _has_unsupported_numbers(text: str, source_text: str) -> bool:
-    source_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(source_text)}
-    source_numbers.discard("")
-    for number in _ARABIC_NUMBER_RE.findall(text):
-        normalized = _normalize_number_token(number)
-        if normalized and normalized not in source_numbers:
-            return True
-    return False
-
-
-def _normalize_number_token(value: str) -> str:
-    return str(value or "").strip().rstrip("%")
-
-
-def _text_grounded_score(query: str, source: str) -> float:
-    query_chars = _match_chars(query)
-    source_chars = _match_chars(source)
-    if not query_chars or not source_chars:
-        return 0.0
-    return len(query_chars & source_chars) / max(1, len(query_chars))
-
-
-def _fact_is_covered_by_text(fact: str, text: str) -> bool:
-    cleaned = str(fact or "").strip()
-    if not cleaned:
-        return False
-
-    heading = _fact_heading(cleaned)
-    if heading and _text_grounded_score(heading, text) >= 0.78:
-        return True
-
-    fact_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(cleaned)}
-    fact_numbers.discard("")
-    text_numbers = {_normalize_number_token(item) for item in _ARABIC_NUMBER_RE.findall(text)}
-    if fact_numbers and fact_numbers.issubset(text_numbers) and _text_grounded_score(cleaned, text) >= 0.28:
-        return True
-
-    return _text_grounded_score(cleaned, text) >= 0.52
-
-
-def _fact_heading(text: str) -> str:
-    cleaned = str(text or "").strip()
-    for separator in ("：", ":"):
-        if separator in cleaned:
-            return cleaned.split(separator, 1)[0].strip()
-    return ""
-
-
-def _facts_are_section_like(facts: list[str]) -> bool:
-    if len(facts) < 2:
-        return False
-    return sum(1 for fact in facts if _fact_heading(fact)) >= max(2, len(facts) - 1)
-
-
-def _match_chars(text: str) -> set[str]:
-    return {
-        char.lower()
-        for char in str(text)
-        if char.isalnum() or "\u4e00" <= char <= "\u9fff"
-    }
+    available_ids = {str(anchor.get("id", "")).strip() for anchor in source_anchors if anchor.get("id")}
+    if not available_ids:
+        return candidates
+    return [item for item in candidates if item in available_ids]
 
 
 def _infer_layout_family(title: str, summary: str, bullets: list[str], index: int) -> str:
@@ -855,9 +664,3 @@ def _default_layout_slots(layout_family: str, title: str, bullets: list[str]) ->
         return ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"]
     return ["标题区", "内容区"]
 
-
-def format_style_list(items: list[Any]) -> str:
-    cleaned = [str(item).strip() for item in items if str(item).strip()]
-    if not cleaned:
-        return "无"
-    return "；".join(cleaned)

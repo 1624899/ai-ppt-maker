@@ -14,6 +14,8 @@ def build_no_reference_visual_guidance(
     *,
     mode: str = "compact",
 ) -> str:
+    if not has_explicit_style_context(style_notes, style_guide):
+        return "未指定固定风格，请根据页面主题、内容性质和目标受众自行选择合适的视觉语言，不要套用固定领域模板，保持清晰、克制、可读。"
     context = describe_visual_context(style_notes, style_guide)
     if mode == "slot_brief":
         return f"围绕本页内容重新组织页面，视觉语言应匹配{context}，保持有序、可读且便于理解的信息呈现。"
@@ -43,6 +45,8 @@ def has_explicit_style_context(style_notes: str = "", style_guide: dict[str, Any
     if str(style_notes).strip():
         return True
     if not isinstance(style_guide, dict):
+        return False
+    if str(style_guide.get("source", "")).strip() == "fallback":
         return False
 
     for key in ("style_name", "prompt_anchor"):
