@@ -26,6 +26,7 @@ def test_frozen_runtime_uses_user_data_dir_for_mutable_files() -> None:
     assert paths.local_config_path == paths.data_dir / "config.local.json"
     assert paths.env_path == paths.data_dir / ".env"
     assert paths.default_output_dir == paths.data_dir / "output"
+    assert paths.logs_dir == paths.data_dir / "logs"
     assert paths.data_mode == "appdata"
 
 

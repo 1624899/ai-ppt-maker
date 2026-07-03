@@ -76,6 +76,7 @@
   "image_download_timeout_seconds": 30,
   "request_retry_count": 4,
   "request_retry_initial_delay_seconds": 6,
+  "http_access_log_mode": "failures",
   "job_worker_count": 2,
   "job_status_cache_max_items": 500,
   "stage1_concurrency": 10,

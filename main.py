@@ -24,6 +24,7 @@ def static_asset_version() -> str:
 
 app = create_app(
     runtime_context.ROOT,
+    access_log_mode=runtime_context.read_config().get("http_access_log_mode", "failures"),
     static_asset_version_provider=static_asset_version,
 )
 

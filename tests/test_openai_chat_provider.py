@@ -395,6 +395,86 @@ class OpenAIChatProviderTests(unittest.TestCase):
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
         self.assertEqual(mock_post.call_count, 2)
 
+    def test_complete_json_logs_ambiguous_empty_response_reason_before_retry(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "request_retry_initial_delay_seconds": 0,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        responses = [
+            _FakeResponse(
+                {
+                    "id": "resp_empty",
+                    "object": "chat.completion",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+            ),
+            _FakeResponse(),
+        ]
+
+        with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.integrations.openai_chat_provider.print") as mock_print:
+                with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=responses):
+                    provider.complete_json([{"role": "user", "content": "test"}])
+
+        log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertIn("检测到歧义空响应", log_text)
+        self.assertIn("finish_reason=stop", log_text)
+        self.assertIn("resp_empty", log_text)
+
+    def test_complete_json_does_not_retry_billable_empty_response(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "request_retry_initial_delay_seconds": 0,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        response = _FakeResponse(
+            {
+                "id": "resp_billable_empty",
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10486,
+                    "completion_tokens": 4625,
+                    "total_tokens": 15111,
+                },
+            }
+        )
+
+        with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.integrations.openai_chat_provider.print") as mock_print:
+                with patch("ppt_system.integrations.openai_chat_provider.requests.post", return_value=response) as mock_post:
+                    with self.assertRaisesRegex(RuntimeError, "避免重复扣费"):
+                        provider.complete_json([{"role": "user", "content": "test"}])
+
+        log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertIn("可能已计费的歧义空响应", log_text)
+        self.assertIn("resp_billable_empty", log_text)
+        self.assertIn("completion_tokens=4625", log_text)
+        self.assertEqual(mock_post.call_count, 1)
+
     def test_complete_json_retries_http_502_with_chat_retry_budget(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",
@@ -495,6 +575,38 @@ class OpenAIChatProviderTests(unittest.TestCase):
                     provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(mock_post.call_count, 1)
+
+    def test_complete_json_logs_transport_error_details_before_stopping_retry(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "chat_retry_count": 3,
+            "chat_transport_retry_count": 1,
+            "chat_ambiguous_transport_retry_count": 0,
+            "request_retry_initial_delay_seconds": 0,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+
+        with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.integrations.openai_chat_provider.print") as mock_print:
+                with patch(
+                    "ppt_system.integrations.openai_chat_provider.requests.post",
+                    side_effect=ConnectionError(
+                        "Connection aborted.",
+                        RemoteDisconnected("Remote end closed connection without response"),
+                    ),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "已停止自动重试"):
+                        provider.complete_json([{"role": "user", "content": "test"}])
+
+        log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertIn("ConnectionError", log_text)
+        self.assertIn("RemoteDisconnected", log_text)
+        self.assertIn("请求异常已停止自动重试", log_text)
 
 
 if __name__ == "__main__":

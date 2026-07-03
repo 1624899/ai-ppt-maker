@@ -5,6 +5,7 @@ from typing import Callable
 
 from flask import Flask
 
+from ppt_system.web.access_logging import configure_http_access_logging
 from ppt_system.web.blueprints.artifacts_api import bp as artifacts_api_bp
 from ppt_system.web.blueprints.config_api import bp as config_api_bp
 from ppt_system.web.blueprints.jobs_api import bp as jobs_api_bp
@@ -14,6 +15,7 @@ from ppt_system.web.blueprints.ui import bp as ui_bp
 def create_app(
     root: Path,
     *,
+    access_log_mode: str | None = None,
     static_asset_version_provider: Callable[[], str] | None = None,
 ) -> Flask:
     web_ui_dist_dir = root / "web_ui" / "dist"
@@ -31,6 +33,7 @@ def create_app(
     app.register_blueprint(config_api_bp)
     app.register_blueprint(jobs_api_bp)
     app.register_blueprint(artifacts_api_bp)
+    configure_http_access_logging(app, access_log_mode)
 
     if static_asset_version_provider is not None:
         app.add_template_global(static_asset_version_provider, name="static_asset_version")

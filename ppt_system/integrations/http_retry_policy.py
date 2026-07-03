@@ -6,6 +6,7 @@ from requests.exceptions import ChunkedEncodingError, ConnectTimeout, Connection
 
 
 RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504, 524}
+TRANSPORT_ERROR_SNIPPET_LIMIT = 300
 
 
 def is_retryable_status_code(status_code: int) -> bool:
@@ -77,6 +78,16 @@ def build_transport_error_message(exc: BaseException, *, api_name: str = "图像
     return f"{api_name}请求异常：{exc}"
 
 
+def build_transport_error_summary(exc: BaseException) -> str:
+    chain = list(iter_exception_chain(exc))
+    parts: list[str] = []
+    for item in chain:
+        message = str(item).strip()
+        class_name = item.__class__.__name__
+        parts.append(f"{class_name}: {message}" if message else class_name)
+    return _build_text_snippet(" | ".join(_dedupe(parts)))
+
+
 def iter_exception_chain(exc: BaseException):
     seen: set[int] = set()
     current: BaseException | None = exc
@@ -92,3 +103,23 @@ def iter_exception_chain(exc: BaseException):
 
 def build_exception_message(chain: list[BaseException]) -> str:
     return " ".join(str(item).lower() for item in chain if str(item))
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _build_text_snippet(text: str, limit: int = TRANSPORT_ERROR_SNIPPET_LIMIT) -> str:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return "<empty>"
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."

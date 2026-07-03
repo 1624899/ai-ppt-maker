@@ -14,6 +14,7 @@ from ppt_system.integrations.chat_response_parser import AmbiguousChatResponseEr
 from ppt_system.integrations.chat_stream_parser import looks_like_sse_text, parse_chat_completion_sse
 from ppt_system.integrations.http_retry_policy import (
     build_transport_error_message,
+    build_transport_error_summary,
     is_retryable_status_code,
     transport_retry_budget,
 )
@@ -119,10 +120,11 @@ class OpenAIChatProvider:
                 )
             except requests.RequestException as exc:
                 elapsed = time.perf_counter() - request_started_at
+                error_summary = build_transport_error_summary(exc)
                 print(
                     format_log_line(
                         "chat",
-                        f"第 {request_attempt} 次请求异常：{exc.__class__.__name__}，耗时={elapsed:.1f}s",
+                        f"第 {request_attempt} 次请求异常：{error_summary}，耗时={elapsed:.1f}s",
                     ),
                     flush=True,
                 )
@@ -132,10 +134,24 @@ class OpenAIChatProvider:
                     ambiguous_transport_retry_count=self.ambiguous_transport_retry_count,
                 )
                 if transport_attempt >= retry_budget:
-                    raise RuntimeError(build_transport_error_message(exc, api_name="对话模型")) from exc
+                    error_message = build_transport_error_message(exc, api_name="对话模型")
+                    print(
+                        format_log_line(
+                            "chat",
+                            f"请求异常已停止自动重试：{_build_text_snippet(error_message)}",
+                        ),
+                        flush=True,
+                    )
+                    raise RuntimeError(error_message) from exc
                 delay = self.retry_initial_delay * (2**transport_attempt)
                 transport_attempt += 1
-                print(format_log_line("chat", f"将在 {delay:.1f}s 后重试"), flush=True)
+                print(
+                    format_log_line(
+                        "chat",
+                        f"将在 {delay:.1f}s 后重试传输异常（{transport_attempt}/{retry_budget}）",
+                    ),
+                    flush=True,
+                )
                 time.sleep(delay)
                 continue
             elapsed = time.perf_counter() - request_started_at
@@ -175,14 +191,20 @@ class OpenAIChatProvider:
         while True:
             try:
                 return _extract_response_content(current_body)
-            except AmbiguousChatResponseError:
+            except AmbiguousChatResponseError as exc:
+                if _has_billable_usage(current_body):
+                    message = _build_billable_ambiguous_response_message(current_body, exc)
+                    print(format_log_line("chat", message), flush=True)
+                    raise AmbiguousChatResponseError(message) from exc
                 if attempt >= self.ambiguous_retry_count:
                     raise
                 attempt += 1
                 print(
                     format_log_line(
                         "chat",
-                        f"检测到歧义空响应，将执行第 {attempt}/{self.ambiguous_retry_count} 次补充重试",
+                        "检测到歧义空响应，"
+                        f"{_build_text_snippet(str(exc))}，"
+                        f"将执行第 {attempt}/{self.ambiguous_retry_count} 次补充重试",
                     ),
                     flush=True,
                 )
@@ -282,6 +304,45 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
 
 def _extract_response_content(body: dict[str, Any]) -> str:
     return extract_chat_completion_text(body)
+
+
+def _has_billable_usage(body: dict[str, Any]) -> bool:
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return False
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if _coerce_positive_int(usage.get(key)) > 0:
+            return True
+    return False
+
+
+def _build_billable_ambiguous_response_message(body: dict[str, Any], exc: BaseException) -> str:
+    response_id = str(body.get("id", "")).strip() or "unknown"
+    usage_summary = _build_usage_summary(body.get("usage"))
+    return (
+        "检测到可能已计费的歧义空响应，"
+        f"response_id={response_id}，{usage_summary}，"
+        "已停止自动补充重试以避免重复扣费。"
+        f"{_build_text_snippet(str(exc))}"
+    )
+
+
+def _build_usage_summary(usage: Any) -> str:
+    if not isinstance(usage, dict):
+        return "usage=unknown"
+    parts = []
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if key in usage:
+            parts.append(f"{key}={usage.get(key)}")
+    return "usage=" + (", ".join(parts) if parts else "unknown")
+
+
+def _coerce_positive_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
 
 
 def _build_invalid_json_message(response: requests.Response, response_text: str | None = None) -> str:

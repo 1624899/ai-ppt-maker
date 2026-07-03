@@ -14,6 +14,7 @@ from ppt_system.runtime.app_paths import (
     resolve_application_root,
     resolve_runtime_paths,
 )
+from ppt_system.runtime.file_logging import initialize_file_logging
 from ppt_system.web.services.job_runtime_limits import (
     BoundedJobStatusCache,
     resolve_job_status_cache_max_items,
@@ -24,6 +25,7 @@ from ppt_system.web.services.job_runtime_limits import (
 ROOT = resolve_application_root(str(Path(__file__).resolve().parents[2] / "main.py"))
 RUNTIME_PATHS = resolve_runtime_paths(ROOT)
 ensure_runtime_directories(RUNTIME_PATHS)
+LOG_PATH = initialize_file_logging(RUNTIME_PATHS.logs_dir)
 
 DATA_DIR = RUNTIME_PATHS.data_dir
 CONFIG_PATH = RUNTIME_PATHS.config_path
