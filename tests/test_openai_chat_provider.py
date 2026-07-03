@@ -17,13 +17,22 @@ class _FakeResponse:
         self.ok = 200 <= int(status_code) < 400
         self.status_code = int(status_code)
         self._payload = payload or {
-            "choices": [
+            "id": "resp_test",
+            "object": "response",
+            "status": "completed",
+            "output": [
                 {
-                    "message": {
-                        "content": '{"page_script":"add_text(slide, \\"标题\\", 0, 0, 100, 40)"}'
-                    }
+                    "type": "message",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": '{"page_script":"add_text(slide, \\"标题\\", 0, 0, 100, 40)"}',
+                        }
+                    ],
                 }
-            ]
+            ],
         }
         self.headers: dict[str, str] = {}
         self.text = ""
@@ -85,7 +94,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(item["base_url"], "https://example.com/gateway/v1")
 
-    def test_complete_json_includes_reasoning_effort_when_configured(self) -> None:
+    def test_complete_json_builds_responses_payload_with_reasoning_when_configured(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",
             "chat_model": "gpt-5.5",
@@ -111,7 +120,14 @@ class OpenAIChatProviderTests(unittest.TestCase):
         with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
-        self.assertEqual(captured_payload["reasoning_effort"], "high")
+        self.assertEqual(captured_payload["reasoning"], {"effort": "high"})
+        self.assertEqual(captured_payload["max_output_tokens"], 2048)
+        self.assertEqual(captured_payload["text"], {"format": {"type": "json_object"}})
+        self.assertEqual(captured_payload["stream"], True)
+        self.assertEqual(captured_payload["store"], False)
+        self.assertNotIn("messages", captured_payload)
+        self.assertNotIn("max_tokens", captured_payload)
+        self.assertNotIn("response_format", captured_payload)
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
 
     def test_complete_json_normalizes_profile_base_url_before_request(self) -> None:
@@ -135,7 +151,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
         with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             provider.complete_json([{"role": "user", "content": "test"}])
 
-        self.assertEqual(captured_url, "https://example.com/gateway/v1/chat/completions")
+        self.assertEqual(captured_url, "https://example.com/gateway/v1/responses")
 
     def test_complete_json_uses_profile_reasoning_effort_over_global_default(self) -> None:
         config = {
@@ -159,7 +175,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
         with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=fake_post):
             provider.complete_json([{"role": "user", "content": "test"}])
 
-        self.assertEqual(captured_payload["reasoning_effort"], "medium")
+        self.assertEqual(captured_payload["reasoning"], {"effort": "medium"})
 
     def test_complete_json_prefers_utf8_response_body_when_text_decoding_is_garbled(self) -> None:
         config = {
@@ -173,13 +189,22 @@ class OpenAIChatProviderTests(unittest.TestCase):
         provider = OpenAIChatProvider(config, profile)
 
         payload = {
-            "choices": [
+            "id": "resp_utf8",
+            "object": "response",
+            "status": "completed",
+            "output": [
                 {
-                    "message": {
-                        "content": '{"page_script":"add_text(slide, \\"提问即竞争力\\", 0, 0, 100, 40)"}'
-                    }
+                    "type": "message",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": '{"page_script":"add_text(slide, \\"提问即竞争力\\", 0, 0, 100, 40)"}',
+                        }
+                    ],
                 }
-            ]
+            ],
         }
         response = _FakeResponse(payload)
         response.text = '{"page_script":"add_text(slide, \\"æé®å³ç«äºå\\", 0, 0, 100, 40)"}'
@@ -220,13 +245,17 @@ class OpenAIChatProviderTests(unittest.TestCase):
         )
         response = _FakeResponse(
             {
-                "choices": [
+                "id": "resp_empty",
+                "object": "response",
+                "status": "completed",
+                "output": [
                     {
-                        "message": {
-                            "role": "assistant",
-                        }
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [],
                     }
-                ]
+                ],
             }
         )
 
@@ -246,16 +275,20 @@ class OpenAIChatProviderTests(unittest.TestCase):
         provider = OpenAIChatProvider(config, profile)
         response = _FakeResponse(
             {
-                "choices": [
+                "id": "resp_segmented",
+                "object": "response",
+                "status": "completed",
+                "output": [
                     {
-                        "message": {
-                            "content": [
-                                {"type": "output_text", "text": '{"page_script":"add_text(slide, \\"标题\\", '},
-                                {"type": "output_text", "text": '0, 0, 100, 40)"}'},
-                            ]
-                        }
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {"type": "output_text", "text": '{"page_script":"add_text(slide, \\"标题\\", '},
+                            {"type": "output_text", "text": '0, 0, 100, 40)"}'},
+                        ],
                     }
-                ]
+                ],
             }
         )
 
@@ -264,7 +297,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
 
-    def test_complete_json_accepts_top_level_output_text_without_choices(self) -> None:
+    def test_complete_json_accepts_top_level_output_text(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",
         }
@@ -285,7 +318,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
 
-    def test_complete_json_accepts_sse_chat_completion_chunks(self) -> None:
+    def test_complete_json_accepts_sse_response_api_events(self) -> None:
         config = {
             "chat_api_base_url": "https://example.com/v1",
         }
@@ -297,58 +330,21 @@ class OpenAIChatProviderTests(unittest.TestCase):
         provider = OpenAIChatProvider(config, profile)
         events = [
             {
-                "id": "chatcmpl_test",
-                "object": "chat.completion.chunk",
-                "created": 1782267521,
-                "model": "gpt-5.5",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"role": "assistant", "content": ""},
-                        "finish_reason": None,
-                    }
-                ],
-                "usage": None,
+                "type": "response.output_text.delta",
+                "delta": '{"page_script":"add_text(slide, \\"标题\\", ',
             },
             {
-                "id": "chatcmpl_test",
-                "object": "chat.completion.chunk",
-                "created": 1782267521,
-                "model": "gpt-5.5",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"content": '{"page_script":"add_text(slide, \\"标题\\", '},
-                        "finish_reason": None,
-                    }
-                ],
+                "type": "response.output_text.delta",
+                "delta": '0, 0, 100, 40)"}',
             },
             {
-                "id": "chatcmpl_test",
-                "object": "chat.completion.chunk",
-                "created": 1782267521,
-                "model": "gpt-5.5",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"content": '0, 0, 100, 40)"}'},
-                        "finish_reason": None,
-                    }
-                ],
-            },
-            {
-                "id": "chatcmpl_test",
-                "object": "chat.completion.chunk",
-                "created": 1782267521,
-                "model": "gpt-5.5",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"total_tokens": 12},
+                "type": "response.completed",
+                "response": {
+                    "id": "resp_stream",
+                    "object": "response",
+                    "status": "completed",
+                    "usage": {"total_tokens": 12},
+                },
             },
         ]
         sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
@@ -375,12 +371,14 @@ class OpenAIChatProviderTests(unittest.TestCase):
             _FakeResponse(
                 {
                     "id": "resp_empty",
-                    "object": "chat.completion",
-                    "choices": [
+                    "object": "response",
+                    "status": "completed",
+                    "output": [
                         {
-                            "index": 0,
-                            "message": {"role": "assistant"},
-                            "finish_reason": "stop",
+                            "type": "message",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [],
                         }
                     ],
                 }
@@ -410,12 +408,14 @@ class OpenAIChatProviderTests(unittest.TestCase):
             _FakeResponse(
                 {
                     "id": "resp_empty",
-                    "object": "chat.completion",
-                    "choices": [
+                    "object": "response",
+                    "status": "completed",
+                    "output": [
                         {
-                            "index": 0,
-                            "message": {"role": "assistant"},
-                            "finish_reason": "stop",
+                            "type": "message",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [],
                         }
                     ],
                 }
@@ -430,7 +430,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
         self.assertIn("检测到歧义空响应", log_text)
-        self.assertIn("finish_reason=stop", log_text)
+        self.assertIn("status=completed", log_text)
         self.assertIn("resp_empty", log_text)
 
     def test_complete_json_does_not_retry_billable_empty_response(self) -> None:
@@ -447,17 +447,19 @@ class OpenAIChatProviderTests(unittest.TestCase):
         response = _FakeResponse(
             {
                 "id": "resp_billable_empty",
-                "object": "chat.completion",
-                "choices": [
+                "object": "response",
+                "status": "completed",
+                "output": [
                     {
-                        "index": 0,
-                        "message": {"role": "assistant"},
-                        "finish_reason": "stop",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [],
                     }
                 ],
                 "usage": {
-                    "prompt_tokens": 10486,
-                    "completion_tokens": 4625,
+                    "input_tokens": 10486,
+                    "output_tokens": 4625,
                     "total_tokens": 15111,
                 },
             }
@@ -472,7 +474,7 @@ class OpenAIChatProviderTests(unittest.TestCase):
         log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
         self.assertIn("可能已计费的歧义空响应", log_text)
         self.assertIn("resp_billable_empty", log_text)
-        self.assertIn("completion_tokens=4625", log_text)
+        self.assertIn("output_tokens=4625", log_text)
         self.assertEqual(mock_post.call_count, 1)
 
     def test_complete_json_retries_http_502_with_chat_retry_budget(self) -> None:

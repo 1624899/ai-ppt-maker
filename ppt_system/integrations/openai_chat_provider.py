@@ -10,13 +10,18 @@ from typing import Any
 import requests
 
 from ppt_system.integrations.api_url import normalize_api_base_url
-from ppt_system.integrations.chat_response_parser import AmbiguousChatResponseError, extract_chat_completion_text
-from ppt_system.integrations.chat_stream_parser import looks_like_sse_text, parse_chat_completion_sse
+from ppt_system.integrations.chat_response_parser import AmbiguousResponseError, extract_response_text
+from ppt_system.integrations.chat_stream_parser import looks_like_sse_text, parse_response_sse
 from ppt_system.integrations.http_retry_policy import (
     build_transport_error_message,
     build_transport_error_summary,
     is_retryable_status_code,
     transport_retry_budget,
+)
+from ppt_system.integrations.responses_payload import (
+    build_json_response_payload,
+    build_responses_image_input_item,
+    build_responses_url,
 )
 from ppt_system.runtime.logging_utils import format_log_line
 
@@ -50,8 +55,8 @@ class OpenAIChatProvider:
             raise RuntimeError("未在模型配置中填写对话模型 API Key。")
 
     @property
-    def chat_completions_url(self) -> str:
-        return f"{self.api_base_url}/chat/completions"
+    def responses_url(self) -> str:
+        return build_responses_url(self.api_base_url)
 
     def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         print(
@@ -61,15 +66,14 @@ class OpenAIChatProvider:
             ),
             flush=True,
         )
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
-        }
-        if self.reasoning_effort:
-            payload["reasoning_effort"] = self.reasoning_effort
+        payload = build_json_response_payload(
+            model=self.model,
+            messages=messages,
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+            reasoning_effort=self.reasoning_effort,
+            stream=True,
+        )
         started_at = time.perf_counter()
         response = self._post_with_retry(payload)
         elapsed = time.perf_counter() - started_at
@@ -86,12 +90,7 @@ class OpenAIChatProvider:
         return parse_json_content(content)
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
-        return {
-            "type": "image_url",
-            "image_url": {
-                "url": file_to_data_url(image_path),
-            },
-        }
+        return build_responses_image_input_item(file_to_data_url(image_path))
 
     def _post_with_retry(self, payload: dict[str, Any]) -> requests.Response:
         response_attempt = 0
@@ -103,14 +102,14 @@ class OpenAIChatProvider:
             print(
                 format_log_line(
                     "chat",
-                    f"发送第 {request_attempt}/{max_attempts_label} 次请求 -> {self.chat_completions_url}",
+                    f"发送第 {request_attempt}/{max_attempts_label} 次请求 -> {self.responses_url}",
                 ),
                 flush=True,
             )
             request_started_at = time.perf_counter()
             try:
                 response = requests.post(
-                    self.chat_completions_url,
+                    self.responses_url,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
@@ -191,11 +190,11 @@ class OpenAIChatProvider:
         while True:
             try:
                 return _extract_response_content(current_body)
-            except AmbiguousChatResponseError as exc:
+            except AmbiguousResponseError as exc:
                 if _has_billable_usage(current_body):
                     message = _build_billable_ambiguous_response_message(current_body, exc)
                     print(format_log_line("chat", message), flush=True)
-                    raise AmbiguousChatResponseError(message) from exc
+                    raise AmbiguousResponseError(message) from exc
                 if attempt >= self.ambiguous_retry_count:
                     raise
                 attempt += 1
@@ -283,7 +282,7 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
                 continue
         for decoded_text in decoded_candidates:
             if looks_like_sse_text(decoded_text):
-                return parse_chat_completion_sse(decoded_text)
+                return parse_response_sse(decoded_text)
 
     if callable(response_json):
         try:
@@ -297,20 +296,20 @@ def _parse_response_json(response: requests.Response) -> dict[str, Any]:
             return json.loads(response_text)
         except json.JSONDecodeError as exc:
             if looks_like_sse_text(response_text):
-                return parse_chat_completion_sse(response_text)
+                return parse_response_sse(response_text)
             raise RuntimeError(_build_invalid_json_message(response, response_text)) from exc
     raise RuntimeError("对话模型返回空响应，无法解析 JSON。")
 
 
 def _extract_response_content(body: dict[str, Any]) -> str:
-    return extract_chat_completion_text(body)
+    return extract_response_text(body)
 
 
 def _has_billable_usage(body: dict[str, Any]) -> bool:
     usage = body.get("usage")
     if not isinstance(usage, dict):
         return False
-    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
         if _coerce_positive_int(usage.get(key)) > 0:
             return True
     return False
@@ -331,7 +330,7 @@ def _build_usage_summary(usage: Any) -> str:
     if not isinstance(usage, dict):
         return "usage=unknown"
     parts = []
-    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
         if key in usage:
             parts.append(f"{key}={usage.get(key)}")
     return "usage=" + (", ".join(parts) if parts else "unknown")

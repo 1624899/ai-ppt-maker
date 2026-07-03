@@ -7,55 +7,21 @@ from typing import Any
 RESPONSE_SNIPPET_LIMIT = 400
 
 
-class AmbiguousChatResponseError(RuntimeError):
+class AmbiguousResponseError(RuntimeError):
     """表示响应结构存在，但没有提取到可安全消费的文本内容。"""
 
 
-def extract_chat_completion_text(body: dict[str, Any]) -> str:
-    """从兼容 OpenAI 的聊天响应中提取文本，兼容常见代理的字段差异。"""
-    choices = body.get("choices")
-    if not isinstance(choices, list) or not choices:
-        top_level_text = _extract_top_level_text(body)
-        if top_level_text:
-            return top_level_text
-        raise RuntimeError(f"对话模型响应结构缺少 choices：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}")
-
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
-        raise RuntimeError(f"对话模型响应结构缺少可解析的 choice 对象：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}")
-
-    extracted_text = _extract_choice_text(first_choice)
+def extract_response_text(body: dict[str, Any]) -> str:
+    """从 OpenAI Responses API 响应中提取可消费文本。"""
+    extracted_text = _extract_top_level_text(body)
     if extracted_text:
         return extracted_text
 
-    top_level_text = _extract_top_level_text(body)
-    if top_level_text:
-        return top_level_text
-
-    finish_reason = str(first_choice.get("finish_reason", "")).strip() or "unknown"
-    raise AmbiguousChatResponseError(
+    status = str(body.get("status", "")).strip() or "unknown"
+    raise AmbiguousResponseError(
         "对话模型未返回可用文本内容，"
-        f"finish_reason={finish_reason}，响应片段：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}"
+        f"status={status}，响应片段：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}"
     )
-
-
-def _extract_choice_text(choice: dict[str, Any]) -> str:
-    message = choice.get("message")
-    if isinstance(message, dict):
-        message_content = _extract_content_text(message.get("content"))
-        if message_content:
-            return message_content
-
-        # 兼容少数代理把文本直接挂在 message.text。
-        direct_message_text = _coerce_text(message.get("text"))
-        if direct_message_text:
-            return direct_message_text
-
-    # 兼容传统 completion 风格的 text 字段。
-    direct_choice_text = _coerce_text(choice.get("text"))
-    if direct_choice_text:
-        return direct_choice_text
-    return ""
 
 
 def _extract_top_level_text(body: dict[str, Any]) -> str:
@@ -71,6 +37,8 @@ def _extract_top_level_text(body: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         if str(item.get("type", "")).strip().lower() != "message":
+            continue
+        if item.get("status") not in {None, "", "completed"}:
             continue
         content_text = _extract_content_text(item.get("content"))
         if content_text:

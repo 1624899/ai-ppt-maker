@@ -323,7 +323,7 @@ def _generate_page_script_from_images(
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": prompt},
+                {"type": "input_text", "text": prompt},
                 provider.build_image_message_item(reference_image),
                 provider.build_image_message_item(elements_image),
             ],
@@ -368,7 +368,7 @@ def _revise_page_script_with_rendered_preview(
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": prompt},
+                {"type": "input_text", "text": prompt},
                 provider.build_image_message_item(reference_image),
                 provider.build_image_message_item(rendered_preview),
             ],

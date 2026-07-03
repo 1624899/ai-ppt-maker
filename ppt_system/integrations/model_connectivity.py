@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 from ppt_system.integrations.api_url import normalize_api_base_url
+from ppt_system.integrations.responses_payload import build_responses_input, build_responses_url
 
 
 DEFAULT_CONNECTIVITY_TIMEOUT_SECONDS = 20
@@ -71,19 +72,22 @@ def validate_profile(model_type: str, profile: dict[str, Any]) -> None:
 def test_chat_connectivity(profile: dict[str, Any], *, timeout: int) -> ConnectivityResult:
     payload: dict[str, Any] = {
         "model": profile["model"],
-        "messages": [
-            {"role": "system", "content": "只回复 ok。"},
-            {"role": "user", "content": "ping"},
-        ],
+        "input": build_responses_input(
+            [
+                {"role": "system", "content": "只回复 ok。"},
+                {"role": "user", "content": "ping"},
+            ]
+        ),
         "temperature": 0,
-        "max_tokens": 8,
+        "max_output_tokens": 8,
+        "store": False,
     }
     reasoning_effort = str(profile.get("reasoning_effort", "")).strip().lower()
     if reasoning_effort in {"low", "medium", "high"}:
-        payload["reasoning_effort"] = reasoning_effort
+        payload["reasoning"] = {"effort": reasoning_effort}
 
     return post_json_probe(
-        f"{profile['base_url']}/chat/completions",
+        build_responses_url(profile["base_url"]),
         profile["api_key"],
         payload,
         timeout=timeout,

@@ -118,7 +118,7 @@ def build_reference_style_guide(
 
     content_items: list[dict[str, Any]] = [
         {
-            "type": "text",
+            "type": "input_text",
             "text": build_style_analysis_prompt(style_notes),
         }
     ]
@@ -663,4 +663,3 @@ def _default_layout_slots(layout_family: str, title: str, bullets: list[str]) ->
     if layout_family in ("hero_with_supporting_cards",):
         return ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"]
     return ["标题区", "内容区"]
-

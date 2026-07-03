@@ -6,6 +6,7 @@ output/
 .venv-build/
 build/
 dist/
+logs/
 *.spec
 web_ui/dist/
 .codegraph

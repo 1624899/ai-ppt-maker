@@ -103,7 +103,7 @@ def build_agent_model_messages(
     )
     content_items: list[dict[str, Any]] = [
         {
-            "type": "text",
+            "type": "input_text",
             "text": build_user_prompt(context),
         }
     ]

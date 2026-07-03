@@ -269,7 +269,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 pass
 
             def build_image_message_item(self, image_path: Path) -> dict[str, object]:
-                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+                return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
             def complete_json(self, messages):
                 raise RuntimeError("上游模型不可用")
@@ -312,7 +312,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 pass
 
             def build_image_message_item(self, image_path: Path) -> dict[str, object]:
-                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+                return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
             def complete_json(self, messages):
                 return {
@@ -378,7 +378,7 @@ class JobOperationsApiTests(unittest.TestCase):
 
             def build_image_message_item(self, image_path: Path) -> dict[str, object]:
                 captured["image_path"] = image_path
-                return {"type": "image_url", "image_url": {"url": "data:image/png;base64,stub"}}
+                return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
             def complete_json(self, messages):
                 captured["messages"] = messages
@@ -424,8 +424,8 @@ class JobOperationsApiTests(unittest.TestCase):
         model_messages = captured["messages"]
         self.assertIsInstance(model_messages, list)
         user_content = model_messages[1]["content"]
-        self.assertTrue(any(item.get("type") == "image_url" for item in user_content))
-        prompt_text = next(item["text"] for item in user_content if item.get("type") == "text")
+        self.assertTrue(any(item.get("type") == "input_image" for item in user_content))
+        prompt_text = next(item["text"] for item in user_content if item.get("type") == "input_text")
         self.assertIn("右边那块太乱了", prompt_text)
         self.assertIn("右侧信息区", prompt_text)
         self.assertIn("可以，我先理解问题。", prompt_text)

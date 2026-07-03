@@ -21,15 +21,11 @@ def looks_like_sse_text(text: str) -> bool:
     return False
 
 
-def parse_chat_completion_sse(text: str) -> dict[str, Any]:
-    """把 OpenAI 兼容的流式事件合并成普通对话响应结构。"""
+def parse_response_sse(text: str) -> dict[str, Any]:
+    """把 Responses API 流式事件合并成普通响应结构。"""
     json_events = parse_sse_json_events(text)
     if not json_events:
         raise RuntimeError("对话模型返回了空 SSE 响应，无法解析 JSON。")
-
-    chat_body = _merge_chat_completion_chunks(json_events)
-    if chat_body:
-        return chat_body
 
     response_body = _merge_response_api_events(json_events)
     if response_body:
@@ -38,7 +34,7 @@ def parse_chat_completion_sse(text: str) -> dict[str, Any]:
     if len(json_events) == 1:
         return json_events[0]
 
-    raise RuntimeError("对话模型返回的 SSE 响应缺少可合并的文本增量。")
+    raise RuntimeError("对话模型返回的 Responses SSE 响应缺少可合并的文本增量。")
 
 
 def parse_sse_json_events(text: str) -> list[dict[str, Any]]:
@@ -86,80 +82,6 @@ def parse_sse_events(text: str) -> list[ServerSentEvent]:
     return events
 
 
-def _merge_chat_completion_chunks(events: list[dict[str, Any]]) -> dict[str, Any] | None:
-    choice_parts: dict[int, list[str]] = {}
-    choice_roles: dict[int, str] = {}
-    finish_reasons: dict[int, Any] = {}
-    metadata: dict[str, Any] = {}
-    usage: Any = None
-    saw_chat_choice = False
-
-    for event in events:
-        choices = event.get("choices")
-        if not isinstance(choices, list):
-            continue
-        saw_chat_choice = True
-        for key in ("id", "created", "model", "system_fingerprint"):
-            if key in event:
-                metadata[key] = event[key]
-        if event.get("usage") is not None:
-            usage = event.get("usage")
-
-        for fallback_index, choice in enumerate(choices):
-            if not isinstance(choice, dict):
-                continue
-            index = _coerce_choice_index(choice.get("index"), fallback_index)
-            delta = choice.get("delta")
-            message = choice.get("message")
-            if isinstance(delta, dict):
-                role = _coerce_text(delta.get("role"))
-                if role:
-                    choice_roles[index] = role
-                text = _extract_content_text(delta.get("content"))
-                if text:
-                    choice_parts.setdefault(index, []).append(text)
-            elif isinstance(message, dict):
-                role = _coerce_text(message.get("role"))
-                if role:
-                    choice_roles[index] = role
-                text = _extract_content_text(message.get("content"))
-                if text:
-                    choice_parts.setdefault(index, []).append(text)
-
-            text = _extract_content_text(choice.get("text"))
-            if text:
-                choice_parts.setdefault(index, []).append(text)
-
-            if choice.get("finish_reason") is not None:
-                finish_reasons[index] = choice.get("finish_reason")
-
-    if not saw_chat_choice:
-        return None
-
-    choice_indexes = sorted(set(choice_parts) | set(choice_roles) | set(finish_reasons) or {0})
-    choices_body: list[dict[str, Any]] = []
-    for index in choice_indexes:
-        choices_body.append(
-            {
-                "index": index,
-                "message": {
-                    "role": choice_roles.get(index, "assistant"),
-                    "content": "".join(choice_parts.get(index, [])),
-                },
-                "finish_reason": finish_reasons.get(index),
-            }
-        )
-
-    body: dict[str, Any] = {
-        "object": "chat.completion",
-        "choices": choices_body,
-    }
-    body.update(metadata)
-    if usage is not None:
-        body["usage"] = usage
-    return body
-
-
 def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     text_parts: list[str] = []
     final_response: dict[str, Any] | None = None
@@ -198,13 +120,6 @@ def _split_sse_field(line: str) -> tuple[str, str]:
     if value.startswith(" "):
         value = value[1:]
     return field, value
-
-
-def _coerce_choice_index(value: Any, fallback: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return fallback
 
 
 def _extract_content_text(content: Any) -> str:

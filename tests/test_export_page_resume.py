@@ -26,7 +26,7 @@ class FakeChatProvider:
         self.reasoning_effort = ""
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
-        return {"type": "image_url", "image_url": {"url": str(image_path)}}
+        return {"type": "input_image", "image_url": str(image_path)}
 
     def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         self.calls.append(messages)

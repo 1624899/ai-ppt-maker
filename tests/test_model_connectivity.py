@@ -23,7 +23,7 @@ class _FakeResponse:
 
 
 class ModelConnectivityTests(unittest.TestCase):
-    def test_chat_connectivity_posts_lightweight_completion(self) -> None:
+    def test_chat_connectivity_posts_lightweight_response(self) -> None:
         captured: dict[str, Any] = {}
 
         def fake_post(url: str, *, headers: dict[str, str], json: dict[str, Any], timeout: int):
@@ -40,11 +40,14 @@ class ModelConnectivityTests(unittest.TestCase):
             result = test_model_connectivity("chat", profile, timeout=3)
 
         self.assertTrue(result.ok)
-        self.assertEqual(captured["url"], "https://example.com/v1/chat/completions")
+        self.assertEqual(captured["url"], "https://example.com/v1/responses")
         self.assertEqual(captured["headers"]["Authorization"], "Bearer sk-test")
         self.assertEqual(captured["json"]["model"], "gpt-5.5")
-        self.assertEqual(captured["json"]["max_tokens"], 8)
-        self.assertEqual(captured["json"]["reasoning_effort"], "low")
+        self.assertEqual(captured["json"]["max_output_tokens"], 8)
+        self.assertEqual(captured["json"]["reasoning"], {"effort": "low"})
+        self.assertEqual(captured["json"]["store"], False)
+        self.assertNotIn("messages", captured["json"])
+        self.assertNotIn("max_tokens", captured["json"])
         self.assertEqual(captured["timeout"], 3)
 
     def test_image_connectivity_uses_models_endpoint_without_generation(self) -> None:
