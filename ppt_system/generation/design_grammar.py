@@ -167,6 +167,21 @@ def build_layout_family_options(families: list[str] | None = None) -> list[dict[
     return options
 
 
+def format_layout_family_for_prompt(name: str) -> str:
+    """将内部版式标识转换为面向中文模型提示词的名称。"""
+
+    return get_layout_family_label(name)
+
+
+def build_layout_family_prompt_catalog(families: list[str] | None = None) -> str:
+    """生成规划模型可用的固定枚举目录，同时明确机器值与中文含义。"""
+
+    return "；".join(
+        f'"{item["value"]}"（{item["label"]}）'
+        for item in build_layout_family_options(families)
+    )
+
+
 def _normalize_layout_token(name: str) -> str:
     return str(name).strip().lower().replace(" ", "_").replace("-", "_")
 
@@ -296,7 +311,9 @@ def _compress_full(style_guide: dict[str, Any], max_chars: int) -> str:
     core = style_guide.get("style_core", {})
     if isinstance(core, dict):
         parts.append(f"风格核心：{json.dumps(core, ensure_ascii=False)}")
-    parts.append(f"版式家族：{'、'.join(style_guide.get('layout_families', []))}")
+    parts.append(
+        f"版式家族：{'、'.join(format_layout_family_for_prompt(item) for item in style_guide.get('layout_families', []))}"
+    )
     parts.append(f"元素原语：{'、'.join(style_guide.get('element_primitives', []))}")
     policy = style_guide.get("variation_policy", {})
     if isinstance(policy, dict):
@@ -325,7 +342,7 @@ def _compress_core(style_guide: dict[str, Any], max_chars: int) -> str:
             parts.append(f"核心约束：{'，'.join(items)}")
     families = style_guide.get("layout_families", [])
     if families:
-        parts.append(f"版式家族：{'、'.join(families[:6])}")
+        parts.append(f"版式家族：{'、'.join(format_layout_family_for_prompt(item) for item in families[:6])}")
     elements = style_guide.get("element_primitives", [])
     if elements:
         parts.append(f"元素语言：{'、'.join(elements)}")
@@ -356,7 +373,13 @@ def _compress_compressed(
     card_s = core.get("card_style", "") if isinstance(core, dict) else ""
     icon_s = core.get("icon_style", "") if isinstance(core, dict) else ""
     line_s = core.get("line_style", "") if isinstance(core, dict) else ""
-    layout_family = layout_family_override or "、".join(style_guide.get("layout_families", [])[:3])
+    if layout_family_override:
+        layout_family = format_layout_family_for_prompt(layout_family_override)
+    else:
+        layout_family = "、".join(
+            format_layout_family_for_prompt(item)
+            for item in style_guide.get("layout_families", [])[:3]
+        )
     difference = difference_override or "按本页内容重新生成具体构图，不复用前一页布局"
     parts = [
         f"风格锚点：{anchor}",

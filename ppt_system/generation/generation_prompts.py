@@ -2,7 +2,11 @@
 
 from typing import Any
 
-from ppt_system.generation.design_grammar import compress_style_for_prompt, build_prompt_anchor
+from ppt_system.generation.design_grammar import (
+    build_prompt_anchor,
+    compress_style_for_prompt,
+    format_layout_family_for_prompt,
+)
 from ppt_system.generation.page_richness import build_page_richness_render_guidance, normalize_page_richness_level
 from ppt_system.generation.prompt_visual_guidance import (
     build_no_reference_visual_guidance,
@@ -83,7 +87,7 @@ def build_reference_prompt(
     summary = str(page.get("summary", ""))
     visual_suggestion = collect_visual_suggestion(page)
     texts = page.get("texts", [])
-    layout_family = page.get("layout_family", "grid_n_x_m")
+    layout_family = format_layout_family_for_prompt(page.get("layout_family", "grid_n_x_m"))
     raw_element_plan = page.get("element_plan", {})
     if isinstance(raw_element_plan, dict):
         element_plan = raw_element_plan.get("primitives", style_guide.get("element_primitives", []))
@@ -180,7 +184,7 @@ def build_compact_reference_prompt(
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
     visual_suggestion = collect_visual_suggestion(page)
-    layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
+    layout_family = format_layout_family_for_prompt(page.get("layout_family", "grid_n_x_m"))
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide, style_notes=style_notes)
@@ -216,7 +220,7 @@ def build_compact_reference_prompt(
     elif adherence == "loose" and has_reference_images:
         lines.append(f"版式：参考 {layout_family}，模块数量和局部编排可按内容重组。")
     else:
-        lines.append(f"版式：参考 {layout_family}，按内容复杂度自适应模块数量和局部编排。")
+        lines.append(f"版式：必须采用 {layout_family}，按内容复杂度自适应模块数量和局部编排。")
     lines.append(f"信息密度：{build_page_richness_render_guidance(page_richness)}")
     if anchor:
         lines.append(f"视觉锚点：{anchor}")
@@ -241,7 +245,7 @@ def build_slot_brief_reference_prompt(
     title = str(page.get("title", f"第 {page.get('page_no', '')} 页")).strip()
     summary = str(page.get("summary", "")).strip()
     visual_suggestion = collect_visual_suggestion(page)
-    layout_family = str(page.get("layout_family", "grid_n_x_m")).strip() or "grid_n_x_m"
+    layout_family = format_layout_family_for_prompt(page.get("layout_family", "grid_n_x_m"))
     bullets = collect_page_bullets(page)
     slots = collect_page_slots(page)
     anchor = build_style_anchor(style_guide, style_notes=style_notes)
@@ -308,7 +312,7 @@ def merge_prompt_with_style_lock(
     negative_rules = style_guide.get("negative_rules", [])
     prompt_compression = str(style_guide.get("prompt_compression", "compressed")).strip()
 
-    current_layout = page.get("layout_family", "")
+    current_layout = format_layout_family_for_prompt(page.get("layout_family", "")) if page.get("layout_family") else ""
 
     prefix: list[str] = []
     if has_reference_images:
@@ -329,9 +333,12 @@ def merge_prompt_with_style_lock(
             prefix.append(f"风格固定层：{'，'.join(core_items)}")
 
     if layout_families and current_layout:
-        prefix.append(f"版式家族：{'、'.join(layout_families[:6])}，本页骨架：{current_layout}")
+        prefix.append(
+            f"版式家族：{'、'.join(format_layout_family_for_prompt(item) for item in layout_families[:6])}，"
+            f"本页骨架：{current_layout}"
+        )
     elif layout_families:
-        prefix.append(f"版式家族：{'、'.join(layout_families[:6])}")
+        prefix.append(f"版式家族：{'、'.join(format_layout_family_for_prompt(item) for item in layout_families[:6])}")
 
     prefix.append("继承风格，不继承具体构图。")
     prefix.append("继承元素语言，不复用具体图形。")

@@ -11,7 +11,9 @@ from ppt_system.generation.design_grammar import (
     DEFAULT_STYLE_CORE,
     DEFAULT_VARIATION_POLICY,
     build_prompt_anchor,
+    build_layout_family_prompt_catalog,
     compress_style_for_prompt,
+    format_layout_family_for_prompt,
     normalize_design_grammar,
     normalize_layout_family_name,
     validate_layout_family,
@@ -179,7 +181,7 @@ JSON 格式必须如下：
 
 要求：
 1. style_core 必须逐项提炼背景明度、配色、标题风格、卡片样式、图标风格、线条风格。
-2. layout_families 必须是抽象排版模式名称（如 grid_n_x_m、timeline_horizontal），不能写成编号式模板名（如 layout_1、template_a）。
+2. layout_families 只能从以下固定枚举中选择：{build_layout_family_prompt_catalog()}。字段值填写英文机器值，不得翻译、改写、组合或新增枚举；不能写成 layout_1、template_a 等模板编号。
 3. element_primitives 从原稿图中提炼可复用的图形元素原语。
 4. negative_rules 只总结与原稿图明显冲突的风格偏移，使用通用表达，不要写成过于具体的审美黑名单。
 5. prompt_anchor 要适合直接拼接到每一页的生图提示词前面，避免过长、避免写成逐条硬性禁令。
@@ -335,6 +337,7 @@ def build_planning_prompt(
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     layout_families = style_guide.get("layout_families", [])
+    layout_family_catalog = build_layout_family_prompt_catalog(layout_families)
     element_primitives = style_guide.get("element_primitives", [])
     source_anchors = source_anchors or build_source_content_anchors(content, page_count)
     style_direction = (
@@ -379,10 +382,12 @@ def build_planning_prompt(
 - source_anchor_ids 可填写本页参考到的锚点，供追溯使用；不能为了匹配锚点而牺牲你对页面主题和版式的整体判断。
 
 版式与结构：
-- 可用 layout_family：{'、'.join(layout_families)}
+- layout_family 是封闭枚举，只能逐字填写以下英文机器值：{layout_family_catalog}
 - 可用 element_primitives：{'、'.join(element_primitives)}
-- 每页选择最适合内容语义的 layout_family，尽量避免相邻页重复。
-- layout_slots 写语义分区，不写坐标；element_plan 写本页适合的图形/图标方向。
+- 禁止自造、翻译、拼接或添加后缀，例如不得输出 layout_1、custom_layout、process_horizontal_2；没有完全匹配项时，从上述枚举中选择语义最接近的一项。
+- 先判断本页信息关系，再选择版式：并列信息用宫格卡片，先后关系用时间线或流程，对照关系用双轴对比，中心与分支关系用中心辐射，双区内容用左右分栏或上下分区，主观点加支撑信息用主视觉卡片。
+- layout_slots 必须与所选 layout_family 的结构一致，只写中文语义分区，不写坐标、英文槽位名或另一种版式的结构。
+
 {build_content_planning_constraints(len(source_anchors), page_count)}
 
 JSON 格式必须如下：
@@ -397,7 +402,7 @@ JSON 格式必须如下：
       "summary": "本页内容摘要",
       "bullets": ["要点1", "要点2", "要点3"],
       "source_anchor_ids": ["S01"],
-      "layout_family": "从可用版式家族中选择一个抽象排版模式",
+      "layout_family": "grid_n_x_m",
       "layout_slots": ["语义槽位1", "语义槽位2"],
       "element_plan": {{"primitives": ["本页使用的元素原语1", "元素原语2"], "icon_topics": ["图标主题1"], "diagram_type": "图表类型"}},
       "difference_from_previous": "与上一页的排版差异说明",
@@ -412,11 +417,12 @@ JSON 格式必须如下：
 
 要求：
 1. pages 数量必须正好是 {page_count}。
-2. 每页必须选择一个 layout_family，必须从可用版式家族中选择，不能写成模板编号。
+2. 每页必须选择一个 layout_family，其值必须与上方封闭枚举中的某个英文机器值完全一致；禁止输出中文名、解释文字、模板编号或任何未列出的值。
 3. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
 4. page_richness 必须为 low、medium、high 之一，并与上面的丰富度要求一致。
 5. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
 6. 文字会出现在第一阶段原稿图中，请保证标题和正文适合直接上屏。
+7. 除 JSON 键名、上述固定枚举值和 reference_mode 外，所有面向人的文本字段必须使用中文，不得输出英文版式名称或中英混排说明。
 """.strip()
 
 
@@ -515,7 +521,10 @@ def normalize_content_plan(
                 difference_from_previous = "首页建立视觉基调" if include_cover_page else "正文开篇，直接进入核心内容"
             else:
                 prev_family = used_families[-2] if len(used_families) >= 2 else ""
-                difference_from_previous = f"从 {prev_family} 切换到 {layout_family}，重新生成具体构图"
+                difference_from_previous = (
+                    f"从{format_layout_family_for_prompt(prev_family)}切换到"
+                    f"{format_layout_family_for_prompt(layout_family)}，重新生成具体构图"
+                )
 
         style_constraints = str(raw.get("style_constraints", "")).strip()
         reference_mode = "edit_with_refs" if has_reference_images else "generation"

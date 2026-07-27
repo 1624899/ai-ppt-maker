@@ -149,5 +149,22 @@ class ReferencePromptShapeConstraintsTests(unittest.TestCase):
         self.assertIn("儿童科普手绘风", prompt)
         self.assertIn("优先服从已给定的风格说明", prompt)
 
+    def test_all_prompt_modes_render_layout_family_in_chinese(self) -> None:
+        for mode in ("baseline", "compact", "slot_brief"):
+            prompt = build_reference_prompt_by_mode(
+                self.page,
+                "蓝白科技汇报",
+                2048,
+                1152,
+                prompt_mode=mode,
+                style_guide={"layout_families": ["hub_and_spoke", "process_horizontal"]},
+                has_reference_images=True,
+                reference_style_adherence="strict",
+            )
+
+            self.assertIn("中心辐射", prompt)
+            self.assertNotIn("hub_and_spoke", prompt)
+            self.assertNotIn("process_horizontal", prompt)
+
 if __name__ == "__main__":
     unittest.main()

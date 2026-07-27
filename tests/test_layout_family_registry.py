@@ -6,7 +6,9 @@ from ppt_system.generation.design_grammar import (
     ALLOWED_LAYOUT_FAMILIES,
     DEFAULT_LAYOUT_FAMILIES,
     LAYOUT_FAMILY_LABELS,
+    build_layout_family_prompt_catalog,
     build_layout_family_options,
+    format_layout_family_for_prompt,
     normalize_layout_family_name,
 )
 from ppt_system.generation.text_layout import (
@@ -33,6 +35,13 @@ class LayoutFamilyRegistryTests(unittest.TestCase):
             slots = build_layout_slots_by_family(family, 2048, 1152)
             self.assertEqual(slots["family"], family)
             self.assertGreaterEqual(len(slots["slot_coords"]), 2)
+
+    def test_prompt_helpers_keep_machine_values_separate_from_chinese_labels(self) -> None:
+        catalog = build_layout_family_prompt_catalog(["process_horizontal", "hub_and_spoke"])
+
+        self.assertEqual(format_layout_family_for_prompt("process_horizontal"), "横向流程")
+        self.assertIn('"process_horizontal"（横向流程）', catalog)
+        self.assertIn('"hub_and_spoke"（中心辐射）', catalog)
 
     def test_unknown_or_special_layout_families_normalize_before_use(self) -> None:
         self.assertEqual(normalize_layout_family_name("左右对照"), "compare_dual_axis")

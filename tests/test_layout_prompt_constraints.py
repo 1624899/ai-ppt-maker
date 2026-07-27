@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import unittest
+
+from ppt_system.generation.content_agent import build_planning_prompt, fallback_style_guide
+
+
+class LayoutPromptConstraintsTests(unittest.TestCase):
+    def test_planning_prompt_uses_closed_layout_enum_and_chinese_human_text(self) -> None:
+        prompt = build_planning_prompt(
+            content="介绍产品定位、实施步骤与方案价值。",
+            page_count=3,
+            image_width=2048,
+            image_height=1152,
+            style_notes="清晰简洁",
+            style_image_count=0,
+            style_guide=fallback_style_guide("清晰简洁", False),
+        )
+
+        self.assertIn("layout_family 是封闭枚举", prompt)
+        self.assertIn('"process_horizontal"（横向流程）', prompt)
+        self.assertIn("禁止自造、翻译、拼接或添加后缀", prompt)
+        self.assertIn("layout_slots 必须与所选 layout_family 的结构一致", prompt)
+        self.assertIn("所有面向人的文本字段必须使用中文", prompt)
+        self.assertNotIn('"layout_family": "从可用版式家族中选择一个抽象排版模式"', prompt)
+
+
+if __name__ == "__main__":
+    unittest.main()
