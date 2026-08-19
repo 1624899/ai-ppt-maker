@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,13 @@ def rebuild_existing_ppt_text_styles(job_dir: Path, page_no: int, operation_type
             _apply_to_slide(presentation.slides[slide_index], operation_type, payload)
         temporary = path.with_suffix(path.suffix + ".updating")
         presentation.save(str(temporary))
-        os.replace(temporary, path)
+        del presentation
+        gc.collect()
+        try:
+            os.replace(temporary, path)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+            raise
         rebuilt.append(path)
     return rebuilt
 
