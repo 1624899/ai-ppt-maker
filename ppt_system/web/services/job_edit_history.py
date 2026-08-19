@@ -32,7 +32,8 @@ def build_job_edit_summary(state: Mapping[str, Any], record: Mapping[str, Any]) 
     completed_operations = [
         operation
         for operation in operations
-        if isinstance(operation, Mapping) and str(operation.get("status") or "").lower() not in {"failed", "error"}
+        if isinstance(operation, Mapping)
+        and str(operation.get("status") or "").lower() == "completed"
     ]
     latest_candidates = [*user_versions, *completed_operations]
     latest = max(

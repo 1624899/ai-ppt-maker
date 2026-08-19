@@ -23,7 +23,17 @@ def api_confirm_reference_pages(job_id: str):
     def updater(state):
         references = state.get("reference_pages", [])
         pages = state.get("pages", [])
-        if not pages or len(references) < len(pages):
+        page_numbers = {
+            int(item.get("page_no"))
+            for item in pages
+            if isinstance(item, dict) and str(item.get("page_no") or "").strip()
+        }
+        reference_numbers = [
+            int(item.get("page_no"))
+            for item in references
+            if isinstance(item, dict) and str(item.get("page_no") or "").strip()
+        ]
+        if not pages or len(page_numbers) != len(pages) or sorted(reference_numbers) != sorted(page_numbers):
             raise ValueError("原稿图尚未全部生成，暂时不能继续。")
         mark_reference_confirmed(state)
         state["status"] = "queued"
