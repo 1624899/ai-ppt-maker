@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from ppt_system.jobs.job_store import resolve_job_directory
+
 
 def ensure_db_parent(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,6 +70,7 @@ def list_cleanup_candidates(
     candidates: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
         item = dict(row)
+        item["job_dir"] = str(resolve_job_directory(db_path, item.get("job_dir", "")))
         pinned_at = str(item.get("pinned_at") or "").strip()
         if index < normalized_keep_latest:
             continue

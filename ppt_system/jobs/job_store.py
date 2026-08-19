@@ -32,8 +32,9 @@ JOB_UPDATE_COLUMNS = {
 
 
 def init_db(db_path: Path) -> None:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    resolved_db_path = Path(db_path).resolve()
+    resolved_db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(resolved_db_path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -58,6 +59,7 @@ def init_db(db_path: Path) -> None:
             """
         )
         _ensure_column(conn, "jobs", "pinned_at", "TEXT NOT NULL DEFAULT ''")
+        _normalize_job_directory_references(conn, resolved_db_path)
 
 
 def create_job(db_path: Path, payload: dict[str, Any]) -> None:
@@ -81,7 +83,7 @@ def create_job(db_path: Path, payload: dict[str, Any]) -> None:
                 payload["image_preset"],
                 payload["image_quality"],
                 payload["style_notes"],
-                payload["job_dir"],
+                _serialize_job_directory(db_path, payload["job_dir"]),
                 json.dumps(payload["request"], ensure_ascii=False),
                 json.dumps(payload.get("state", {}), ensure_ascii=False),
                 json.dumps(payload.get("result", {}), ensure_ascii=False),
@@ -104,6 +106,9 @@ def update_job(db_path: Path, job_id: str, touch_updated_at: bool = True, **fiel
         elif key == "stop_requested":
             columns.append("stop_requested = ?")
             values.append(1 if value else 0)
+        elif key == "job_dir":
+            columns.append("job_dir = ?")
+            values.append(_serialize_job_directory(db_path, value))
         else:
             columns.append(f"{key} = ?")
             values.append(value)
@@ -121,7 +126,7 @@ def get_job(db_path: Path, job_id: str) -> dict[str, Any] | None:
         row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
     if not row:
         return None
-    return _row_to_job(dict(row))
+    return _row_to_job(dict(row), db_path)
 
 
 def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
@@ -136,7 +141,7 @@ def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
                 "SELECT * FROM jobs ORDER BY updated_at DESC, rowid DESC LIMIT ?",
                 (int(limit),),
             ).fetchall()
-    return [_row_to_job(dict(row)) for row in rows]
+    return [_row_to_job(dict(row), db_path) for row in rows]
 
 
 def delete_job(db_path: Path, job_id: str) -> None:
@@ -144,7 +149,8 @@ def delete_job(db_path: Path, job_id: str) -> None:
         conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
 
 
-def _row_to_job(row: dict[str, Any]) -> dict[str, Any]:
+def _row_to_job(row: dict[str, Any], db_path: Path) -> dict[str, Any]:
+    row["job_dir"] = str(resolve_job_directory(db_path, row.get("job_dir", "")))
     row["request"] = _load_json(row.pop("request_json", "{}"))
     row["state"] = _load_json(row.pop("state_json", "{}"))
     row["result"] = _load_json(row.pop("result_json", "{}"))
@@ -163,6 +169,53 @@ def _load_json(value: str) -> dict[str, Any]:
 
 def current_timestamp() -> str:
     return utc_timestamp_millis()
+
+
+def resolve_job_directory(db_path: Path, value: Any) -> Path:
+    job_dir = Path(str(value or "")).expanduser()
+    if job_dir.is_absolute():
+        return job_dir.resolve()
+    return (Path(db_path).resolve().parent / job_dir).resolve()
+
+
+def _serialize_job_directory(db_path: Path, value: Any) -> str:
+    job_dir = Path(str(value or "")).expanduser()
+    if not job_dir.is_absolute():
+        return job_dir.as_posix()
+
+    resolved_job_dir = job_dir.resolve()
+    db_parent = Path(db_path).resolve().parent
+    try:
+        return resolved_job_dir.relative_to(db_parent).as_posix()
+    except ValueError:
+        return str(resolved_job_dir)
+
+
+def _normalize_job_directory_references(conn: sqlite3.Connection, db_path: Path) -> None:
+    db_parent = Path(db_path).resolve().parent
+    updates: list[tuple[str, str]] = []
+    rows = conn.execute("SELECT job_id, job_dir FROM jobs").fetchall()
+    for job_id, raw_job_dir in rows:
+        raw_value = str(raw_job_dir or "").strip()
+        if not raw_value:
+            continue
+        current_dir = Path(raw_value).expanduser()
+        if not current_dir.is_absolute():
+            continue
+
+        if current_dir.is_dir():
+            serialized = _serialize_job_directory(db_path, current_dir)
+        else:
+            relocated_dir = db_parent / str(job_id)
+            if not relocated_dir.is_dir():
+                continue
+            serialized = _serialize_job_directory(db_path, relocated_dir)
+
+        if serialized != raw_value:
+            updates.append((serialized, str(job_id)))
+
+    if updates:
+        conn.executemany("UPDATE jobs SET job_dir = ? WHERE job_id = ?", updates)
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
