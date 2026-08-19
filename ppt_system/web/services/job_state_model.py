@@ -16,6 +16,7 @@ from ppt_system.web.services.workflow_policy import (
 RUNTIME_STATE_FIELDS = ("status", "current_stage", "stop_requested")
 NON_TERMINAL_JOB_STATUSES = {"", "pending", "queued", "running", "stopping"}
 NON_TERMINAL_JOB_STATUSES.add("awaiting_plan_confirmation")
+NON_TERMINAL_JOB_STATUSES.add("awaiting_reference_confirmation")
 STAGE_TERMINAL_STATUSES = {"error", "interrupted"}
 RESUMABLE_STAGE_STATUSES = STAGE_TERMINAL_STATUSES | {"stopping"}
 DEFAULT_STALE_STOPPING_GRACE_SECONDS = 300

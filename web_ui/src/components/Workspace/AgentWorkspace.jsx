@@ -8,7 +8,7 @@ import AgentFeedbackCard from './AgentFeedbackCard';
 import PlanningEditor from './PlanningEditor';
 import SlideImage from './SlideImage';
 import StageProgress from './StageProgress';
-import { applyImageEditCandidate, postImageEditCandidate } from '../../utils/jobActions';
+import { applyImageEditCandidate, postImageEditCandidate, postJobOperation } from '../../utils/jobActions';
 import { getLatestImageEditCandidate, isImageEditCandidateApplied } from '../../utils/imageEditCandidates';
 import {
   buildAgentSummary,
@@ -61,6 +61,13 @@ const AgentWorkspace = ({
   '重新生成预览';
   const forcedPlanningMode = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
   const activeMode = forcedPlanningMode ? 'planning' : mode;
+  const runPageEdit = async (operation) => {
+    if (!activePage || !currentJob?.job_id) return;
+    try {
+      const updated = await postJobOperation(currentJob.job_id, { ...operation, page_no: activePage.page_no });
+      onJobUpdated?.(updated);
+    } catch (error) { setImageEditError(error.message || '页面编辑失败'); }
+  };
 
   const confirmAgentDraft = (draft) => {
     setAgentDraft(draft);
@@ -248,6 +255,16 @@ const AgentWorkspace = ({
 
                 <div className={uiClassName("edit-block")}>
                   <span>文字描述调整</span>
+                  <div className={uiClassName("page-edit-toolbar")}>
+                    <ScaleButton disabled={isRunning || imageEditPending !== ''} className={uiClassName("btn btn-secondary")} onClick={() => runPageEdit({ operation_type: 'page_text_style', style: { font_name: 'Microsoft YaHei' } })}>统一字体</ScaleButton>
+                    <ScaleButton disabled={isRunning || imageEditPending !== ''} className={uiClassName("btn btn-secondary")} onClick={() => runPageEdit({ operation_type: 'page_text_style', style: { color: '163A63' } })}>统一颜色</ScaleButton>
+                    <ScaleButton disabled={isRunning || imageEditPending !== ''} className={uiClassName("btn btn-secondary")} onClick={() => runPageEdit({ operation_type: 'page_align', align: 'LEFT' })}>左对齐</ScaleButton>
+                    <ScaleButton className={uiClassName("btn btn-secondary")} onClick={() => {
+                      const versions = (currentJob?.page_versions || []).filter((item) => Number(item.page_no) === Number(activePage.page_no));
+                      const version = versions[versions.length - 1];
+                      if (version) runPageEdit({ operation_type: 'restore_page_version', version_id: version.version_id });
+                    }}>撤销上次</ScaleButton>
+                  </div>
                   <label>
                     修改要求
                     <textarea

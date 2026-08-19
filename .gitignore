@@ -1,8 +1,11 @@
 .env
 config.local.json
+config.local.json.*
 output/
 *__pycache__
 *node_modules
+web_ui/node_modules.locked-*/
+.venv/
 .venv-build/
 build/
 dist/

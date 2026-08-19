@@ -4,7 +4,7 @@ export const STAGE_DEFINITIONS = [
   { key: 'planning', label: '模型规划' },
   { key: 'reference_generation', label: '原稿图生成' },
   { key: 'elements_generation', label: '元素图生成' },
-  { key: 'ppt_export', label: '可编辑元素生成' },
+  { key: 'ppt_export', label: '可编辑 PPT 导出' },
 ];
 
 const STATUS_LABELS = {
@@ -13,6 +13,7 @@ const STATUS_LABELS = {
   running: '生成中',
   stopping: '停止中',
   awaiting_plan_confirmation: '等待确认规划',
+  awaiting_reference_confirmation: '等待确认原稿图',
   interrupted: '已中断',
   completed: '已完成',
   error: '生成失败',

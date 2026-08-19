@@ -37,6 +37,11 @@ def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
         "bullets": normalize_string_list(page.get("bullets")),
         "layout_intent": str(page.get("layout_intent") or "").strip(),
         "layout_family": normalize_layout_family_name(str(page.get("layout_family") or "").strip()),
+        "layout_source": str(page.get("layout_source") or "ai").strip(),
+        "layout_reason": str(page.get("layout_reason") or "").strip(),
+        "layout_locked": _as_bool(page.get("layout_locked")),
+        "layout_user_confirmed": _as_bool(page.get("layout_user_confirmed")),
+        "reference_regeneration_required": _as_bool(page.get("reference_regeneration_required")),
         "page_richness": str(page.get("page_richness") or "").strip(),
         "visual_suggestion": visual_suggestion,
         "style_constraints": visual_suggestion,
@@ -48,7 +53,8 @@ def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
         "elements_prompt_manual": _as_bool(page.get("elements_prompt_manual")),
         "reference_prompt_stale": _as_bool(page.get("reference_prompt_stale")),
         "elements_prompt_stale": _as_bool(page.get("elements_prompt_stale")),
-        "layout_slots": normalize_string_list(page.get("layout_slots")),
+        "layout_slots": copy.deepcopy(page.get("layout_slots")) if isinstance(page.get("layout_slots"), (list, dict)) else [],
+        "chart_data": copy.deepcopy(page.get("chart_data")) if isinstance(page.get("chart_data"), dict) else None,
         "texts": copy.deepcopy(page.get("texts", [])) if isinstance(page.get("texts"), list) else [],
         "element_plan": copy.deepcopy(page.get("element_plan", {})),
     }
@@ -158,8 +164,7 @@ def apply_plan_to_state(state: dict[str, Any], plan: Mapping[str, Any]) -> dict[
     state["element_pages"] = _filter_artifacts_by_pages(state.get("element_pages"), normalized_plan["pages"])
     job_meta = state.setdefault("job_meta", {})
     job_meta["page_count"] = normalized_plan["page_count"]
-    if normalized_plan["style_notes"]:
-        job_meta["style_notes"] = normalized_plan["style_notes"]
+    job_meta["style_notes"] = normalized_plan["style_notes"]
     return normalized_plan
 
 

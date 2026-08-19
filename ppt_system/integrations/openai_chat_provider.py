@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from ppt_system.integrations.chat_request_limiter import CHAT_REQUEST_SEMAPHORE
 
 from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.chat_response_parser import AmbiguousResponseError, extract_response_text
@@ -41,6 +42,7 @@ class OpenAIChatProvider:
         self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
         self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
         self.timeout = int(config.get("request_timeout_seconds", 180))
+        self.total_timeout = max(1, int(config.get("chat_total_timeout_seconds", 240)))
         self.retry_count = int(config.get("chat_retry_count", config.get("request_retry_count", 3)))
         self.transport_retry_count = int(
             config.get("chat_transport_retry_count", config.get("request_transport_retry_count", 1))
@@ -75,7 +77,8 @@ class OpenAIChatProvider:
             stream=True,
         )
         started_at = time.perf_counter()
-        response = self._post_with_retry(payload)
+        with CHAT_REQUEST_SEMAPHORE:
+            response = self._post_with_retry(payload)
         elapsed = time.perf_counter() - started_at
         print(
             format_log_line(
@@ -97,6 +100,7 @@ class OpenAIChatProvider:
         transport_attempt = 0
         request_attempt = 0
         max_attempts_label = self._build_max_attempts_label()
+        deadline = time.monotonic() + self.total_timeout
         while True:
             request_attempt += 1
             print(
@@ -115,7 +119,7 @@ class OpenAIChatProvider:
                         "Content-Type": "application/json",
                     },
                     json=payload,
-                    timeout=self.timeout,
+                    timeout=min(self.timeout, max(0.001, deadline - time.monotonic())),
                 )
             except requests.RequestException as exc:
                 elapsed = time.perf_counter() - request_started_at
@@ -151,6 +155,8 @@ class OpenAIChatProvider:
                     ),
                     flush=True,
                 )
+                if time.monotonic() + delay >= deadline:
+                    raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试") from exc
                 time.sleep(delay)
                 continue
             elapsed = time.perf_counter() - request_started_at
@@ -174,6 +180,8 @@ class OpenAIChatProvider:
                 ),
                 flush=True,
             )
+            if time.monotonic() + delay >= deadline:
+                raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试")
             time.sleep(delay)
 
     def _build_max_attempts_label(self) -> str:

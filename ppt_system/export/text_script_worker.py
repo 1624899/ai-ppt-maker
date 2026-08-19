@@ -5,6 +5,7 @@ import io
 import json
 import sys
 import traceback
+import tokenize
 from pathlib import Path
 
 import runpy
@@ -49,6 +50,29 @@ def _configure_runtime_environment() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
+def _run_generated_script(script_path: Path) -> dict:
+    """执行脚本；兼容历史脚本中误写入的 JSON 布尔字面量。"""
+    source = script_path.read_text(encoding="utf-8")
+    tokens = []
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.NAME and token.string in {"true", "false", "null"}:
+            replacement = {"true": "True", "false": "False", "null": "None"}[token.string]
+            token = tokenize.TokenInfo(token.type, replacement, token.start, token.end, token.line)
+        tokens.append(token)
+    namespace = {"__file__": str(script_path), "__name__": "__generated_text_script__"}
+    exec(compile(tokenize.untokenize(tokens), str(script_path), "exec"), namespace)
+    page_texts = namespace.get("PAGE_TEXTS")
+    if isinstance(page_texts, dict):
+        aliases = {}
+        for key, value in page_texts.items():
+            text_key = str(key)
+            aliases.setdefault(text_key, value)
+            if text_key.isdigit():
+                aliases.setdefault(int(text_key), value)
+        page_texts.update(aliases)
+    return namespace
+
+
 def main(argv: list[str] | None = None) -> int:
     _configure_runtime_environment()
     from ppt_system.export.text_script_guard import validate_generated_text_script
@@ -64,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         captured_stdout = io.StringIO()
         captured_stderr = io.StringIO()
         with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
-            namespace = runpy.run_path(str(script_path), run_name="__generated_text_script__")
+            namespace = _run_generated_script(script_path)
             build_deck = namespace.get("build_deck")
             if not callable(build_deck):
                 raise RuntimeError(f"生成脚本缺少 build_deck 函数：{script_path}")

@@ -48,6 +48,7 @@ const PPTStudio = ({
   const isRunning = ['queued', 'running', 'stopping'].includes(String(currentJob?.status || ''));
   const resumeControl = getResumeControl(currentJob);
   const awaitingPlanConfirmation = String(currentJob?.status || '') === 'awaiting_plan_confirmation';
+  const awaitingReferenceConfirmation = String(currentJob?.status || '') === 'awaiting_reference_confirmation';
   const { pendingKey, error: actionError, runAction } = useJobActions({
     currentJob,
     onJobUpdated
@@ -173,6 +174,12 @@ const PPTStudio = ({
             <button type="button" className={uiClassName("btn btn-primary")} onClick={onConfirmCurrentPlan} disabled={pendingKey !== '' || confirmPlanPending}>
                 <Play size={16} />
                 {confirmPlanPending ? '确认中...' : planDraftDirty ? '用当前修改继续生成' : '确认规划并继续'}
+              </button>
+            }
+            {awaitingReferenceConfirmation &&
+            <button type="button" className={uiClassName("btn btn-primary")} onClick={() => runAction('reference/confirm', undefined, { key: 'confirm-reference' })} disabled={pendingKey !== ''}>
+                <Play size={16} />
+                {pendingKey === 'confirm-reference' ? '提交中...' : '确认原稿图并继续'}
               </button>
             }
           </div>

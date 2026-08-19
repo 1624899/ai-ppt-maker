@@ -43,6 +43,7 @@ DEFAULT_LAYOUT_FAMILIES: list[str] = [
     "process_horizontal",
     "process_vertical",
     "hero_with_supporting_cards",
+    "floor_plan", "magazine_editorial", "full_screen_visual", "circular_cycle", "pyramid_structure", "funnel", "staircase", "progressive_relation", "road_map", "gantt_chart", "cycle_process", "swimlane", "org_chart", "relationship_chain", "venn_relation", "data_cards", "big_number", "dashboard", "bar_chart", "line_chart", "pie_chart", "scatter_plot", "data_table", "map_distribution", "people_profile", "product_showcase", "case_breakdown", "problem_cause_solution", "goal_strategy_action", "summary_detail", "layered_structure", "module_combination", "collage", "tag_categories", "checklist", "milestones", "priority_ranking", "value_chain", "ecosystem", "closed_loop_management", "input_process_output", "three_part", "five_step", "comparison_table", "pros_cons", "swot", "fishbone", "iceberg_model", "tower_structure", "growth_staircase", "route_planning", "annual_plan", "retrospective", "achievement_wall", "scenario_showcase", "scenario_map", "infographic", "visual_metaphor",
 ]
 
 ALLOWED_LAYOUT_FAMILIES: set[str] = set(DEFAULT_LAYOUT_FAMILIES)
@@ -58,6 +59,7 @@ LAYOUT_FAMILY_LABELS: dict[str, str] = {
     "process_horizontal": "横向流程",
     "process_vertical": "纵向流程",
     "hero_with_supporting_cards": "主视觉卡片",
+    "floor_plan": "房型图（户型图）", "magazine_editorial": "杂志排版", "full_screen_visual": "全屏视觉", "circular_cycle": "环形循环图", "pyramid_structure": "金字塔结构", "funnel": "漏斗图", "staircase": "阶梯式", "progressive_relation": "递进关系", "road_map": "路径地图（Road Map）", "gantt_chart": "甘特图", "cycle_process": "循环流程图", "swimlane": "泳道图", "org_chart": "组织架构图", "relationship_chain": "关系链路图", "venn_relation": "Venn关系图", "data_cards": "数据卡片", "big_number": "大数字展示", "dashboard": "仪表盘（Dashboard）", "bar_chart": "柱状图分析", "line_chart": "折线趋势图", "pie_chart": "饼图占比", "scatter_plot": "散点分析", "data_table": "数据表格", "map_distribution": "地图分布", "people_profile": "人物介绍", "product_showcase": "产品展示", "case_breakdown": "案例拆解", "problem_cause_solution": "问题—原因—方案", "goal_strategy_action": "目标—策略—行动", "summary_detail": "总分结构", "layered_structure": "分层结构", "module_combination": "模块组合", "collage": "拼贴式", "tag_categories": "标签分类", "checklist": "清单列表", "milestones": "里程碑", "priority_ranking": "优先级排序", "value_chain": "价值链", "ecosystem": "生态圈", "closed_loop_management": "闭环管理", "input_process_output": "输入—过程—输出", "three_part": "三段式", "five_step": "五步法", "comparison_table": "对照表", "pros_cons": "优劣势分析", "swot": "SWOT分析", "fishbone": "鱼骨图", "iceberg_model": "冰山模型", "tower_structure": "塔式结构", "growth_staircase": "阶梯成长", "route_planning": "路径规划", "annual_plan": "年度规划", "retrospective": "复盘总结", "achievement_wall": "成果墙", "scenario_showcase": "场景化展示", "scenario_map": "场景地图", "infographic": "信息图表", "visual_metaphor": "视觉隐喻",
 }
 
 
@@ -141,6 +143,9 @@ def normalize_layout_family_name(name: str) -> str:
     cleaned = _strip_number_suffix(cleaned)
     if validate_layout_family(cleaned):
         return cleaned
+    for family, label in LAYOUT_FAMILY_LABELS.items():
+        if _normalize_layout_token(label) == cleaned:
+            return family
     if cleaned in _LAYOUT_ALIASES:
         return _LAYOUT_ALIASES[cleaned]
     for key, val in _LAYOUT_ALIASES.items():

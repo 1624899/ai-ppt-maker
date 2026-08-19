@@ -18,12 +18,15 @@ from ppt_system.export.editable_delivery_bundle import (
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE, count_output_slides
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.generation.style_runtime import apply_text_theme, resolve_text_palette
+from ppt_system.generation.page_richness import normalize_page_richness_level
 from ppt_system.generation.text_layout import (
     build_fallback_boxes_for_family,
     build_layout_slots_by_family,
     build_text_boxes_from_slots,
 )
 from ppt_system.export.text_script_runtime import execute_generated_text_script
+from ppt_system.export.editable_charts import normalize_chart_data
+from ppt_system.generation.layout_blueprint_catalog import build_blueprint
 
 
 StageLogger = Callable[[str], None]
@@ -70,13 +73,14 @@ def rebuild_page_texts(
     title = str(page.get("title", "")).strip() or f"第 {page.get('page_no', '?')} 页"
     body = _build_body_text(page)
     layout_family = str(page.get("layout_family", "split_left_right")).strip() or "split_left_right"
+    page_richness = normalize_page_richness_level(page.get("page_richness") or "medium")
     layout_slots = page.get("layout_slots")
 
     rebuilt: list[dict[str, Any]] = []
     if isinstance(layout_slots, dict) and isinstance(layout_slots.get("slot_coords"), dict):
         rebuilt = build_text_boxes_from_slots(layout_slots, title, body, image_width, image_height)
     if not rebuilt:
-        slots = build_layout_slots_by_family(layout_family, image_width, image_height)
+        slots = build_layout_slots_by_family(layout_family, image_width, image_height, page_richness)
         rebuilt = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
     if rebuilt and len(rebuilt) > 1:
         return apply_text_theme(rebuilt, style_guide)
@@ -98,6 +102,18 @@ def resolve_job_artifact_path(job_dir: Path, image_ref: str) -> Path:
     if len(parts) >= 3 and parts[0] == "runs":
         return job_dir / Path(*parts[2:])
     return job_dir / normalized
+
+
+def _scale_native_blueprint(layout_family: str, image_width: int, image_height: int) -> list[dict[str, Any]]:
+    scaled = []
+    for item in build_blueprint(layout_family):
+        shape = dict(item)
+        shape["left"] = round(float(item["left"]) / 1000 * image_width)
+        shape["top"] = round(float(item["top"]) / 562 * image_height)
+        shape["width"] = round(float(item["width"]) / 1000 * image_width)
+        shape["height"] = round(float(item["height"]) / 562 * image_height)
+        scaled.append(shape)
+    return scaled
 
 
 def build_project_from_web_job(
@@ -147,6 +163,7 @@ def build_project_from_web_job(
             raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_path}")
 
         rebuilt_texts = rebuild_page_texts(raw_page, image_width, image_height, style_guide)
+        layout_family = str(raw_page.get("layout_family", "")) or "split_left_right"
         project_pages.append(
             {
                 "page_no": page_no,
@@ -156,7 +173,10 @@ def build_project_from_web_job(
                 "visual_image": str(visual_path),
                 "reference_image": str(reference_path),
                 "texts": rebuilt_texts,
-                "layout_family": str(raw_page.get("layout_family", "")),
+                "layout_family": layout_family,
+                "layout_slots": raw_page.get("layout_slots") if isinstance(raw_page.get("layout_slots"), dict) else {},
+                "native_blueprint": _scale_native_blueprint(layout_family, image_width, image_height),
+                "chart_data": normalize_chart_data(raw_page.get("chart_data")),
             }
         )
 

@@ -28,6 +28,7 @@ from ppt_system.web.services.job_state_model import (
 )
 from ppt_system.web.services.job_state_reconciliation import reconcile_job_record
 from ppt_system.web.services.job_state_store import load_job_state
+from ppt_system.web.services.job_edit_history import build_job_edit_summary
 from ppt_system.web.services.workflow_policy import (
     ensure_workflow_metadata,
     get_workflow_mode_label,
@@ -154,6 +155,7 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
     workflow_mode = normalize_workflow_mode(
         job_meta.get("workflow_mode") or request_payload.get("workflow_mode")
     )
+    edit_summary = build_job_edit_summary(state, record)
     return {
         "job_id": record["job_id"],
         "title": record["title"],
@@ -162,7 +164,11 @@ def job_summary(record: dict[str, Any]) -> dict[str, Any]:
         "page_count": record["page_count"],
         "image_preset": record["image_preset"],
         "image_quality": record["image_quality"],
-        "style_notes": record["style_notes"],
+        "style_notes": edit_summary["style_notes"],
+        "has_user_edits": edit_summary["has_user_edits"],
+        "edit_count": edit_summary["edit_count"],
+        "last_edit_summary": edit_summary["last_edit_summary"],
+        "last_edited_at": edit_summary["last_edited_at"],
         "created_at": record["created_at"],
         "updated_at": record["updated_at"],
         "pinned_at": str(record.get("pinned_at") or ""),

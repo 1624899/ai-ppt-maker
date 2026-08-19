@@ -11,6 +11,7 @@ from ppt_system.web.services import job_management_api_service
 from ppt_system.web.services import job_operations_service
 from ppt_system.web.services import job_plan_api_service
 from ppt_system.web.services import job_query_api_service
+from ppt_system.web.services import job_reference_confirmation_service
 
 bp = Blueprint("jobs_api", __name__)
 
@@ -83,6 +84,11 @@ def api_update_job_plan(job_id: str):
 @bp.post("/api/jobs/<job_id>/plan/confirm")
 def api_confirm_job_plan(job_id: str):
     return job_plan_api_service.api_confirm_job_plan(job_id)
+
+
+@bp.post("/api/jobs/<job_id>/reference/confirm")
+def api_confirm_reference_pages(job_id: str):
+    return job_reference_confirmation_service.api_confirm_reference_pages(job_id)
 
 
 @bp.post("/api/jobs/<job_id>/deliver")

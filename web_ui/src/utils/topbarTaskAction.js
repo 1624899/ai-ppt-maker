@@ -19,6 +19,10 @@ export function getTopbarTaskAction(job, pendingKey = '') {
       disabled: pending,
     };
   }
+  if (status === 'awaiting_reference_confirmation') {
+    const pending = pendingKey === 'confirm-reference';
+    return { type: 'confirm-reference', action: 'reference/confirm', label: pending ? '提交中...' : '确认原稿图并继续', className: 'btn-task-resume', disabled: pending };
+  }
 
   if (resumeControl.visible) {
     const pending = pendingKey === 'resume';
