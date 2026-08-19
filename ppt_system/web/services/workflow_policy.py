@@ -15,6 +15,7 @@ WORKFLOW_MODE_LABELS = {
 }
 
 AWAITING_PLAN_CONFIRMATION_STATUS = "awaiting_plan_confirmation"
+AWAITING_REFERENCE_CONFIRMATION_STATUS = "awaiting_reference_confirmation"
 
 
 def normalize_workflow_mode(value: Any, default: str = WORKFLOW_MODE_AUTO) -> str:
@@ -37,7 +38,7 @@ def build_confirmation_policy(
     normalized_mode = normalize_workflow_mode(workflow_mode)
     policy = {
         "plan": normalized_mode == WORKFLOW_MODE_GUIDED,
-        "reference_pages": False,
+        "reference_pages": normalized_mode == WORKFLOW_MODE_GUIDED,
         "element_pages": False,
         "export": False,
     }
@@ -92,7 +93,32 @@ def ensure_workflow_metadata(
         )
     confirmation["updated_at"] = str(confirmation.get("updated_at") or _utc_timestamp())
     job_meta["plan_confirmation"] = confirmation
+    reference_confirmation = job_meta.get("reference_confirmation")
+    if not isinstance(reference_confirmation, dict):
+        required = bool(job_meta["confirmation_policy"]["reference_pages"])
+        # 旧任务若已有下游产物，说明原稿阶段实际上已经通过，不能因新增确认关卡阻断重新导出。
+        downstream_completed = _has_existing_downstream_outputs(state)
+        confirmed = not required or downstream_completed
+        reference_confirmation = {
+            "required": required,
+            "confirmed": confirmed,
+            "status": "inferred_from_existing_outputs" if required and downstream_completed else ("pending" if required else "not_required"),
+            "updated_at": _utc_timestamp(),
+        }
+    job_meta["reference_confirmation"] = reference_confirmation
     return state
+
+
+def _has_existing_downstream_outputs(state: Mapping[str, Any]) -> bool:
+    elements = state.get("element_pages", [])
+    if isinstance(elements, list) and any(isinstance(item, Mapping) and item.get("image") for item in elements):
+        return True
+    for stage in state.get("stages", []):
+        if not isinstance(stage, Mapping):
+            continue
+        if stage.get("key") in {"elements_generation", "ppt_export"} and stage.get("status") == "completed":
+            return True
+    return False
 
 
 def get_workflow_mode_from_state(state: Mapping[str, Any]) -> str:
@@ -170,6 +196,26 @@ def mark_plan_draft(state: dict[str, Any]) -> None:
             "updated_at": _utc_timestamp(),
         }
     )
+
+
+def should_pause_after_reference(state: Mapping[str, Any]) -> bool:
+    ensure_workflow_metadata(state)
+    meta = state.get("job_meta", {})
+    required = bool(meta.get("confirmation_policy", {}).get("reference_pages"))
+    return required and not bool(meta.get("reference_confirmation", {}).get("confirmed"))
+
+
+def mark_awaiting_reference_confirmation(state: dict[str, Any]) -> None:
+    ensure_workflow_metadata(state)
+    state["status"] = AWAITING_REFERENCE_CONFIRMATION_STATUS
+    state["current_stage"] = "reference_generation"
+    state["stop_requested"] = False
+    state.setdefault("job_meta", {}).setdefault("reference_confirmation", {}).update({"required": True, "confirmed": False, "status": "awaiting_confirmation", "updated_at": _utc_timestamp()})
+
+
+def mark_reference_confirmed(state: dict[str, Any]) -> None:
+    ensure_workflow_metadata(state)
+    state.setdefault("job_meta", {}).setdefault("reference_confirmation", {}).update({"required": True, "confirmed": True, "status": "confirmed", "confirmed_at": _utc_timestamp(), "updated_at": _utc_timestamp()})
 
 
 def _utc_timestamp() -> str:

@@ -1,0 +1,10 @@
+{
+  "name": "AI PPT Maker 移动工作台",
+  "short_name": "AI PPT Maker",
+  "start_url": "/?app=mobile-v2",
+  "display": "standalone",
+  "theme_color": "#173b6d",
+  "background_color": "#f3f6fb",
+  "description": "在手机和平板上创建、预览和下载 PPT",
+  "icons": []
+}

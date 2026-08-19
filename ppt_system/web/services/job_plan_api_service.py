@@ -13,6 +13,7 @@ from ppt_system.runtime import runtime_context
 from ppt_system.web.services.api_response import api_error
 from ppt_system.web.services.job_api_common import _get_existing_job_record, _load_editable_job_state, _set_stage_status
 from ppt_system.web.services.job_state_store import load_job_state, mutate_job_state
+from ppt_system.web.services.job_plan_record_sync import sync_plan_metadata_to_job_record
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
 from ppt_system.web.services.plan_version_store import (
     apply_plan_to_state,
@@ -75,6 +76,7 @@ def api_update_job_plan(job_id: str):
         )
 
     updated_state = mutate_job_state(job_dir, job_id, updater)
+    sync_plan_metadata_to_job_record(runtime_context.JOBS_DB_PATH, job_id, updated_state)
     return jsonify(build_plan_response(updated_state))
 
 def api_confirm_job_plan(job_id: str):
@@ -123,6 +125,16 @@ def api_confirm_job_plan(job_id: str):
     except ValueError as exc:
         return api_error(exc)
 
+    refreshed_record = sync_plan_metadata_to_job_record(
+        runtime_context.JOBS_DB_PATH,
+        job_id,
+        updated_state,
+    ) or record
+    request_payload = dict(
+        refreshed_record.get("request", {})
+        if isinstance(refreshed_record.get("request"), dict)
+        else {}
+    )
     request_payload["workflow_mode"] = normalize_workflow_mode(
         request_payload.get("workflow_mode") or updated_state.get("job_meta", {}).get("workflow_mode")
     )
@@ -136,7 +148,7 @@ def api_confirm_job_plan(job_id: str):
     )
     clear_job_stop_request(job_dir, job_id)
 
-    refreshed_record = get_job_record(runtime_context.JOBS_DB_PATH, job_id) or record
+    refreshed_record = get_job_record(runtime_context.JOBS_DB_PATH, job_id) or refreshed_record
     try:
         submit_existing_job_pipeline(refreshed_record, request_payload=request_payload)
     except ValueError as exc:

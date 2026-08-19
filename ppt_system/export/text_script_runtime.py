@@ -172,6 +172,11 @@ def build_project_script_source(
         for page in project.get("pages", [])
         if int(page.get("page_no", 0)) > 0
     }
+    page_charts = {
+        int(page.get("page_no", 0)): page.get("chart_data")
+        for page in project.get("pages", [])
+        if int(page.get("page_no", 0)) > 0 and page.get("chart_data")
+    }
     page_asset_adjustments = {
         str(int(item["page_no"])): normalize_asset_adjustments(item.get("asset_adjustments"))
         for item in page_scripts
@@ -200,6 +205,7 @@ from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 from ppt_system.export.export_artifact_policy import save_presentation_artifact
+from ppt_system.export.editable_charts import add_editable_chart
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
@@ -219,8 +225,9 @@ DEFAULT_FONT_NAME = {font_name!r}
 DEFAULT_FONT_COLOR = {font_color!r}
 INCLUDE_ASSETS = {bool(include_assets)!r}
 LAYER_MODE = {resolved_layer_mode!r}
-PAGE_TEXTS = {json.dumps(page_texts, ensure_ascii=False, indent=2)}
-PAGE_ASSET_ADJUSTMENTS = {json.dumps(page_asset_adjustments, ensure_ascii=False, indent=2)}
+PAGE_TEXTS = {page_texts!r}
+PAGE_CHARTS = {page_charts!r}
+PAGE_ASSET_ADJUSTMENTS = {page_asset_adjustments!r}
 SLIDE_LAYER_SPECS = {slide_layer_specs!r}
 
 
@@ -446,6 +453,9 @@ def add_page_content(slide, page_no, builder, layer_spec):
         add_assets(slide, WORK_DIR / f"page_{{page_no:02d}}" / "assets" / "assets.json", page_no)
     if bool(layer_spec.get("include_text")):
         builder(slide)
+        chart = PAGE_CHARTS.get(page_no)
+        if chart:
+            add_editable_chart(slide, chart, px_x(chart.get("left", 1000)), px_y(chart.get("top", 260)), px_w(chart.get("width", 900)), px_h(chart.get("height", 650)))
 
 
 def build_deck():
@@ -505,7 +515,7 @@ def normalize_asset_adjustments(adjustments: Any) -> dict[str, Any]:
 
 def _build_page_function_source(page_no: int, script: str) -> str:
     body = script or "pass"
-    page_texts_line = f'page_texts = PAGE_TEXTS["{page_no}"]'
+    page_texts_line = f"page_texts = PAGE_TEXTS[{int(page_no)}]"
     full_body = "\n".join([page_texts_line, body]) if body != "pass" else f"{page_texts_line}\npass"
     indented = "\n".join(f"    {line}" if line else "" for line in full_body.splitlines()) or "    pass"
     return f"def build_slide_{page_no:02d}(slide):\n{indented}"

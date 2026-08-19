@@ -1,0 +1,18 @@
+{
+  "name": "ai-ppt-maker-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 7862",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 7862"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^5.4.21",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {}
+}

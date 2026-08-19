@@ -1,13 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { CheckCircle2, FilePlus2, LoaderCircle, Save } from 'lucide-react';
 import { PLAN_CONFIRM_PENDING_KEY, PLAN_SAVE_PENDING_KEY } from '../../hooks/usePlanningDraft';
 import { createBlankPagePlan, normalizePlan, renumberPlanPages } from '../../utils/planningDraft';
 import { getWorkflowModeLabel, isAwaitingPlanConfirmation } from '../../utils/workflowMode';
 import PagePlanEditor from './PagePlanEditor';import { uiClassName } from "../../utils/uiClassName";
+import { evaluatePlanQuality } from '../../utils/planQuality';
+import { postJobOperation } from '../../utils/jobActions';
 
 const EMPTY_PLAN = normalizePlan({ pages: [] });
 
-const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCurrentPlan }) => {
+const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCurrentPlan, onJobUpdated }) => {
   const plan = planningDraft?.draft || EMPTY_PLAN;
   const confirmation = planningDraft?.confirmation || {};
   const loading = Boolean(planningDraft?.loading);
@@ -16,6 +18,10 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
   const error = planningDraft?.error || '';
   const dirty = Boolean(planningDraft?.dirty);
   const updateDraft = planningDraft?.updateDraft;
+  const [referenceRegeneratePage, setReferenceRegeneratePage] = useState(0);
+  const [referenceRegenerateError, setReferenceRegenerateError] = useState('');
+  const referencePageNumbers = useMemo(() => new Set((currentJob?.reference_pages || []).map((item) => Number(item.page_no))), [currentJob]);
+  const elementPageNumbers = useMemo(() => new Set((currentJob?.element_pages || []).map((item) => Number(item.page_no))), [currentJob]);
 
   const planMeta = useMemo(() => {
     const modeLabel = getWorkflowModeLabel(currentJob?.job_meta?.workflow_mode || currentJob?.workflow_mode);
@@ -24,6 +30,7 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
     const combinedStatus = [status, dirtyLabel].filter(Boolean).join(' · ');
     return { modeLabel, status: combinedStatus };
   }, [currentJob, confirmation.status, dirty]);
+  const quality = useMemo(() => evaluatePlanQuality(plan), [plan]);
 
   const updatePlanField = (field, value) => {
     updateDraft?.((current) => {
@@ -100,6 +107,21 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
   const confirmPlan = async () => {
     await onConfirmCurrentPlan?.();
   };
+  const regenerateReference = async (pageNo) => {
+    if (!currentJob?.job_id || referenceRegeneratePage) return;
+    setReferenceRegeneratePage(Number(pageNo));
+    setReferenceRegenerateError('');
+    try {
+      const updatedJob = await postJobOperation(currentJob.job_id, {
+        operation_type: 'page_reference_regenerate', page_no: pageNo, plan,
+      });
+      onJobUpdated?.(updatedJob);
+    } catch (operationError) {
+      setReferenceRegenerateError(operationError.message || '重新生成原稿图失败');
+    } finally {
+      setReferenceRegeneratePage(0);
+    }
+  };
 
   return (
     <section className={uiClassName("planning-editor")}>
@@ -148,7 +170,20 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
       </div>
 
       {error && <div className={uiClassName("form-error")}>{error}</div>}
+      {referenceRegenerateError && <div className={uiClassName("form-error")}>{referenceRegenerateError}</div>}
       {message && <div className={uiClassName("form-success")}>{message}</div>}
+
+      <section className={uiClassName(`plan-quality${quality.passed ? ' is-passed' : ''}`)}>
+        <div className={uiClassName('plan-quality__head')}>
+          <strong>内容质量检查</strong>
+          <span>{quality.summary} · 得分 {Math.round(quality.overallScore * 100)}%</span>
+        </div>
+        {!quality.passed && <div className={uiClassName('plan-quality__issues')}>
+          {quality.pageScores.filter((item) => item.issues.length > 0).map((item) =>
+            <div key={item.page_no}><b>第 {item.page_no} 页</b><span>{item.issues.join('；')}</span></div>
+          )}
+        </div>}
+      </section>
 
       <div className={uiClassName("planning-editor__pages")}>
         {plan.pages.length === 0 ?
@@ -161,6 +196,10 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
           index={index}
           total={plan.pages.length}
           layoutFamilyOptions={config?.layout_family_options}
+          hasReferenceImage={referencePageNumbers.has(Number(page.page_no))}
+          hasElementImage={elementPageNumbers.has(Number(page.page_no))}
+          onRegenerateReference={regenerateReference}
+          referenceRegeneratePending={referenceRegeneratePage === Number(page.page_no)}
           onChange={(nextPage) => updatePage(index, nextPage)}
           onDuplicate={duplicatePage}
           onDelete={deletePage}
@@ -174,7 +213,7 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
 
 };
 
-const PlanningEditor = ({ currentJob, config, planningDraft, onConfirmCurrentPlan }) => {
+const PlanningEditor = ({ currentJob, config, planningDraft, onConfirmCurrentPlan, onJobUpdated }) => {
   if (!currentJob?.job_id) {
     return <div className={uiClassName("empty-state")}>创建任务后，这里会显示可编辑规划。</div>;
   }
@@ -191,6 +230,7 @@ const PlanningEditor = ({ currentJob, config, planningDraft, onConfirmCurrentPla
       currentJob={currentJob}
       config={config}
       planningDraft={planningDraft}
+      onJobUpdated={onJobUpdated}
       onConfirmCurrentPlan={onConfirmCurrentPlan} />);
 
 

@@ -16,6 +16,8 @@ from ppt_system.integrations.model_config import (
 )
 from ppt_system.integrations.model_connectivity import test_model_connectivity
 from ppt_system.generation.design_grammar import build_layout_family_options
+from ppt_system.generation.text_layout import build_layout_slots_by_family
+from ppt_system.generation.layout_geometry import build_layout_preview, get_layout_category
 from ppt_system.generation.reference_style_adherence import (
     REFERENCE_STYLE_ADHERENCE_LABELS,
     REFERENCE_STYLE_ADHERENCE_LEVELS,
@@ -48,7 +50,7 @@ def api_config():
             "default_include_cover_page": bool(defaults["include_cover_page"]),
             "default_page_richness": str(defaults["page_richness_default"]),
             "page_richness_options": list(PAGE_RICHNESS_LEVELS),
-            "layout_family_options": build_layout_family_options(),
+            "layout_family_options": _build_layout_family_options_with_slots(),
             "default_reference_style_adherence": str(defaults["reference_style_adherence"]),
             "reference_style_adherence_options": [
                 {"value": value, "label": REFERENCE_STYLE_ADHERENCE_LABELS[value]}
@@ -59,6 +61,20 @@ def api_config():
             "active_image_config_id": config.get("active_image_config_id", ""),
         }
     )
+
+
+def _build_layout_family_options_with_slots() -> list[dict]:
+    """让前端缩略图与实际文字排版共用同一套槽位坐标。"""
+    options = build_layout_family_options()
+    for option in options:
+        slots = build_layout_slots_by_family(option["value"], 1000, 562, "medium")
+        option["preview_slots"] = [
+            {"name": name, "left": box[0], "top": box[1], "width": box[2], "height": box[3]}
+            for name, box in slots.get("slot_coords", {}).items()
+        ]
+        option["preview_shapes"] = build_layout_preview(option["value"])
+        option["category"] = get_layout_category(option["value"])
+    return options
 
 
 def api_model_configs():

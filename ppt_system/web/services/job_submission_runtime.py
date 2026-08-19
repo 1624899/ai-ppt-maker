@@ -7,6 +7,7 @@ from ppt_system.generation.generation_options import resolve_generation_options
 from ppt_system.jobs.active_job_registry import bind_job_future, mark_job_managed, release_job_management
 from ppt_system.runtime import runtime_context
 from ppt_system.web.services.app_config_runtime import read_config, resolve_image_preset
+from ppt_system.web.services.job_plan_record_sync import resolve_current_style_notes
 from ppt_system.web.services.job_pipeline_runner import run_job_pipeline
 
 
@@ -41,6 +42,12 @@ def submit_existing_job_pipeline(
 ) -> object:
     active_config_source = config or read_config()
     payload = dict(request_payload or record.get("request", {}))
+    state = record.get("state", {}) if isinstance(record.get("state"), dict) else {}
+    job_meta = state.get("job_meta", {}) if isinstance(state.get("job_meta"), dict) else {}
+    current_style_notes = resolve_current_style_notes(state, record)
+    current_page_count = int(job_meta.get("page_count") or record.get("page_count") or 1)
+    payload["style_notes"] = current_style_notes
+    payload["page_count"] = current_page_count
     generation_options = resolve_generation_options(
         payload.get("generation_options", payload),
         config=active_config_source,
@@ -68,9 +75,9 @@ def submit_existing_job_pipeline(
         active_config_source,
         active_config,
         str(payload.get("content", record.get("content", ""))),
-        int(payload.get("page_count", record.get("page_count", 1))),
+        current_page_count,
         image_preset,
-        str(payload.get("style_notes", record.get("style_notes", ""))),
+        current_style_notes,
         generation_options,
         stage1_dir,
         stage2_dir,

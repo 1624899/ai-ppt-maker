@@ -41,7 +41,7 @@ def build_reference_prompt_by_mode(
         existing_prompt = str(page.get("image_prompt", "")).strip()
         if existing_prompt:
             return existing_prompt
-        return build_reference_prompt(
+        prompt = build_reference_prompt(
             page,
             style_notes,
             image_width,
@@ -50,8 +50,9 @@ def build_reference_prompt_by_mode(
             has_reference_images=has_reference_images,
             reference_style_adherence=reference_style_adherence,
         )
+        return prompt
     if normalized_mode == "compact":
-        return build_compact_reference_prompt(
+        prompt = build_compact_reference_prompt(
             page,
             style_notes,
             image_width,
@@ -60,8 +61,9 @@ def build_reference_prompt_by_mode(
             has_reference_images=has_reference_images,
             reference_style_adherence=reference_style_adherence,
         )
+        return prompt
     if normalized_mode == "slot_brief":
-        return build_slot_brief_reference_prompt(
+        prompt = build_slot_brief_reference_prompt(
             page,
             style_notes,
             image_width,
@@ -70,6 +72,7 @@ def build_reference_prompt_by_mode(
             has_reference_images=has_reference_images,
             reference_style_adherence=reference_style_adherence,
         )
+        return prompt
     raise ValueError(f"未知的一阶段提示词模式：{prompt_mode}")
 
 

@@ -31,21 +31,27 @@ from ppt_system.web.services.job_delivery_invalidation import (
 from ppt_system.web.services.job_state_store import mutate_job_state
 from ppt_system.web.services.job_state_view import get_job_state_snapshot
 from ppt_system.web.services.job_submission_runtime import submit_existing_job_pipeline
+from ppt_system.web.services.plan_version_store import apply_plan_to_state
+from ppt_system.web.services.page_text_style_ops import apply_page_text_layer_edit
+from ppt_system.export.ppt_text_style_rebuilder import rebuild_existing_ppt_text_styles
 
 
 RUNNING_STATUSES = {"queued", "running", "stopping"}
 MAX_OPERATION_HISTORY = 80
 
-PIPELINE_OPERATION_TYPES = {"page_regenerate", "restore_page_version"}
-PAGE_RECORD_ONLY_TYPES = {"page_text_optimize", "page_layout_optimize"}
+PIPELINE_OPERATION_TYPES = {"page_regenerate", "page_reference_regenerate", "restore_page_version"}
+PAGE_RECORD_ONLY_TYPES = {"page_text_optimize", "page_layout_optimize", "page_text_style", "page_align"}
 JOB_RECORD_ONLY_TYPES = {"agent_instruction", "job_style_adjust"}
 
 OPERATION_LABELS = {
     "agent_instruction": "Agent 修改请求",
     "job_style_adjust": "整套风格调整",
     "page_regenerate": "重新生成本页",
+    "page_reference_regenerate": "按当前版式重新生成原稿图",
     "page_text_optimize": "仅优化文字",
     "page_layout_optimize": "仅优化排版",
+    "page_text_style": "统一文字样式",
+    "page_align": "页面元素对齐",
     "restore_page_version": "恢复页面版本",
 }
 
@@ -80,10 +86,16 @@ def create_job_operation(job_id: str, payload: dict[str, Any]) -> dict[str, Any]
     if operation_type == "page_regenerate":
         _ensure_not_running(record)
         return _regenerate_page(record, state, payload)
+    if operation_type == "page_reference_regenerate":
+        _ensure_not_running(record)
+        return _regenerate_reference_page(record, state, payload)
     if operation_type == "restore_page_version":
         _ensure_not_running(record)
         return _restore_page_version(record, state, payload)
     if operation_type in PAGE_RECORD_ONLY_TYPES | JOB_RECORD_ONLY_TYPES:
+        if operation_type in {"page_text_style", "page_align"}:
+            _ensure_not_running(record)
+            return _apply_page_direct_edit(record, state, payload, operation_type)
         return _apply_agent_edit_operation(record, state, payload, operation_type)
     return _record_pending_operation(record, state, payload, operation_type)
 
@@ -99,6 +111,51 @@ def _normalize_operation_type(value: Any) -> str:
 def _ensure_not_running(record: dict[str, Any]) -> None:
     if str(record.get("status")) in RUNNING_STATUSES:
         raise RuntimeError("当前任务正在运行，请等待完成或停止后再操作。")
+
+
+def _apply_page_direct_edit(record, state, payload, operation_type):
+    """应用可逆的页面级样式或对齐修改，并记录页面快照。"""
+    page_no = _optional_page_no(payload.get("page_no"))
+    if page_no is None:
+        raise ValueError("页面级操作缺少 page_no。")
+    _find_page(state, page_no)
+    job_id = str(record["job_id"])
+    job_dir = Path(record["job_dir"])
+    instruction = str(payload.get("instruction") or OPERATION_LABELS[operation_type]).strip()
+    operation = _build_operation(operation_type, page_no=page_no, instruction=instruction, payload=payload)
+    operation["status"] = "submitted"; operation["execution"] = "pipeline"
+    version = _create_page_version(job_id, job_dir, state, page_no, operation["operation_id"], reason=f"before_{operation_type}")
+    def updater(current_state):
+        if isinstance(payload.get("plan"), dict):
+            apply_plan_to_state(current_state, payload["plan"])
+        current_page = _find_page(current_state, page_no)
+        _append_operation(current_state, operation); _append_page_version(current_state, version)
+        changed_count = apply_page_text_layer_edit(current_page, operation_type, payload)
+        # 字体、颜色和对齐只影响可编辑文字层，不应使原稿图或元素图失效。
+        _update_operation_fields(current_state, operation["operation_id"], {"version_id": version["version_id"], "affected_pages": [page_no], "changed_text_properties": changed_count, "preserved_images": True, "updated_at": _timestamp()})
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    rebuilt = rebuild_existing_ppt_text_styles(job_dir, page_no, operation_type, payload)
+    if rebuilt:
+        def mark_completed(current_state):
+            _update_operation_fields(current_state, operation["operation_id"], {"status": "completed", "execution": "local_fast_rebuild", "rebuilt_files": [path.name for path in rebuilt], "updated_at": _timestamp()})
+        completed_state = mutate_job_state(job_dir, job_id, mark_completed)
+        return attach_delivery_actions(completed_state, job_dir)
+
+    # 旧任务没有可编辑 PPT 文件时，才回退到完整导出流水线。
+    def queue_export(current_state):
+        _invalidate_delivery_result(current_state)
+        _reset_export_stage(current_state, (page_no,), "缺少现有 PPT，等待完整重建")
+    updated_state = mutate_job_state(job_dir, job_id, queue_export)
+    update_job_record(
+        runtime_context.JOBS_DB_PATH,
+        job_id,
+        stop_requested=False,
+        status="queued",
+        current_stage="ppt_export",
+        result=build_empty_delivery_result(),
+    )
+    submit_existing_job_pipeline(record)
+    return attach_delivery_actions(updated_state, job_dir)
 
 
 def _apply_agent_edit_operation(
@@ -230,6 +287,34 @@ def _regenerate_page(
         status="queued",
         result=build_empty_delivery_result(),
     )
+    submit_existing_job_pipeline(record)
+    return attach_delivery_actions(updated_state, job_dir)
+
+
+def _regenerate_reference_page(record, state, payload):
+    """在元素图生成前，按最新规划仅重新生成指定页面原稿图。"""
+    job_id, job_dir = str(record["job_id"]), Path(record["job_dir"])
+    page_no = _coerce_page_no(payload.get("page_no"))
+    page = _find_page(state, page_no)
+    if _find_artifact(state.get("element_pages"), page_no) or str(page.get("element_image") or "").strip():
+        raise RuntimeError("该页元素图已经生成，请使用“重新生成本页”执行完整重建。")
+    operation = _build_operation("page_reference_regenerate", page_no=page_no, instruction="按当前版式重新生成原稿图", payload=payload)
+    version = _create_page_version(job_id, job_dir, state, page_no, operation["operation_id"], reason="before_reference_regenerate")
+    operation.update({"version_id": version["version_id"], "status": "submitted", "message": "已按当前版式提交原稿图重新生成。"})
+
+    def updater(current_state):
+        current_page = _find_page(current_state, page_no)
+        _append_operation(current_state, operation)
+        _append_page_version(current_state, version)
+        _append_page_edit_request(current_state, page_no, operation)
+        current_page["reference_image"] = ""
+        current_page["reference_regeneration_required"] = False
+        _remove_artifact(current_state, "reference_pages", page_no)
+        _invalidate_delivery_result(current_state)
+        _reset_generation_stages(current_state, page_no, "等待按当前版式重新生成原稿图")
+
+    updated_state = mutate_job_state(job_dir, job_id, updater)
+    update_job_record(runtime_context.JOBS_DB_PATH, job_id, stop_requested=False, status="queued", result=build_empty_delivery_result())
     submit_existing_job_pipeline(record)
     return attach_delivery_actions(updated_state, job_dir)
 

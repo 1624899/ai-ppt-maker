@@ -1,0 +1,41 @@
+:root { font-family: system-ui, "Microsoft YaHei", sans-serif; color: #17213a; background: #f3f6fb; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.mobile-shell { width: min(100%, 760px); min-height: 100vh; margin: 0 auto; padding: env(safe-area-inset-top) 16px 32px; }
+.mobile-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 2px; color: #173b6d; }
+.mobile-header span { font-weight: 800; }
+.mobile-header strong { font-size: 13px; font-weight: 600; }
+.mobile-hero, .mobile-section { margin-top: 12px; padding: 22px; border-radius: 16px; background: #fff; box-shadow: 0 8px 24px #163a6312; }
+.mobile-hero { color: #fff; background: #173b6d; }
+.mobile-hero h1 { margin: 0; font-size: clamp(24px, 7vw, 38px); }
+.mobile-hero p { color: #dbe8fa; line-height: 1.6; }
+button { border: 0; border-radius: 10px; padding: 12px 16px; color: #173b6d; background: #fff; font-weight: 700; }
+textarea, input { width: 100%; margin: 8px 0; padding: 11px; border: 1px solid #d7e0ec; border-radius: 9px; font: inherit; }
+.mobile-hero textarea { min-height: 110px; background: #fff; }
+.mobile-hero label { display: block; color: #dbe8fa; font-size: 13px; }
+.mobile-hero input { width: 80px; margin-left: 8px; }
+.job-item { width: 100%; text-align: left; background: #fff; }
+.plan-item { display: grid; gap: 4px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e1e8f2; }
+.plan-item textarea { min-height: 72px; }
+.plan-item small { color: #6b7890; }
+.actions { display: grid; gap: 8px; margin-top: 16px; }
+.actions button { background: #173b6d; color: #fff; }
+.section-title { display: flex; align-items: center; justify-content: space-between; }
+.history-tools { display: flex; align-items: center; gap: 8px; }
+.history-tools button { padding: 7px 10px; background: #e8eff8; }
+.section-title h2 { margin: 0; font-size: 20px; }
+.section-title span, .job-item span { color: #6b7890; font-size: 13px; }
+.job-list { display: grid; gap: 10px; margin-top: 16px; }
+.job-item { display: grid; gap: 5px; padding: 14px; border: 1px solid #e1e8f2; border-radius: 10px; }
+.job-item small, .detail-progress small { color: #52627a; text-align: left; }
+.progress-track { display: block; width: 100%; height: 6px; overflow: hidden; border-radius: 3px; background: #dfe7f1; }
+.progress-track > span { display: block; height: 100%; border-radius: inherit; background: #2675c8; transition: width 300ms ease; }
+.detail-progress { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border-radius: 9px; background: #f3f6fb; }
+.detail-progress > div { display: flex; justify-content: space-between; }
+.error { color: #b42318; }
+.empty-plan { padding: 12px; color: #6b7890; background: #f3f6fb; border-radius: 8px; }
+.preview-list { display: grid; gap: 14px; margin: 16px 0; }
+.preview-item { margin: 0; overflow: hidden; border: 1px solid #d7e0ec; border-radius: 10px; background: #f3f6fb; }
+.preview-item a { display: block; background: #e8eef6; }
+.preview-item img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }
+.preview-item figcaption { padding: 9px 11px; color: #52627a; font-size: 13px; }

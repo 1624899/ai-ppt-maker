@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
 import re
+from ppt_system.generation.layout_geometry import build_layout_slot_specs
 from typing import Any
-
 from ppt_system.generation.planner import estimate_page_count
 
 try:
@@ -74,6 +74,16 @@ _SLOT_TEMPLATES: dict[str, dict] = {
 
 _DENSITY_SCALE: dict[str, float] = {"low": 0.85, "medium": 1.0, "high": 1.15}
 
+# 新增版式采用统一的语义槽位骨架，具体视觉由页面生图提示和元素层继续细化。
+_SPECIAL_LAYOUT_BLOCKS = {
+    "floor_plan": ["rooms"], "magazine_editorial": ["lead_visual", "article_text", "sidebar"], "full_screen_visual": ["hero_visual"],
+    "circular_cycle": ["cycle_items"], "pyramid_structure": ["levels"], "funnel": ["funnel_stages"], "staircase": ["steps"], "progressive_relation": ["relations"], "road_map": ["route_nodes"], "gantt_chart": ["schedule"], "cycle_process": ["cycle_steps"], "swimlane": ["lanes"], "org_chart": ["hierarchy"], "relationship_chain": ["chain_nodes"], "venn_relation": ["set_a", "intersection", "set_b"],
+    "data_cards": ["metric_cards"], "big_number": ["headline_metric", "supporting_metrics"], "dashboard": ["dashboard_panels"], "bar_chart": ["bars"], "line_chart": ["trend_line"], "pie_chart": ["slices"], "scatter_plot": ["points"], "data_table": ["table"], "map_distribution": ["map", "legend"],
+    "people_profile": ["portrait", "profile_text"], "product_showcase": ["product_visual", "features"], "case_breakdown": ["context", "approach", "result"], "problem_cause_solution": ["problem", "cause", "solution"], "goal_strategy_action": ["goal", "strategy", "action"], "summary_detail": ["summary", "details"], "layered_structure": ["layers"], "module_combination": ["modules"], "collage": ["collage_items"], "tag_categories": ["tag_groups"], "checklist": ["items"], "milestones": ["milestone_items"], "priority_ranking": ["ranked_items"], "value_chain": ["value_links"], "ecosystem": ["ecosystem_nodes"], "closed_loop_management": ["loop_stages"], "input_process_output": ["input", "process", "output"], "three_part": ["part_1", "part_2", "part_3"], "five_step": ["step_1", "step_2", "step_3", "step_4", "step_5"], "comparison_table": ["comparison_rows"], "pros_cons": ["pros", "cons"], "swot": ["strengths", "weaknesses", "opportunities", "threats"], "fishbone": ["causes", "effect"], "iceberg_model": ["visible", "hidden"], "tower_structure": ["tower_levels"], "growth_staircase": ["growth_steps"], "route_planning": ["route_stages"], "annual_plan": ["quarters"], "retrospective": ["achievements", "lessons", "next_steps"], "achievement_wall": ["achievement_cards"], "scenario_showcase": ["scenes"], "scenario_map": ["map_zones"], "infographic": ["visual_facts"], "visual_metaphor": ["metaphor_visual", "explanation"],
+}
+for _family, _blocks in _SPECIAL_LAYOUT_BLOCKS.items():
+    _SLOT_TEMPLATES.setdefault(_family, {"title": {"anchor": "top_left"}, "content_blocks": _blocks, "visual_focus": "center"})
+
 
 def list_supported_layout_slot_families() -> set[str]:
     return set(_SLOT_TEMPLATES)
@@ -122,62 +132,14 @@ def build_layout_slots_by_family(
     family = layout_family if layout_family in _SLOT_TEMPLATES else "split_left_right"
     template = _SLOT_TEMPLATES[family]
     scale = _DENSITY_SCALE.get(content_density, 1.0)
-    W, H = image_width, image_height
-
-    slot_coords: dict[str, tuple[int, int, int, int]] = {}
-
-    if family == "split_left_right":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.10), round(W * 0.40), round(H * 0.10))
-        slot_coords["left_text"] = (round(W * 0.06), round(H * 0.24), round(W * 0.40), round(H * 0.50 * scale))
-        slot_coords["right_visual"] = (round(W * 0.52), round(H * 0.10), round(W * 0.42), round(H * 0.75))
-    elif family == "split_top_bottom":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.04), round(W * 0.88), round(H * 0.10))
-        slot_coords["top_visual"] = (round(W * 0.06), round(H * 0.16), round(W * 0.88), round(H * 0.38))
-        slot_coords["bottom_text"] = (round(W * 0.06), round(H * 0.58), round(W * 0.88), round(H * 0.32 * scale))
-    elif family == "compare_dual_axis":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.05), round(W * 0.88), round(H * 0.10))
-        slot_coords["left_compare"] = (round(W * 0.06), round(H * 0.22), round(W * 0.36), round(H * 0.56 * scale))
-        slot_coords["right_compare"] = (round(W * 0.58), round(H * 0.22), round(W * 0.36), round(H * 0.56 * scale))
-        slot_coords["axis_notes"] = (round(W * 0.43), round(H * 0.30), round(W * 0.14), round(H * 0.40 * scale))
-    elif family == "timeline_horizontal":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.06), round(W * 0.40), round(H * 0.10))
-        slot_coords["timeline_items_left_to_right"] = (round(W * 0.06), round(H * 0.22), round(W * 0.88), round(H * 0.55 * scale))
-    elif family == "timeline_vertical":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.04), round(W * 0.88), round(H * 0.10))
-        slot_coords["timeline_items_top_to_bottom"] = (round(W * 0.06), round(H * 0.18), round(W * 0.88), round(H * 0.65 * scale))
-    elif family == "hub_and_spoke":
-        slot_coords["title"] = (round(W * 0.30), round(H * 0.04), round(W * 0.40), round(H * 0.10))
-        slot_coords["spoke_1"] = (round(W * 0.06), round(H * 0.20), round(W * 0.20), round(H * 0.28 * scale))
-        slot_coords["spoke_2"] = (round(W * 0.74), round(H * 0.20), round(W * 0.20), round(H * 0.28 * scale))
-        slot_coords["spoke_3"] = (round(W * 0.06), round(H * 0.58), round(W * 0.20), round(H * 0.28 * scale))
-        slot_coords["spoke_4"] = (round(W * 0.74), round(H * 0.58), round(W * 0.20), round(H * 0.28 * scale))
-    elif family == "grid_n_x_m":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.04), round(W * 0.40), round(H * 0.10))
-        slot_coords["cell_1"] = (round(W * 0.06), round(H * 0.18), round(W * 0.42), round(H * 0.34 * scale))
-        slot_coords["cell_2"] = (round(W * 0.52), round(H * 0.18), round(W * 0.42), round(H * 0.34 * scale))
-        slot_coords["cell_3"] = (round(W * 0.06), round(H * 0.58), round(W * 0.42), round(H * 0.34 * scale))
-        slot_coords["cell_4"] = (round(W * 0.52), round(H * 0.58), round(W * 0.42), round(H * 0.34 * scale))
-    elif family == "process_horizontal":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.06), round(W * 0.40), round(H * 0.10))
-        slot_coords["step_1"] = (round(W * 0.04), round(H * 0.24), round(W * 0.28), round(H * 0.50 * scale))
-        slot_coords["step_2"] = (round(W * 0.36), round(H * 0.24), round(W * 0.28), round(H * 0.50 * scale))
-        slot_coords["step_3"] = (round(W * 0.68), round(H * 0.24), round(W * 0.28), round(H * 0.50 * scale))
-    elif family == "process_vertical":
-        slot_coords["title"] = (round(W * 0.06), round(H * 0.04), round(W * 0.88), round(H * 0.10))
-        slot_coords["step_1"] = (round(W * 0.06), round(H * 0.18), round(W * 0.88), round(H * 0.20 * scale))
-        slot_coords["step_2"] = (round(W * 0.06), round(H * 0.42), round(W * 0.88), round(H * 0.20 * scale))
-        slot_coords["step_3"] = (round(W * 0.06), round(H * 0.66), round(W * 0.88), round(H * 0.20 * scale))
-    elif family == "hero_with_supporting_cards":
-        slot_coords["title"] = (round(W * 0.20), round(H * 0.04), round(W * 0.60), round(H * 0.10))
-        slot_coords["hero_center"] = (round(W * 0.15), round(H * 0.18), round(W * 0.70), round(H * 0.36))
-        slot_coords["card_1"] = (round(W * 0.06), round(H * 0.60), round(W * 0.26), round(H * 0.30 * scale))
-        slot_coords["card_2"] = (round(W * 0.37), round(H * 0.60), round(W * 0.26), round(H * 0.30 * scale))
-        slot_coords["card_3"] = (round(W * 0.68), round(H * 0.60), round(W * 0.26), round(H * 0.30 * scale))
+    slot_specs = build_layout_slot_specs(family, image_width, image_height, scale)
+    slot_coords = {name: tuple(spec["box"]) for name, spec in slot_specs.items()}
 
     return {
         "family": family,
         "template": template,
         "slot_coords": slot_coords,
+        "slot_kinds": {name: spec["kind"] for name, spec in slot_specs.items()},
     }
 
 
@@ -190,12 +152,16 @@ def build_text_boxes_from_slots(
 ) -> list[dict]:
     family = slots.get("family", "split_left_right")
     coords = slots.get("slot_coords", {})
-    template = slots.get("template", {})
+    coords = {
+        name: tuple(int(round(float(value))) for value in box)
+        for name, box in coords.items()
+        if isinstance(box, (list, tuple)) and len(box) == 4
+    }
+    slot_kinds = slots.get("slot_kinds", {})
     body_lines = [line for line in body.split("\n") if line.strip()]
 
     boxes: list[dict] = []
 
-    title_anchor = template.get("title", {}).get("anchor", "top_left")
     if "title" in coords:
         l, t, w, h = coords["title"]
         boxes.append({
@@ -204,12 +170,13 @@ def build_text_boxes_from_slots(
             "font_size": 34, "bold": True, "color": "FFFFFF",
         })
 
-    content_blocks = template.get("content_blocks", [])
+    content_blocks = [name for name in coords if name != "title"]
     text_block_indices: list[int] = []
+    visual_kinds = {"visual", "portrait", "product", "map", "pie", "chart-panel"}
     for i, block_name in enumerate(content_blocks):
         if block_name in coords:
             l, t, w, h = coords[block_name]
-            is_visual = any(kw in block_name for kw in ("visual", "hero", "card"))
+            is_visual = slot_kinds.get(block_name) in visual_kinds
             if is_visual:
                 boxes.append({
                     "role": "slot", "text": "",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ JOB_UPDATE_COLUMNS = {
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS jobs (
@@ -61,7 +62,7 @@ def init_db(db_path: Path) -> None:
 
 
 def create_job(db_path: Path, payload: dict[str, Any]) -> None:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(
             """
             INSERT INTO jobs (
@@ -111,12 +112,12 @@ def update_job(db_path: Path, job_id: str, touch_updated_at: bool = True, **fiel
         columns.append("updated_at = ?")
         values.append(current_timestamp())
     values.append(job_id)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(f"UPDATE jobs SET {', '.join(columns)} WHERE job_id = ?", values)
 
 
 def get_job(db_path: Path, job_id: str) -> dict[str, Any] | None:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
     if not row:
@@ -125,7 +126,7 @@ def get_job(db_path: Path, job_id: str) -> dict[str, Any] | None:
 
 
 def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         if limit is None:
             rows = conn.execute(
@@ -139,8 +140,25 @@ def list_jobs(db_path: Path, limit: int | None = 100) -> list[dict[str, Any]]:
     return [_row_to_job(dict(row)) for row in rows]
 
 
+def reconcile_job_directories(db_path: Path, output_root: Path) -> int:
+    """把失效的历史任务目录迁移到当前输出目录中的同名任务。"""
+    resolved_output_root = Path(output_root).resolve()
+    updates: list[tuple[str, str]] = []
+    with closing(sqlite3.connect(db_path)) as conn, conn:
+        rows = conn.execute("SELECT job_id, job_dir FROM jobs").fetchall()
+        for job_id, raw_job_dir in rows:
+            current_dir = Path(str(raw_job_dir or ""))
+            target_dir = resolved_output_root / str(job_id)
+            if current_dir.exists() or not target_dir.is_dir():
+                continue
+            updates.append((str(target_dir), str(job_id)))
+        if updates:
+            conn.executemany("UPDATE jobs SET job_dir = ? WHERE job_id = ?", updates)
+    return len(updates)
+
+
 def delete_job(db_path: Path, job_id: str) -> None:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
 
 

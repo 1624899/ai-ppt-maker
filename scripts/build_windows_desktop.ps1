@@ -103,6 +103,7 @@ try {
       "--workpath", $BuildRoot,
       "--collect-all", "pptx",
       "--collect-all", "cv2"
+      "--collect-all", "certifi"
     )
     foreach ($item in $addData) {
       $args += @("--add-data", $item)

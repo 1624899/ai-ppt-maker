@@ -61,6 +61,10 @@ const Header = ({
       }
       return;
     }
+    if (taskAction.type === 'confirm-reference') {
+      runAction(taskAction.action, undefined, { key: 'confirm-reference' });
+      return;
+    }
 
     const data = await runAction(taskAction.action, undefined, { key: taskAction.type || taskAction.action });
     if (data) {

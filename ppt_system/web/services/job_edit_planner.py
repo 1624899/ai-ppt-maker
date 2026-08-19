@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from ppt_system.generation.design_grammar import normalize_layout_family_name, validate_layout_family
+from ppt_system.generation.design_grammar import format_layout_family_for_prompt, normalize_layout_family_name, validate_layout_family
 from ppt_system.generation.generation_prompts import build_elements_prompt, build_reference_prompt_by_mode
 from ppt_system.generation.page_richness import normalize_page_richness_level
 from ppt_system.generation.style_runtime import apply_text_theme
@@ -311,6 +311,10 @@ def semantic_slots_for_family(layout_family: str) -> list[str]:
         return ["标题区", "左侧对比项", "右侧对比项", "对比维度"]
     if layout_family == "hero_with_supporting_cards":
         return ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"]
+    if layout_family == "split_left_right":
+        return ["左侧内容区", "右侧内容区"]
+    if validate_layout_family(layout_family):
+        return ["标题区", f"{format_layout_family_for_prompt(layout_family)}主体区"]
     return ["左侧内容区", "右侧内容区"]
 
 

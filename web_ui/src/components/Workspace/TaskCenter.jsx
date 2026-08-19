@@ -180,6 +180,7 @@ const TaskCenter = ({
     const pinned = Boolean(String(job.pinned_at || '').trim());
     const styleReferenceImages = getStyleReferenceImages(job);
     const hasStyleReferenceImages = styleReferenceImages.length > 0;
+    const styleNotes = String(job.style_notes || '').trim();
     return (
       <StaggerItem
         key={job.job_id}
@@ -224,6 +225,12 @@ const TaskCenter = ({
             }
             <span className={uiClassName("task-card__meta")}>
               <TaskMetaInfo job={job} />
+              {job.has_user_edits &&
+              <span className={uiClassName("task-card__edited-hint")} title={job.last_edit_summary || '任务包含已保存的编辑'}>
+                  <Edit3 size={13} />
+                  <small>已编辑{Number(job.edit_count || 0) > 1 ? ` ${job.edit_count}` : ''}</small>
+                </span>
+              }
               {hasStyleReferenceImages &&
               <span className={uiClassName("task-card__reference-hint")} title={`有 ${styleReferenceImages.length} 张参考风格图`}>
                   <Images size={13} />
@@ -231,6 +238,9 @@ const TaskCenter = ({
                 </span>
               }
             </span>
+            {styleNotes &&
+            <small className={uiClassName("task-card__style-notes")} title={styleNotes}>风格：{styleNotes}</small>
+            }
           </span>
         </button>
 

@@ -18,7 +18,8 @@ from ppt_system.export.export_layer_mode import count_output_slides
 from ppt_system.export.export_step_checkpoint import build_file_content_signature, stable_hash_payload
 
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
+EXPORT_ENGINE_VERSION = "native-blueprint-v1"
 
 
 def load_cached_editable_delivery(
@@ -102,6 +103,7 @@ def build_editable_delivery_cache_signature(
     resolved_layer_mode = normalize_editable_delivery_layer_mode(layer_mode)
     return {
         "schema_version": CACHE_SCHEMA_VERSION,
+        "export_engine_version": EXPORT_ENGINE_VERSION,
         "bundle": build_file_content_signature(bundle_path),
         "layer_mode": resolved_layer_mode,
         "output_pptx": str(output_pptx.resolve()),

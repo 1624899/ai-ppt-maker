@@ -60,7 +60,10 @@ from ppt_system.web.services.job_state_transitions import (
 from ppt_system.web.services.plan_version_store import get_active_plan_version, save_plan_version
 from ppt_system.web.services.workflow_policy import (
     AWAITING_PLAN_CONFIRMATION_STATUS,
+    AWAITING_REFERENCE_CONFIRMATION_STATUS,
     mark_awaiting_plan_confirmation,
+    mark_awaiting_reference_confirmation,
+    should_pause_after_reference,
     should_pause_after_planning,
 )
 
@@ -385,7 +388,8 @@ def run_job_pipeline(
             "elements_generation",
             output_ready=has_expected_outputs(element_results, len(pages)),
         )
-        should_generate_elements = should_continue_after_stage(job_target, "reference_generation")
+        pause_for_reference_review = should_pause_after_reference(state)
+        should_generate_elements = should_continue_after_stage(job_target, "reference_generation") and not pause_for_reference_review
         if should_generate_elements:
             if should_execute_elements_generation:
                 update_stage(
@@ -540,6 +544,12 @@ def run_job_pipeline(
             data={"pages": references},
         )
 
+        if pause_for_reference_review:
+            append_stage_log(job_dir, job_id, "reference_generation", "原稿图已全部生成，等待用户确认后继续")
+            mutate_job_state(job_dir, job_id, mark_awaiting_reference_confirmation)
+            update_job_record(_jobs_db_path(), job_id, status=AWAITING_REFERENCE_CONFIRMATION_STATUS, current_stage="reference_generation", stop_requested=False)
+            return
+
         if not should_continue_after_stage(job_target, "reference_generation"):
             job_result: dict[str, Any] = normalize_job_result_payload({})
             preview_pptx_path = job_dir / "result.reference_only.pptx"
@@ -644,6 +654,17 @@ def run_job_pipeline(
 
         def export_page_logger(page_no: int, message: str) -> None:
             append_stage_log(job_dir, job_id, "ppt_export", f"第 {page_no} 页：{message}")
+            summary = ""
+            if "准备分割元素" in message or "准备分割" in message:
+                summary = "正在准备可编辑元素资产"
+            elif "开始直出首轮文字脚本" in message:
+                summary = "正在请求 AI 生成文字布局"
+            elif "预览 PPT" in message:
+                summary = "正在生成并检查 PPT 预览"
+            elif "Office" in message:
+                summary = "正在校验 Office 导出效果"
+            if summary:
+                update_stage(job_dir, job_id, "ppt_export", status="running", summary=summary, current_stage="ppt_export")
 
         def export_stop_checker() -> bool:
             if should_stop_job(job_id):

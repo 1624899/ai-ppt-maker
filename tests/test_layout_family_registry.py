@@ -19,6 +19,16 @@ from ppt_system.generation.text_layout import (
 
 
 class LayoutFamilyRegistryTests(unittest.TestCase):
+    def test_registry_contains_original_and_new_layout_families(self) -> None:
+        self.assertEqual(len(DEFAULT_LAYOUT_FAMILIES), 68)
+        self.assertEqual(len(ALLOWED_LAYOUT_FAMILIES), 68)
+        self.assertIn("floor_plan", ALLOWED_LAYOUT_FAMILIES)
+        self.assertIn("visual_metaphor", ALLOWED_LAYOUT_FAMILIES)
+
+    def test_all_chinese_labels_normalize_to_their_machine_values(self) -> None:
+        for family, label in LAYOUT_FAMILY_LABELS.items():
+            self.assertEqual(normalize_layout_family_name(label), family)
+
     def test_layout_family_options_cover_registered_families(self) -> None:
         options = build_layout_family_options()
 

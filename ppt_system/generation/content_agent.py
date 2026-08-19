@@ -29,6 +29,7 @@ from ppt_system.generation.page_richness import (
     normalize_page_richness_level,
     resolve_page_richness_map,
 )
+from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_family
 from ppt_system.generation.planner import infer_style_type
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_planning_guidance,
@@ -385,7 +386,8 @@ def build_planning_prompt(
 - layout_family 是封闭枚举，只能逐字填写以下英文机器值：{layout_family_catalog}
 - 可用 element_primitives：{'、'.join(element_primitives)}
 - 禁止自造、翻译、拼接或添加后缀，例如不得输出 layout_1、custom_layout、process_horizontal_2；没有完全匹配项时，从上述枚举中选择语义最接近的一项。
-- 先判断本页信息关系，再选择版式：并列信息用宫格卡片，先后关系用时间线或流程，对照关系用双轴对比，中心与分支关系用中心辐射，双区内容用左右分栏或上下分区，主观点加支撑信息用主视觉卡片。
+- 先判断本页信息关系，再选择最贴切的专用版式；优先使用能够直接表达语义的版式，例如转化用漏斗图、排期用甘特图、跨角色流程用泳道图、层级关系用组织架构或金字塔、指标分析用对应图表、根因分析用鱼骨图，不要把所有多要点页面都退化成宫格卡片。
+- 同时考虑 page_richness：低密度优先主视觉、大数字、人物或产品展示；高密度优先仪表盘、数据表格、模块组合或清单；时间、流程、对比、循环等明确关系优先级高于密度偏好。
 - layout_slots 必须与所选 layout_family 的结构一致，只写中文语义分区，不写坐标、英文槽位名或另一种版式的结构。
 
 {build_content_planning_constraints(len(source_anchors), page_count)}
@@ -482,18 +484,29 @@ def normalize_content_plan(
         if bullets:
             fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
-        layout_family = str(raw.get("layout_family", "")).strip()
-        if not layout_family:
-            layout_family = _infer_layout_family(title, summary, bullets, index)
-        else:
-            layout_family = normalize_layout_family_name(layout_family)
-            if not validate_layout_family(layout_family):
-                layout_family = _infer_layout_family(title, summary, bullets, index)
+        layout_family = choose_layout_family(
+            str(raw.get("layout_family", "")).strip(),
+            title,
+            summary,
+            bullets,
+            page_richness=page_richness,
+            candidate_families=available_families,
+            previous_family=used_families[-1] if used_families else "",
+            page_index=index,
+            include_cover_page=include_cover_page,
+        )
         if index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
-            for candidate in available_families:
-                if candidate != used_families[-1]:
-                    layout_family = candidate
-                    break
+            alternatives = [candidate for candidate in available_families if candidate != used_families[-1]]
+            layout_family = recommend_layout_family(
+                title,
+                summary,
+                bullets,
+                page_richness=page_richness,
+                candidate_families=alternatives,
+                previous_family=used_families[-1],
+                page_index=index,
+                include_cover_page=include_cover_page,
+            )
         used_families.append(layout_family)
 
         layout_slots = raw.get("layout_slots", [])
@@ -538,7 +551,7 @@ def normalize_content_plan(
             body = "\n".join(f"• {item}" for item in body_sentences[:5])
             if bullets:
                 body = _format_body_bullets(bullets)
-            slots = build_layout_slots_by_family(layout_family, image_width, image_height)
+            slots = build_layout_slots_by_family(layout_family, image_width, image_height, page_richness)
             rebuilt_texts = build_text_boxes_from_slots(slots, title, body, image_width, image_height)
             if rebuilt_texts and len(rebuilt_texts) > 1:
                 texts = rebuilt_texts
@@ -591,18 +604,6 @@ def normalize_content_plan(
     }
 
 
-_CONTENT_FAMILY_MAP: list[tuple[list[str], str]] = [
-    (["趋势", "时间", "发展", "历史", "演变", "阶段"], "timeline_horizontal"),
-    (["对比", "比较", "竞争", "对手", "优劣"], "compare_dual_axis"),
-    (["流程", "步骤", "阶段", "执行", "落地"], "process_horizontal"),
-    (["架构", "模块", "组件", "系统", "中心"], "hub_and_spoke"),
-    (["核心", "要点", "重点", "亮点"], "hero_with_supporting_cards"),
-    (["左右", "平衡", "两端", "两侧"], "split_left_right"),
-    (["上下", "层级", "分层", "垂直"], "split_top_bottom"),
-    (["网格", "并列", "罗列", "清单", "多维"], "grid_n_x_m"),
-]
-
-
 def _normalize_raw_bullets(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -621,16 +622,6 @@ def _normalize_source_anchor_ids(value: Any, source_anchors: list[dict[str, Any]
     if not available_ids:
         return candidates
     return [item for item in candidates if item in available_ids]
-
-
-def _infer_layout_family(title: str, summary: str, bullets: list[str], index: int) -> str:
-    combined = f"{title} {summary} {' '.join(bullets)}"
-    for keywords, family in _CONTENT_FAMILY_MAP:
-        for kw in keywords:
-            if kw in combined:
-                return family
-    rotation = DEFAULT_LAYOUT_FAMILIES[index % len(DEFAULT_LAYOUT_FAMILIES)]
-    return rotation
 
 
 def _sync_text_boxes_with_page_content(texts: list[dict[str, Any]], title: str, body: str) -> list[dict[str, Any]]:
@@ -671,4 +662,6 @@ def _default_layout_slots(layout_family: str, title: str, bullets: list[str]) ->
         return ["标题区", "左侧对比项", "右侧对比项", "对比维度"]
     if layout_family in ("hero_with_supporting_cards",):
         return ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"]
+    if validate_layout_family(layout_family):
+        return ["标题区", f"{format_layout_family_for_prompt(layout_family)}主体区"]
     return ["标题区", "内容区"]
