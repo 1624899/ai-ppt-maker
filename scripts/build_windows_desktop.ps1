@@ -102,7 +102,7 @@ try {
       "--distpath", $DistRoot,
       "--workpath", $BuildRoot,
       "--collect-all", "pptx",
-      "--collect-all", "cv2"
+      "--collect-all", "cv2",
       "--collect-all", "certifi"
     )
     foreach ($item in $addData) {

@@ -29,4 +29,11 @@ export const getJobProgress = (job) => {
   };
 };
 
-export const isJobActive = (job) => ['queued', 'pending', 'running', 'stopping'].includes(String(job?.status || '').trim());
+export const isJobActive = (job) => [
+  'queued',
+  'pending',
+  'running',
+  'stopping',
+  'awaiting_plan_confirmation',
+  'awaiting_reference_confirmation'
+].includes(String(job?.status || '').trim());
