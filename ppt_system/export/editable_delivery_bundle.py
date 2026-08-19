@@ -12,6 +12,7 @@ from ppt_system.export.delivery_options import (
 )
 from ppt_system.export.export_layer_mode import count_output_slides
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
+from ppt_system.generation.design_grammar import normalize_layout_family_name
 from ppt_system.generation.layout_blueprint_catalog import build_blueprint
 
 
@@ -110,7 +111,7 @@ def _ensure_native_blueprints(project: dict[str, Any]) -> None:
     for page in project.get("pages", []):
         if not isinstance(page, dict) or page.get("native_blueprint"):
             continue
-        family = str(page.get("layout_family") or "split_left_right")
+        family = normalize_layout_family_name(str(page.get("layout_family") or ""))
         page["native_blueprint"] = [
             {
                 **shape,

@@ -10,6 +10,7 @@ from pptx.util import Inches
 
 from ppt_system.export.editable_charts import add_editable_chart
 from ppt_system.export.native_shapes import add_native_shapes
+from ppt_system.export.export_pipeline import _scale_native_blueprint
 from ppt_system.export.text_script_runtime import build_project_script_source
 
 
@@ -33,6 +34,12 @@ class NativeShapesTests(unittest.TestCase):
         self.assertFalse(slide.shapes[0].shape_type is None)
         self.assertTrue(slide.shapes[1].has_chart)
 
+    def test_unknown_layout_is_normalized_before_blueprint_export(self):
+        blueprint = _scale_native_blueprint("historical-custom-layout", 2000, 1125)
+
+        self.assertTrue(blueprint)
+        self.assertTrue(all(item["width"] > 0 and item["height"] > 0 for item in blueprint))
+
     def test_generated_script_uses_python_boolean_literals(self):
         project = {
             "image_width": 2000,
@@ -51,6 +58,7 @@ class NativeShapesTests(unittest.TestCase):
         self.assertIn("'locked': True", source)
         self.assertIn("'show_legend': False", source)
         self.assertIn("page_texts = PAGE_TEXTS[1]", source)
+        self.assertIn("add_native_shapes", source)
         self.assertNotIn('page_texts = PAGE_TEXTS["1"]', source)
 
 

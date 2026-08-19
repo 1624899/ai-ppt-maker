@@ -192,12 +192,11 @@ def build_text_boxes_from_slots(
         if block_name not in coords:
             continue
         l, t, w, h = coords[block_name]
-        if family in ("hub_and_spoke", "grid_n_x_m", "process_horizontal", "process_vertical", "compare_dual_axis"):
-            chunk_size = max(1, len(text_content_parts) // max(1, len(text_block_indices)))
+        if len(text_block_indices) > 1:
+            chunk_size = max(1, len(text_content_parts) // len(text_block_indices))
             start = idx_pos * chunk_size
             end = start + chunk_size if idx_pos < len(text_block_indices) - 1 else len(text_content_parts)
-            segment = text_content_parts[start:end]
-            text = "\n".join(segment)
+            text = "\n".join(text_content_parts[start:end])
         else:
             text = "\n".join(text_content_parts)
         boxes.append({

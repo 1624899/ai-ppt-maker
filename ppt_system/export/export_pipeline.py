@@ -26,6 +26,7 @@ from ppt_system.generation.text_layout import (
 )
 from ppt_system.export.text_script_runtime import execute_generated_text_script
 from ppt_system.export.editable_charts import normalize_chart_data
+from ppt_system.generation.design_grammar import normalize_layout_family_name
 from ppt_system.generation.layout_blueprint_catalog import build_blueprint
 
 
@@ -105,8 +106,9 @@ def resolve_job_artifact_path(job_dir: Path, image_ref: str) -> Path:
 
 
 def _scale_native_blueprint(layout_family: str, image_width: int, image_height: int) -> list[dict[str, Any]]:
+    normalized_family = normalize_layout_family_name(layout_family)
     scaled = []
-    for item in build_blueprint(layout_family):
+    for item in build_blueprint(normalized_family):
         shape = dict(item)
         shape["left"] = round(float(item["left"]) / 1000 * image_width)
         shape["top"] = round(float(item["top"]) / 562 * image_height)
@@ -163,7 +165,7 @@ def build_project_from_web_job(
             raise FileNotFoundError(f"第 {page_no} 页原稿图不存在：{reference_path}")
 
         rebuilt_texts = rebuild_page_texts(raw_page, image_width, image_height, style_guide)
-        layout_family = str(raw_page.get("layout_family", "")) or "split_left_right"
+        layout_family = normalize_layout_family_name(str(raw_page.get("layout_family") or ""))
         project_pages.append(
             {
                 "page_no": page_no,
