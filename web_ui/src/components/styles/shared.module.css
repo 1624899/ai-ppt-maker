@@ -7,7 +7,7 @@
 
 .workspace-shell {
   display: grid;
-  grid-template-columns: minmax(250px, 0.78fr) minmax(480px, 1.85fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(218px, 0.62fr) minmax(560px, 2.35fr) minmax(282px, 0.78fr);
   gap: clamp(10px, 0.8vw, 16px);
   align-items: stretch;
   min-height: 0;

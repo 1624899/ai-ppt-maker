@@ -1,4 +1,7 @@
 const RULES = [
+  { value: 'full_screen_visual', terms: ['愿景', '口号', '发布', '主题', '开场'], reason: '页面承担开场或章节定调作用，适合用大面积视觉建立重点。' },
+  { value: 'big_number', terms: ['核心指标', '关键数字', '增长率', '达成率', '总额'], reason: '页面包含明确的核心数字，适合放大结论并减少干扰信息。' },
+  { value: 'dashboard', terms: ['经营看板', '监控', '多项指标', '综合指标'], reason: '页面需要同时呈现多个指标，仪表盘能保持信息层级清晰。' },
   { value: 'timeline_vertical', terms: ['时间', '阶段', '历程', '年度', '月份', '季度', '发展'] },
   { value: 'process_horizontal', terms: ['流程', '步骤', '方法', '实施', '执行'] },
   { value: 'compare_dual_axis', terms: ['对比', '比较', '差异', '优劣', '方案一', '方案二'] },
@@ -18,7 +21,7 @@ export const recommendPageLayout = (page, options = []) => {
   return {
     value,
     reason: matched
-      ? `页面内容命中“${matched.terms.find((term) => content.includes(term))}”语义，推荐使用${option?.label || value}。`
-      : `根据当前要点数量和内容密度，推荐使用${option?.label || value}。`,
+      ? (matched.reason || `页面内容包含“${matched.terms.find((term) => content.includes(term))}”，${option?.label || value}更适合表达这类信息。`)
+      : `当前页面有 ${page?.bullets?.length || 0} 个要点，内容密度${page?.bullets?.length >= 5 ? '较高' : '适中'}，${option?.label || value}能保持信息层级清晰。`,
   };
 };

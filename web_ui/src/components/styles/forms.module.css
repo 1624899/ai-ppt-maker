@@ -285,6 +285,63 @@
   min-width: 132px;
 }
 
+.theme-color-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-color-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.theme-color-option i {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 50%;
+}
+
+.theme-color-option.is-selected {
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(31, 94, 255, 0.12);
+}
+
+.advanced-settings {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.advanced-settings summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.advanced-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-settings__body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
 .upload-drop {
   position: relative;
   display: grid;

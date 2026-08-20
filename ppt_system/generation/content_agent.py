@@ -66,7 +66,10 @@ def build_content_plan(
     )
     generation_options["page_richness_map"] = page_richness_map
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
+    theme_color = str(generation_options.get("theme_color", "auto") or "auto").strip()
     style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
+    if theme_color and theme_color != "auto":
+        style_guide.setdefault("style_core", {})["user_theme_color"] = theme_color
     source_anchors = build_source_content_anchors(content, page_count)
     messages = [
         {
@@ -370,6 +373,7 @@ def build_planning_prompt(
 - 首页策略：{cover_policy}
 - 原稿图数量：{style_image_count}
 - 原稿图约束：{build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
+- 主题色偏好：{theme_color if theme_color and theme_color != "auto" else "未指定，请根据内容和参考图自动选择"}
 - 后续原稿图阶段会使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里的 image_prompt 只写本页独有视觉重点，可为空。
 
 内容丰富度：

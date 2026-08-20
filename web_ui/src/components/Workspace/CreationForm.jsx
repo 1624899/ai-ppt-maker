@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useState } from 'react';
-import { FileImage, FileText, WandSparkles } from 'lucide-react';
+import { ChevronDown, FileImage, FileText, WandSparkles } from 'lucide-react';
 import { useConfig } from '../../hooks/useConfig';
 import { DEFAULT_GENERATION_CONFIG } from '../../utils/configDefaults';
 import { resolveIncludeCoverPage } from '../../utils/generationOptions';
@@ -25,6 +25,17 @@ const SOURCE_MODES = {
   PROMPT: 'prompt',
   EXTERNAL_REFERENCE: 'external_reference'
 };
+
+const THEME_COLOR_OPTIONS = [
+  { value: 'auto', label: 'AI 自动选择', color: '#6b7280' },
+  { value: 'blue', label: '蓝色', color: '#2563eb' },
+  { value: 'teal', label: '青绿色', color: '#0f766e' },
+  { value: 'green', label: '绿色', color: '#15803d' },
+  { value: 'orange', label: '橙色', color: '#ea580c' },
+  { value: 'red', label: '红色', color: '#dc2626' },
+  { value: 'purple', label: '紫色', color: '#7c3aed' },
+  { value: 'black', label: '黑金', color: '#18181b' }
+];
 
 const RESIZE_MODE_OPTIONS = [
 { value: 'stretch', label: '拉伸填满' },
@@ -76,6 +87,7 @@ const createInitialValues = (config, currentJob, workflowMode) => {
     referenceStyleAdherence: String(
       generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced'
     ),
+    themeColor: String(generationOptions.theme_color || config.default_theme_color || 'auto'),
     pageRichnessList: Array.from({ length: pageCount }, (_, index) => String(richnessMap[String(index + 1)] || '')),
     externalReferenceResizeMode: 'stretch',
     externalReferenceCreateOnly: false
@@ -158,6 +170,7 @@ const CreationFormFields = ({
       formData.append('include_cover_page', String(form.includeCoverPage));
       formData.append('page_richness_default', form.pageRichnessDefault);
       formData.append('reference_style_adherence', form.referenceStyleAdherence);
+      formData.append('theme_color', form.themeColor);
       formData.append('page_richness_map', JSON.stringify(buildPageRichnessMap(form.pageRichnessList)));
       if (currentJob?.job_id && styleFiles.length === 0) {
         formData.append('reuse_style_refs_from_job_id', currentJob.job_id);
@@ -229,17 +242,6 @@ const CreationFormFields = ({
             </button>
           </div>
         </div>
-
-        {!isExternalReferenceMode &&
-        <div className={uiClassName("field field--full")}>
-            <span>生成工作流</span>
-            <WorkflowModeSwitch
-            value={form.workflowMode}
-            onChange={(value) => updateForm('workflowMode', value)}
-            disabled={submitting} />
-          
-          </div>
-        }
 
         {isExternalReferenceMode ?
         <label className={uiClassName(compact ? 'field field--wide' : 'field field--full')}>
@@ -332,6 +334,20 @@ const CreationFormFields = ({
           </select>
         </label>
 
+        {!isExternalReferenceMode &&
+        <div className={uiClassName("field field--full")}>
+          <span>主题色（可选）</span>
+          <div className={uiClassName("theme-color-options")} role="radiogroup" aria-label="主题色">
+            {THEME_COLOR_OPTIONS.map((option) =>
+              <button key={option.value} type="button" className={uiClassName(`theme-color-option${form.themeColor === option.value ? ' is-selected' : ''}`)} onClick={() => updateForm('themeColor', option.value)} disabled={submitting} title={option.label} aria-label={option.label} aria-pressed={form.themeColor === option.value}>
+                <i style={{ backgroundColor: option.color }} />
+                <span>{option.label}</span>
+              </button>
+            )}
+          </div>
+          <small className={uiClassName("field__hint")}>不选择时，AI 会根据内容和参考图自动确定配色。</small>
+        </div>}
+
         {isExternalReferenceMode ?
         <>
             <label className={uiClassName("field")}>
@@ -357,6 +373,9 @@ const CreationFormFields = ({
           </> :
 
         <>
+          <details className={uiClassName("advanced-settings field--full")}>
+            <summary><ChevronDown size={16} />高级设置</summary>
+            <div className={uiClassName("advanced-settings__body")}>
             <label className={uiClassName("checkbox-row checkbox-row--framed field--full")}>
               <input
               type="checkbox"
@@ -367,12 +386,12 @@ const CreationFormFields = ({
             </label>
 
             <label className={uiClassName("field field--full")}>
-              <span>风格补充</span>
+              <span>风格补充（可选）</span>
               <input
               type="text"
               value={form.styleNotes}
               onChange={(event) => updateForm('styleNotes', event.target.value)}
-              placeholder="例如：蓝白科技风、少文字、多流程图、商务汇报感..." />
+              placeholder="例如：希望更有科技感、适合客户汇报、少文字多图表..." />
             
             </label>
 
@@ -409,7 +428,7 @@ const CreationFormFields = ({
             </div>
 
             <label className={uiClassName("field field--full")}>
-              <span>参考风格图约束强度</span>
+              <span>参考图约束强度</span>
               <select
               value={form.referenceStyleAdherence}
               onChange={(event) => updateForm('referenceStyleAdherence', event.target.value)}>
@@ -421,17 +440,23 @@ const CreationFormFields = ({
             </label>
 
             <div className={uiClassName("field field--full")}>
-              <span>参考风格图</span>
+              <span>上传参考图（可选）</span>
               <ImageUploadPreviewList
               files={styleFiles}
               onChange={setStyleFiles}
               disabled={submitting}
-              emptyTitle="上传参考风格图，可选"
-              emptyHint={currentJob?.job_id ? '未上传新图时，会复用当前任务参考风格图。' : '支持多张图片一起约束风格。'}
+              emptyTitle="上传参考图（可选）"
+              emptyHint={currentJob?.job_id ? '未上传新图时，会复用当前任务参考图。AI 会提取其中的色彩、排版和视觉节奏。' : 'AI 会提取其中的色彩、排版和视觉节奏。支持多张图片一起参考。'}
               addLabel="继续添加"
               itemLabel="参考风格图" />
             
             </div>
+            <div className={uiClassName("field field--full")}>
+              <span>生成工作流</span>
+              <WorkflowModeSwitch value={form.workflowMode} onChange={(value) => updateForm('workflowMode', value)} disabled={submitting} />
+            </div>
+            </div>
+          </details>
           </>
         }
 

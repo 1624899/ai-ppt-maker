@@ -124,6 +124,7 @@ def api_create_job():
         "page_richness_default": generation_options["page_richness_default"],
         "page_richness_map": generation_options["page_richness_map"],
         "reference_style_adherence": generation_options["reference_style_adherence"],
+        "theme_color": generation_options["theme_color"],
         "style_reference_images": style_reference_images,
     }
     create_job_record(

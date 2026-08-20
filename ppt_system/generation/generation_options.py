@@ -42,6 +42,7 @@ def default_generation_options(config: Mapping[str, Any] | None = None) -> dict[
             config.get("default_reference_style_adherence"),
             "balanced",
         ),
+        "theme_color": str(config.get("default_theme_color") or "auto").strip().lower() or "auto",
         "page_richness_map": {},
     }
 
@@ -82,4 +83,5 @@ def resolve_generation_options(
             payload.get("reference_style_adherence"),
             str(defaults["reference_style_adherence"]),
         ),
+        "theme_color": str(payload.get("theme_color") or defaults["theme_color"]).strip().lower() or "auto",
     }
