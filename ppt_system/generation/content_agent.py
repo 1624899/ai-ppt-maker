@@ -29,7 +29,8 @@ from ppt_system.generation.page_richness import (
     normalize_page_richness_level,
     resolve_page_richness_map,
 )
-from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_family
+from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_candidates, recommend_layout_family
+from ppt_system.generation.deck_layout_planner import plan_deck_layouts
 from ppt_system.generation.planner import infer_style_type
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_planning_guidance,
@@ -488,6 +489,15 @@ def normalize_content_plan(
         if bullets:
             fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
+        layout_candidates = recommend_layout_candidates(
+            title,
+            summary,
+            bullets,
+            page_richness=page_richness,
+            candidate_families=available_families,
+            page_index=index,
+            include_cover_page=include_cover_page,
+        )
         layout_family = choose_layout_family(
             str(raw.get("layout_family", "")).strip(),
             title,
@@ -511,6 +521,12 @@ def normalize_content_plan(
                 page_index=index,
                 include_cover_page=include_cover_page,
             )
+        # 用已选页面作为上下文进行贪心编排，避免相邻页面结构重复。
+        if used_families:
+            previous_candidate = [{"value": used_families[-1], "score": 0, "reason": {}}]
+            planned = plan_deck_layouts([previous_candidate, layout_candidates])
+            if len(planned) == 2 and planned[1]:
+                layout_family = planned[1]["value"]
         used_families.append(layout_family)
 
         layout_slots = raw.get("layout_slots", [])
@@ -567,8 +583,10 @@ def normalize_content_plan(
             "title": title,
             "summary": summary,
             "bullets": bullets,
-            "layout_intent": str(raw.get("layout_intent", "")).strip(),
+            "layout_intent": layout_candidates[0]["layout_intent"] if layout_candidates else str(raw.get("layout_intent", "")).strip(),
             "layout_family": layout_family,
+            "layout_candidates": layout_candidates,
+            "layout_recommendation": next((item for item in layout_candidates if item["value"] == layout_family), layout_candidates[0] if layout_candidates else {}),
             "layout_slots": layout_slots,
             "element_plan": element_plan,
             "difference_from_previous": difference_from_previous,

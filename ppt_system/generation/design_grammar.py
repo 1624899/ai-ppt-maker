@@ -160,6 +160,13 @@ def get_layout_family_label(name: str) -> str:
 
 
 def build_layout_family_options(families: list[str] | None = None) -> list[dict[str, str]]:
+    # 延迟导入避免版式画像与语法校验在模块初始化时形成循环依赖。
+    from ppt_system.generation.layout_profiles import build_layout_profile_options
+
+    return build_layout_profile_options(families)
+
+
+def _build_legacy_layout_family_options(families: list[str] | None = None) -> list[dict[str, str]]:
     source = families if families is not None else DEFAULT_LAYOUT_FAMILIES
     options: list[dict[str, str]] = []
     seen: set[str] = set()
