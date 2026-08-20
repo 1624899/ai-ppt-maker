@@ -80,9 +80,9 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
     <div className={uiClassName('layout-picker__reason')}>
       <strong>AI 推荐理由</strong>
       <span>{buildRecommendationReason(selectedOption, page)}</span>
-      {page?.layout_report?.diversity_score != null && <small>整套结构多样性：{page.layout_report.diversity_score} 分</small>}
-      {page?.layout_report?.issues?.length > 0 && <small>{page.layout_report.issues.join('；')}</small>}
-      {page?.layout_report?.suggestions?.length > 0 && <small>改进建议：{page.layout_report.suggestions.join('；')}</small>}
+      {page?.layout_report?.enabled && page.layout_report.diversity_score != null && <small>整套结构多样性：{page.layout_report.diversity_score} 分</small>}
+      {page?.layout_report?.enabled && page.layout_report.issues?.length > 0 && <small>{page.layout_report.issues.join('；')}</small>}
+      {page?.layout_report?.enabled && page.layout_report.suggestions?.length > 0 && <small>改进建议：{page.layout_report.suggestions.join('；')}</small>}
     </div>
   </div>;
 };

@@ -145,10 +145,10 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
             {pending === PLAN_SAVE_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <Save size={16} />}
             {pending === PLAN_SAVE_PENDING_KEY ? '保存中...' : '保存修改'}
           </button>
-          <button type="button" className={uiClassName("btn btn-secondary")} onClick={applyLayoutOptimization} disabled={pending !== '' || loading || plan.pages.length < 2}>
+          {plan.pages.length >= 2 && <button type="button" className={uiClassName("btn btn-secondary")} onClick={applyLayoutOptimization} disabled={pending !== '' || loading}>
             {pending === PLAN_OPTIMIZE_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <WandSparkles size={16} />}
             {pending === PLAN_OPTIMIZE_PENDING_KEY ? '优化中...' : '应用结构优化'}
-          </button>
+          </button>}
           <button type="button" className={uiClassName("btn btn-primary")} onClick={confirmPlan} disabled={pending !== '' || loading || plan.pages.length === 0}>
             {pending === PLAN_CONFIRM_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <CheckCircle2 size={16} />}
             {pending === PLAN_CONFIRM_PENDING_KEY ? '确认中...' : dirty ? '用当前修改继续生成' : '确认规划并继续生成'}

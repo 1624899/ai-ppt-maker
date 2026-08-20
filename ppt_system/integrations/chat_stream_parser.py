@@ -83,7 +83,8 @@ def parse_sse_events(text: str) -> list[ServerSentEvent]:
 
 
 def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] | None:
-    text_parts: list[str] = []
+    delta_parts: list[str] = []
+    completed_text_parts: list[str] = []
     final_response: dict[str, Any] | None = None
 
     for event in events:
@@ -91,8 +92,11 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
         if event_type in {"response.output_text.delta", "response.text.delta"}:
             delta = _extract_content_text(event.get("delta"))
             if delta:
-                text_parts.append(delta)
+                delta_parts.append(delta)
             continue
+        completed_text = _extract_completed_event_text(event_type, event)
+        if completed_text:
+            completed_text_parts.append(completed_text)
         if event_type in {"response.completed", "response.done"}:
             response = event.get("response")
             if isinstance(response, dict):
@@ -102,15 +106,34 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
         output_text = _coerce_text(final_response.get("output_text"))
         if output_text:
             return final_response
-        if text_parts:
+        if delta_parts:
             merged = dict(final_response)
-            merged["output_text"] = "".join(text_parts)
+            merged["output_text"] = "".join(delta_parts)
+            return merged
+        if completed_text_parts:
+            merged = dict(final_response)
+            merged["output_text"] = "".join(completed_text_parts)
             return merged
         return final_response
 
-    if text_parts:
-        return {"output_text": "".join(text_parts)}
+    if delta_parts:
+        return {"output_text": "".join(delta_parts)}
+    if completed_text_parts:
+        return {"output_text": "".join(completed_text_parts)}
     return None
+
+
+def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str:
+    "逻辑：兼容只在完成事件中提供完整文本的 Responses 流式实现。"
+    if event_type in {"response.output_text.done", "response.text.done"}:
+        return _extract_content_text(event.get("text") or event.get("delta"))
+    if event_type == "response.content_part.done":
+        return _extract_content_text(event.get("part"))
+    if event_type == "response.output_item.done":
+        item = event.get("item")
+        if isinstance(item, dict):
+            return _extract_content_text(item.get("content"))
+    return ""
 
 
 def _split_sse_field(line: str) -> tuple[str, str]:

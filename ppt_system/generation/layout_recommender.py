@@ -26,10 +26,11 @@ def recommend_layout_family(title: str, summary: str, bullets: Sequence[str], *,
 
 
 def choose_layout_family(suggested_family: str, title: str, summary: str, bullets: Sequence[str], **kwargs: object) -> str:
+    previous_family = str(kwargs.pop("previous_family", ""))
     candidates = recommend_layout_candidates(title, summary, bullets, **kwargs)
     suggested = normalize_layout_family_name(suggested_family) if suggested_family else ""
     if not suggested or not any(item["value"] == suggested for item in candidates):
-        return recommend_layout_family(title, summary, bullets, **kwargs)
+        return recommend_layout_family(title, summary, bullets, previous_family=previous_family, **kwargs)
     suggested_item = next(item for item in candidates if item["value"] == suggested)
     recommended = candidates[0] if candidates else suggested_item
     # 仅在候选的语义匹配明显更强时修正模型建议，保留合理的创造性选择。

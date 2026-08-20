@@ -54,8 +54,17 @@ def plan_deck_layouts_greedy(page_candidates: list[list[dict[str, Any]]], *, loc
 
 def build_deck_layout_report(selected: list[dict[str, Any]]) -> dict[str, Any]:
     """生成整套版式质量摘要，供前端或日志展示。"""
-    if not selected:
-        return {"page_count": 0, "distinct_semantic_groups": 0, "distinct_visual_axes": 0, "diversity_score": 0, "issues": [], "suggestions": []}
+    if len(selected) < 2:
+        return {
+            "page_count": len(selected),
+            "scope": "single_page",
+            "enabled": False,
+            "distinct_semantic_groups": 0,
+            "distinct_visual_axes": 0,
+            "diversity_score": None,
+            "issues": [],
+            "suggestions": [],
+        }
     profiles = [get_layout_profile(item["value"]) for item in selected]
     groups = [item.semantic_group for item in profiles]
     axes = [item.visual_axis for item in profiles]
@@ -74,7 +83,7 @@ def build_deck_layout_report(selected: list[dict[str, Any]]) -> dict[str, Any]:
     if any(axes[index] == axes[index - 1] for index in range(1, len(axes))):
         suggestions.append("在横向、纵向、网格、图表和视觉型构图之间增加切换。")
     diversity = round(min(100, (distinct_groups / max(1, target or 1)) * 55 + (len(set(axes)) / max(1, len(selected))) * 45))
-    return {"page_count": len(selected), "distinct_semantic_groups": distinct_groups, "distinct_visual_axes": len(set(axes)), "diversity_score": diversity, "issues": issues, "suggestions": suggestions}
+    return {"page_count": len(selected), "scope": "multi_page", "enabled": True, "distinct_semantic_groups": distinct_groups, "distinct_visual_axes": len(set(axes)), "diversity_score": diversity, "issues": issues, "suggestions": suggestions}
 
 
 def _deck_compatible(candidate: dict[str, Any], selected: list[dict[str, Any]], total: int) -> bool:

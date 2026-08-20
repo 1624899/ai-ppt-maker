@@ -99,6 +99,8 @@ def api_optimize_job_plan_layouts(job_id: str):
         pages = plan.get("pages", [])
         if not isinstance(pages, list) or not pages:
             raise ValueError("当前没有可优化的页面。")
+        if len(pages) < 2:
+            raise ValueError("结构优化仅适用于两页及以上的 PPT。")
         options = plan.get("generation_options", {}) if isinstance(plan.get("generation_options"), dict) else {}
         include_cover = bool(options.get("include_cover_page", True))
         style_guide = plan.get("style_guide", {}) if isinstance(plan.get("style_guide"), dict) else {}

@@ -220,9 +220,6 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
             "prompt_compression": "compressed",
         }
 
-    layout_report = build_deck_layout_report([{"value": page.get("layout_family")} for page in pages if page.get("layout_family")])
-    for page in pages:
-        page["layout_report"] = layout_report
     return {
         "source": "fallback",
         "style_name": style_notes or "通用主题化简报",
@@ -343,6 +340,7 @@ def build_planning_prompt(
         explicit_map=generation_options.get("page_richness_map", {}),
     )
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
+    theme_color = str(generation_options.get("theme_color", "auto") or "auto").strip()
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     layout_families = style_guide.get("layout_families", [])
     layout_family_catalog = build_layout_family_prompt_catalog(layout_families)
@@ -412,7 +410,7 @@ JSON 格式必须如下：
       "title": "页面标题，18字以内",
       "summary": "本页内容摘要",
       "bullets": ["要点1", "要点2", "要点3"],
-      "layout_intent": {"intent": "comparison/process/timeline/relationship/data_analysis/product_showcase/summary/action_plan/key_message", "content_role": "evidence/method/context/framework/example/closing/action/narrative", "density": "low/medium/high", "item_count": 3, "has_metrics": false, "has_process": false, "visual_priority": "low/medium/high"},
+      "layout_intent": {{"intent": "comparison/process/timeline/relationship/data_analysis/product_showcase/summary/action_plan/key_message", "content_role": "evidence/method/context/framework/example/closing/action/narrative", "density": "low/medium/high", "item_count": 3, "has_metrics": false, "has_process": false, "visual_priority": "low/medium/high"}},
       "source_anchor_ids": ["S01"],
       "layout_family": "grid_n_x_m",
       "layout_slots": ["语义槽位1", "语义槽位2"],
@@ -624,6 +622,12 @@ def normalize_content_plan(
             reference_style_adherence=reference_style_adherence,
         )
         pages.append(page)
+
+    layout_report = build_deck_layout_report(
+        [{"value": page["layout_family"]} for page in pages]
+    )
+    for page in pages:
+        page["layout_report"] = layout_report
 
     return {
         "title": resolve_plan_title(result.get("title"), fallback_content=content),
