@@ -259,6 +259,32 @@ for _value, _override in _STRUCTURE_PROFILE_OVERRIDES.items():
         related_families=_profile.related_families,
     )
 
+# 补齐流程类版式的实际构图方向与限制，避免整套编排把纵向结构误判为横向结构。
+_FLOW_PROFILE_OVERRIDES = {
+    "timeline_vertical": {"visual_axis": "vertical", "avoid_for": ("少量关键节点", "无时间顺序的模块列表")},
+    "process_vertical": {"visual_axis": "vertical", "avoid_for": ("短步骤横向流程", "无先后关系的并列观点")},
+    "swimlane": {"visual_axis": "lane", "avoid_for": ("单角色短流程", "无责任归属的概念说明")},
+    "gantt_chart": {"visual_axis": "schedule", "avoid_for": ("没有起止时间的事项列表", "即时性短流程")},
+    "road_map": {"visual_axis": "path", "avoid_for": ("详细任务排期", "无阶段目标的观点集合")},
+    "route_planning": {"visual_axis": "path", "avoid_for": ("精确工期管理", "无路径关系的并列清单")},
+    "annual_plan": {"visual_axis": "schedule", "avoid_for": ("单次活动流程", "没有时间周期的策略说明")},
+    "dashboard": {"avoid_for": ("单一指标结论", "纯叙事内容")},
+    "big_number": {"avoid_for": ("需要解释多个维度的复杂数据", "长段落说明")},
+    "pie_chart": {"avoid_for": ("时间趋势", "类别超过八组的复杂构成")},
+    "data_table": {"avoid_for": ("需要突出单一结论", "低信息量的概览页")},
+    "collage": {"avoid_for": ("需要精确比较的数值", "严格步骤关系")},
+    "tag_categories": {"avoid_for": ("需要表达先后顺序", "需要展示数值差异")},
+    "checklist": {"avoid_for": ("需要表达复杂依赖关系", "强调视觉叙事的封面")},
+}
+
+for _value, _override in _FLOW_PROFILE_OVERRIDES.items():
+    _profile = LAYOUT_PROFILES[_value]
+    LAYOUT_PROFILES[_value] = replace(
+        _profile,
+        visual_axis=str(_override.get("visual_axis", _profile.visual_axis)),
+        avoid_for=tuple(_override.get("avoid_for", _profile.avoid_for)),
+    )
+
 
 def get_layout_profile(value: str) -> LayoutProfile:
     return LAYOUT_PROFILES[value]
@@ -268,6 +294,8 @@ def build_layout_profile_options(families: list[str] | None = None) -> list[dict
     source = families if families is not None else DEFAULT_LAYOUT_FAMILIES
     return [{"value": p.value, "label": p.label, "category": p.category, "description": p.description,
              "suitable_for": list(p.suitable_for), "avoid_for": list(p.avoid_for), "density_levels": list(p.density_levels),
+             "intent_types": list(p.intent_types), "min_items": p.min_items, "max_items": p.max_items,
+             "keywords": list(p.keywords), "related_families": list(p.related_families),
              "supports_chart": p.supports_chart, "supports_image": p.supports_image, "supports_text": p.supports_text,
              "visual_strength": p.visual_strength, "semantic_group": p.semantic_group, "visual_axis": p.visual_axis}
             for value in source if value in LAYOUT_PROFILES for p in [LAYOUT_PROFILES[value]]]

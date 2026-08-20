@@ -5,7 +5,11 @@ import { uiClassName } from '../../utils/uiClassName';
 const buildRecommendationReason = (option, page) => {
   const recommendation = page?.layout_recommendation || {};
   const reason = recommendation.value === option?.value ? recommendation.reason : null;
-  if (reason?.content_fit) return [reason.content_fit, reason.density_fit, reason.deck_fit].filter(Boolean).join('');
+  if (reason?.content_fit) return [
+    reason.matched_intent ? `页面意图：${reason.matched_intent}。` : '',
+    reason.matched_signals?.length ? `匹配信号：${reason.matched_signals.join('、')}。` : '',
+    reason.content_fit, reason.density_fit, reason.deck_fit
+  ].filter(Boolean).join('');
   return option?.description || `适合用“${option?.label || '当前版式'}”组织页面信息。`;
 };
 
@@ -28,12 +32,20 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
     return ordered.length ? ordered : (selectedOption ? [selectedOption] : options.slice(0, 5));
   }, [options, page?.layout_candidates, selectedOption]);
   const visibleOptions = showAll ? options.filter((option) => category === '全部' || option.category === category) : recommendedOptions;
+  const selectedDetails = selectedOption ? [
+    selectedOption.description,
+    selectedOption.suitable_for?.length ? `适用：${selectedOption.suitable_for.join('、')}` : '',
+    selectedOption.avoid_for?.length ? `不适用：${selectedOption.avoid_for.join('、')}` : '',
+    selectedOption.supports_chart ? '支持图表' : '',
+    selectedOption.supports_image ? '支持图片' : '',
+  ].filter(Boolean).join(' · ') : '';
   return <div className={uiClassName('layout-picker')}>
     {selectedOption && <div className={uiClassName('layout-picker__current')}>
       <div className={uiClassName('layout-picker__current-head')}>
         <strong>当前版式结构</strong><span>{selectedOption.label}</span>
       </div>
       <LayoutGlyph shapes={selectedOption.preview_shapes} large />
+      <small>{selectedDetails}</small>
     </div>}
     <div className={uiClassName('layout-picker__browser-head')}>
       <strong>{showAll ? '全部版式' : 'AI 推荐候选'}</strong>
@@ -57,12 +69,14 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
           <span className={uiClassName('layout-picker__option-name')}>{option.label}</span>
           {selected && <Check size={13} />}
           <LayoutGlyph shapes={option.preview_shapes} />
+          <small>{option.description}</small>
         </button>;
       })}
     </div>
     <div className={uiClassName('layout-picker__reason')}>
       <strong>AI 推荐理由</strong>
       <span>{buildRecommendationReason(selectedOption, page)}</span>
+      {page?.layout_report?.diversity_score != null && <small>整套结构多样性：{page.layout_report.diversity_score} 分</small>}
     </div>
   </div>;
 };

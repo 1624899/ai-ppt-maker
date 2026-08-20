@@ -15,7 +15,9 @@ export function normalizePagePlan(page = {}, index = 0) {
     title: asText(page.title) || `第 ${index + 1} 页`,
     summary: asText(page.summary),
     bullets: asList(page.bullets),
-    layout_intent: asText(page.layout_intent),
+    layout_intent: page.layout_intent && typeof page.layout_intent === 'object' ? page.layout_intent : asText(page.layout_intent),
+    layout_candidates: Array.isArray(page.layout_candidates) ? page.layout_candidates : [],
+    layout_recommendation: page.layout_recommendation && typeof page.layout_recommendation === 'object' ? page.layout_recommendation : {},
     layout_family: asText(page.layout_family),
     layout_source: asText(page.layout_source) || 'ai',
     layout_reason: asText(page.layout_reason),
@@ -53,6 +55,7 @@ export function normalizePlan(plan = {}) {
     image_preset: plan.image_preset && typeof plan.image_preset === 'object' ? plan.image_preset : {},
     page_count: pages.length,
     pages,
+    layout_report: plan.layout_report && typeof plan.layout_report === 'object' ? plan.layout_report : {},
   };
 }
 

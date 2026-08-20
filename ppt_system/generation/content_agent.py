@@ -30,7 +30,7 @@ from ppt_system.generation.page_richness import (
     resolve_page_richness_map,
 )
 from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_candidates, recommend_layout_family
-from ppt_system.generation.deck_layout_planner import plan_deck_layouts
+from ppt_system.generation.deck_layout_planner import build_deck_layout_report, plan_deck_layouts
 from ppt_system.generation.planner import infer_style_type
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_planning_guidance,
@@ -392,6 +392,7 @@ def build_planning_prompt(
 - 可用 element_primitives：{'、'.join(element_primitives)}
 - 禁止自造、翻译、拼接或添加后缀，例如不得输出 layout_1、custom_layout、process_horizontal_2；没有完全匹配项时，从上述枚举中选择语义最接近的一项。
 - 先判断本页信息关系，再选择最贴切的专用版式；优先使用能够直接表达语义的版式，例如转化用漏斗图、排期用甘特图、跨角色流程用泳道图、层级关系用组织架构或金字塔、指标分析用对应图表、根因分析用鱼骨图，不要把所有多要点页面都退化成宫格卡片。
+- 每页先填写 layout_intent，说明本页是在表达对比、流程、时间、关系、数据、场景、总结还是行动计划；layout_family 必须服务于该意图。
 - 同时考虑 page_richness：低密度优先主视觉、大数字、人物或产品展示；高密度优先仪表盘、数据表格、模块组合或清单；时间、流程、对比、循环等明确关系优先级高于密度偏好。
 - layout_slots 必须与所选 layout_family 的结构一致，只写中文语义分区，不写坐标、英文槽位名或另一种版式的结构。
 
@@ -408,6 +409,7 @@ JSON 格式必须如下：
       "title": "页面标题，18字以内",
       "summary": "本页内容摘要",
       "bullets": ["要点1", "要点2", "要点3"],
+      "layout_intent": {"intent": "comparison/process/timeline/relationship/data_analysis/product_showcase/summary/action_plan/key_message", "content_role": "evidence/method/context/framework/example/closing/action/narrative", "density": "low/medium/high", "item_count": 3, "has_metrics": false, "has_process": false, "visual_priority": "low/medium/high"},
       "source_anchor_ids": ["S01"],
       "layout_family": "grid_n_x_m",
       "layout_slots": ["语义槽位1", "语义槽位2"],
@@ -425,7 +427,8 @@ JSON 格式必须如下：
 要求：
 1. pages 数量必须正好是 {page_count}。
 2. 每页必须选择一个 layout_family，其值必须与上方封闭枚举中的某个英文机器值完全一致；禁止输出中文名、解释文字、模板编号或任何未列出的值。
-3. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
+3. layout_intent 必须与 title、summary、bullets 的实际内容一致，不能所有页面都填写同一种意图；item_count 与实际要点数量一致。
+4. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
 4. page_richness 必须为 low、medium、high 之一，并与上面的丰富度要求一致。
 5. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
 6. 文字会出现在第一阶段原稿图中，请保证标题和正文适合直接上屏。
@@ -498,6 +501,9 @@ def normalize_content_plan(
             page_index=index,
             include_cover_page=include_cover_page,
         )
+        inferred_intent = layout_candidates[0].get("layout_intent", {}) if layout_candidates else {}
+        raw_intent = raw.get("layout_intent")
+        layout_intent = raw_intent if isinstance(raw_intent, dict) else inferred_intent
         layout_family = choose_layout_family(
             str(raw.get("layout_family", "")).strip(),
             title,
@@ -524,7 +530,8 @@ def normalize_content_plan(
         # 用已选页面作为上下文进行贪心编排，避免相邻页面结构重复。
         if used_families:
             previous_candidate = [{"value": used_families[-1], "score": 0, "reason": {}}]
-            planned = plan_deck_layouts([previous_candidate, layout_candidates])
+            locked_family = layout_family if raw.get("layout_locked") else None
+            planned = plan_deck_layouts([previous_candidate, layout_candidates], locked_families=[None, locked_family])
             if len(planned) == 2 and planned[1]:
                 layout_family = planned[1]["value"]
         used_families.append(layout_family)
@@ -583,10 +590,11 @@ def normalize_content_plan(
             "title": title,
             "summary": summary,
             "bullets": bullets,
-            "layout_intent": layout_candidates[0]["layout_intent"] if layout_candidates else str(raw.get("layout_intent", "")).strip(),
+            "layout_intent": layout_intent,
             "layout_family": layout_family,
             "layout_candidates": layout_candidates,
             "layout_recommendation": next((item for item in layout_candidates if item["value"] == layout_family), layout_candidates[0] if layout_candidates else {}),
+            "layout_locked": bool(raw.get("layout_locked")),
             "layout_slots": layout_slots,
             "element_plan": element_plan,
             "difference_from_previous": difference_from_previous,
@@ -623,6 +631,7 @@ def normalize_content_plan(
         "generation_options": generation_options,
         "style_guide": style_guide,
         "pages": pages,
+        "layout_report": build_deck_layout_report([{"value": page.get("layout_family")} for page in pages if page.get("layout_family")]),
     }
 
 
