@@ -190,6 +190,7 @@ def build_project_script_source(
     slide_layer_specs = [spec.to_payload() for spec in build_slide_layer_specs(layer_mode)]
     resolved_layer_mode = normalize_layer_mode(layer_mode)
 
+    page_scripts = _normalize_page_scripts_for_execution(page_scripts)
     page_functions = "\n\n".join(
         _build_page_function_source(item["page_no"], str(item["script"]))
         for item in page_scripts
@@ -530,6 +531,28 @@ def normalize_asset_adjustments(adjustments: Any) -> dict[str, Any]:
     if asset_map:
         normalized["asset_map"] = asset_map
     return normalized
+
+
+def _normalize_page_scripts_for_execution(page_scripts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """执行前统一规范化每页脚本，确保进入 worker 的脚本只含白名单调用。
+
+    生成、断点缓存、bundle 重建等所有来源的脚本都会经过这里，
+    避免未规范化的模型脚本在运行时引用未定义名称（例如 pages）导致 NameError。
+    """
+    normalized_items: list[dict[str, Any]] = []
+    for item in page_scripts:
+        page_no = int(item.get("page_no", 0) or 0)
+        raw_script = str(item.get("script", "")).strip()
+        # 空脚本与 pass 占位符按无操作处理，与 _build_page_function_source 的 script or "pass" 语义一致。
+        if not raw_script or raw_script == "pass":
+            script = ""
+        else:
+            try:
+                script = normalize_page_script(raw_script)
+            except (RuntimeError, SyntaxError) as exc:
+                raise RuntimeError(f"第 {page_no} 页文字脚本不合法，已拒绝执行：{exc}") from exc
+        normalized_items.append({**item, "script": script})
+    return normalized_items
 
 
 def _build_page_function_source(page_no: int, script: str) -> str:
