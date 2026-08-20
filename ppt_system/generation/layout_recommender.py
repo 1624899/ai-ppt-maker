@@ -67,7 +67,12 @@ def _score_layout(profile: Any, intent: Any, text: str) -> tuple[int, dict[str, 
     if profile.value in {"funnel", "gantt_chart", "swimlane", "dashboard", "line_chart", "bar_chart", "org_chart", "map_distribution"}:
         score += min(len(keyword_hits), 3) * 14
     signals.extend(keyword_hits[:3])
-    content_fit = f"页面包含 {intent.item_count} 个要点，适合{profile.label}的内容容量。"
+    if intent.intent == "comparison" and intent.comparison_object_count:
+        content_fit = f"页面包含 {intent.comparison_object_count} 组对象和 {intent.dimension_count} 个比较维度，适合{profile.label}的对照结构。"
+    elif intent.has_metrics:
+        content_fit = f"页面包含 {intent.metric_count} 个数值信号和 {intent.item_count} 个要点，适合{profile.label}的数据承载能力。"
+    else:
+        content_fit = f"页面包含 {intent.item_count} 个要点，适合{profile.label}的内容容量。"
     density_fit = f"当前信息密度为{'高' if intent.density == 'high' else '中等' if intent.density == 'medium' else '较低'}，与该版式匹配。"
     return score, {"matched_intent": intent.intent, "matched_signals": signals or list(intent.matched_signals), "content_fit": content_fit, "density_fit": density_fit, "tradeoff": f"若内容超出 {profile.max_items} 个要点，建议选择更高密度的版式。"}
 

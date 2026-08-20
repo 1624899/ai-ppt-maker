@@ -8,6 +8,7 @@ from typing import Any
 from ppt_system.generation.design_grammar import format_layout_family_for_prompt, normalize_layout_family_name, validate_layout_family
 from ppt_system.generation.generation_prompts import build_elements_prompt, build_reference_prompt_by_mode
 from ppt_system.generation.page_richness import normalize_page_richness_level
+from ppt_system.generation.layout_semantics import semantic_slots_for_family
 from ppt_system.generation.style_runtime import apply_text_theme
 from ppt_system.generation.text_layout import build_fallback_boxes_for_family, build_layout_slots_by_family, build_text_boxes_from_slots
 
@@ -294,28 +295,6 @@ def infer_page_richness(instruction: str, fallback: Any) -> str:
     if _has_any(instruction, COMPACT_LAYOUT_KEYWORDS):
         return "high"
     return normalize_page_richness_level(fallback or "medium")
-
-
-def semantic_slots_for_family(layout_family: str) -> list[str]:
-    if layout_family == "grid_n_x_m":
-        return ["标题区", "卡片区1", "卡片区2", "卡片区3", "卡片区4"]
-    if layout_family in {"timeline_horizontal", "timeline_vertical"}:
-        return ["标题区", "时间轴", "节点1", "节点2", "节点3"]
-    if layout_family in {"process_horizontal", "process_vertical"}:
-        return ["标题区", "步骤1", "步骤2", "步骤3"]
-    if layout_family == "hub_and_spoke":
-        return ["中心主题", "分支1", "分支2", "分支3", "分支4"]
-    if layout_family == "split_top_bottom":
-        return ["上方内容区", "下方内容区"]
-    if layout_family == "compare_dual_axis":
-        return ["标题区", "左侧对比项", "右侧对比项", "对比维度"]
-    if layout_family == "hero_with_supporting_cards":
-        return ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"]
-    if layout_family == "split_left_right":
-        return ["左侧内容区", "右侧内容区"]
-    if validate_layout_family(layout_family):
-        return ["标题区", f"{format_layout_family_for_prompt(layout_family)}主体区"]
-    return ["左侧内容区", "右侧内容区"]
 
 
 def append_applied_edit(page: dict[str, Any], edit_kind: str, instruction: str) -> None:

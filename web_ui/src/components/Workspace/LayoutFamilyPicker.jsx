@@ -38,6 +38,10 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
     selectedOption.avoid_for?.length ? `不适用：${selectedOption.avoid_for.join('、')}` : '',
     selectedOption.supports_chart ? '支持图表' : '',
     selectedOption.supports_image ? '支持图片' : '',
+    selectedOption.density_levels?.length ? `信息密度：${selectedOption.density_levels.join(' / ')}` : '',
+    Number.isFinite(selectedOption.min_items) ? `要点数量：${selectedOption.min_items}-${selectedOption.max_items}` : '',
+    selectedOption.semantic_group ? `语义组：${selectedOption.semantic_group}` : '',
+    selectedOption.related_families?.length ? `相近版式：${selectedOption.related_families.join('、')}` : '',
   ].filter(Boolean).join(' · ') : '';
   return <div className={uiClassName('layout-picker')}>
     {selectedOption && <div className={uiClassName('layout-picker__current')}>
@@ -77,6 +81,8 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
       <strong>AI 推荐理由</strong>
       <span>{buildRecommendationReason(selectedOption, page)}</span>
       {page?.layout_report?.diversity_score != null && <small>整套结构多样性：{page.layout_report.diversity_score} 分</small>}
+      {page?.layout_report?.issues?.length > 0 && <small>{page.layout_report.issues.join('；')}</small>}
+      {page?.layout_report?.suggestions?.length > 0 && <small>改进建议：{page.layout_report.suggestions.join('；')}</small>}
     </div>
   </div>;
 };

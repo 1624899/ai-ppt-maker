@@ -6,6 +6,9 @@ from typing import Any
 from flask import jsonify, request
 
 from ppt_system.generation.planning_state import has_complete_planning_state
+from ppt_system.generation.deck_layout_planner import build_deck_layout_report, plan_deck_layouts
+from ppt_system.generation.layout_recommender import recommend_layout_candidates
+from ppt_system.generation.layout_semantics import semantic_slots_for_family
 from ppt_system.jobs.job_interrupt_signal import clear_job_stop_request
 from ppt_system.jobs.job_store import get_job as get_job_record
 from ppt_system.jobs.job_store import update_job as update_job_record
@@ -78,6 +81,62 @@ def api_update_job_plan(job_id: str):
     updated_state = mutate_job_state(job_dir, job_id, updater)
     sync_plan_metadata_to_job_record(runtime_context.JOBS_DB_PATH, job_id, updated_state)
     return jsonify(build_plan_response(updated_state))
+
+
+def api_optimize_job_plan_layouts(job_id: str):
+    """仅优化未锁定页面的版式组合，保持内容、顺序和用户锁定结果不变。"""
+    record = _get_existing_job_record(job_id)
+    if not record:
+        return api_error("任务不存在", 404)
+    if str(record.get("status") or "").strip() in {"queued", "running", "stopping"}:
+        return api_error("任务正在执行中，暂时不能优化版式。")
+    job_dir = Path(record["job_dir"])
+    changes: list[dict[str, Any]] = []
+
+    def updater(state: dict[str, Any]) -> None:
+        nonlocal changes
+        plan = get_active_plan_payload(state)
+        pages = plan.get("pages", [])
+        if not isinstance(pages, list) or not pages:
+            raise ValueError("当前没有可优化的页面。")
+        options = plan.get("generation_options", {}) if isinstance(plan.get("generation_options"), dict) else {}
+        include_cover = bool(options.get("include_cover_page", True))
+        style_guide = plan.get("style_guide", {}) if isinstance(plan.get("style_guide"), dict) else {}
+        available = style_guide.get("layout_families")
+        candidates = [recommend_layout_candidates(
+            str(page.get("title") or ""), str(page.get("summary") or ""),
+            page.get("bullets") if isinstance(page.get("bullets"), list) else [],
+            page_richness=str(page.get("page_richness") or "medium"), candidate_families=available,
+            page_index=index, include_cover_page=include_cover,
+        ) for index, page in enumerate(pages)]
+        locked = [str(page.get("layout_family") or "") if page.get("layout_locked") else None for page in pages]
+        selected = plan_deck_layouts(candidates, locked_families=locked)
+        for index, page in enumerate(pages):
+            selected_item = selected[index] if index < len(selected) else {}
+            old = str(page.get("layout_family") or "")
+            new = str(selected_item.get("value") or old)
+            page["layout_candidates"] = candidates[index]
+            page["layout_recommendation"] = selected_item
+            if not page.get("layout_locked"):
+                page["layout_family"] = new
+                page["layout_slots"] = semantic_slots_for_family(new)
+            if old != page.get("layout_family"):
+                changes.append({"page_no": index + 1, "from": old, "to": page["layout_family"], "reason": selected_item.get("reason", {}).get("deck_fit", "提升整套结构多样性。")})
+        plan["layout_report"] = build_deck_layout_report([{"value": page.get("layout_family")} for page in pages])
+        normalized = apply_plan_to_state(state, plan)
+        save_plan_version(state, source="layout_optimization", summary="应用整套版式结构优化", plan=normalized)
+        mark_plan_draft(state)
+        state["status"] = AWAITING_PLAN_CONFIRMATION_STATUS
+        state["current_stage"] = "planning"
+
+    try:
+        updated_state = mutate_job_state(job_dir, job_id, updater)
+    except ValueError as exc:
+        return api_error(exc)
+    sync_plan_metadata_to_job_record(runtime_context.JOBS_DB_PATH, job_id, updated_state)
+    response = build_plan_response(updated_state)
+    response["layout_optimization"] = {"changes": changes, "changed_count": len(changes)}
+    return jsonify(response)
 
 def api_confirm_job_plan(job_id: str):
     record = _get_existing_job_record(job_id)

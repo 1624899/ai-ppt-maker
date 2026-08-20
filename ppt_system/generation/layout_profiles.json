@@ -1,0 +1,2848 @@
+[
+  {
+    "value": "grid_n_x_m",
+    "label": "宫格卡片",
+    "category": "并列与模块",
+    "description": "以规则网格并列多个信息单元，便于快速扫描同层级要点。",
+    "suitable_for": [
+      "能力清单",
+      "功能模块",
+      "多维要点"
+    ],
+    "avoid_for": [
+      "强时序关系",
+      "复杂因果分析"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "并列",
+      "网格",
+      "模块",
+      "要点",
+      "多维",
+      "清单"
+    ],
+    "related_families": [
+      "module_combination",
+      "collage",
+      "tag_categories"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "timeline_horizontal",
+    "label": "横向时间线",
+    "category": "流程与时间",
+    "description": "沿横向时间轴展示少量关键节点，突出阶段推进与先后关系。",
+    "suitable_for": [
+      "发展历程",
+      "产品演进",
+      "项目节点"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_vertical",
+      "process_horizontal",
+      "process_vertical"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "timeline_vertical",
+    "label": "纵向时间线",
+    "category": "流程与时间",
+    "description": "沿纵向时间轴承载较多事件和补充说明，适合连续叙事。",
+    "suitable_for": [
+      "大事记",
+      "历史沿革",
+      "阶段记录"
+    ],
+    "avoid_for": [
+      "少量关键节点",
+      "无时间顺序的模块列表"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "process_horizontal",
+      "process_vertical"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "hub_and_spoke",
+    "label": "中心辐射",
+    "category": "关系与结构",
+    "description": "以中心主题向外连接多个分支，突出核心与辐射范围。",
+    "suitable_for": [
+      "核心能力",
+      "业务全景",
+      "中心议题与分支"
+    ],
+    "avoid_for": [
+      "严格时间顺序",
+      "多层级汇报关系"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "floor_plan",
+      "circular_cycle",
+      "pyramid_structure"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "hub",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "split_left_right",
+    "label": "左右分栏",
+    "category": "观点与叙事",
+    "description": "将两类内容左右分置，适合图文配合或两个角度的并列阐述。",
+    "suitable_for": [
+      "图文说明",
+      "现状与目标",
+      "双主题表达"
+    ],
+    "avoid_for": [
+      "复杂表格",
+      "多步骤流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "左右",
+      "图文",
+      "两部分",
+      "现状",
+      "目标"
+    ],
+    "related_families": [
+      "split_top_bottom",
+      "magazine_editorial",
+      "summary_detail"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "editorial",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "split_top_bottom",
+    "label": "上下分区",
+    "category": "观点与叙事",
+    "description": "将结论与依据上下分层，形成由概览到说明的阅读顺序。",
+    "suitable_for": [
+      "结论与依据",
+      "现状与未来",
+      "上下层信息"
+    ],
+    "avoid_for": [
+      "复杂表格",
+      "多步骤流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "上下",
+      "结论",
+      "依据",
+      "现状",
+      "未来"
+    ],
+    "related_families": [
+      "split_left_right",
+      "magazine_editorial",
+      "summary_detail"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "editorial",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "compare_dual_axis",
+    "label": "双轴对比",
+    "category": "对比与分析",
+    "description": "将两组对象左右并列，并按相同维度对照差异，突出结论和取舍。",
+    "suitable_for": [
+      "方案对比",
+      "竞品分析",
+      "前后变化"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "两个方案",
+      "两组方案",
+      "双轴",
+      "优劣",
+      "差异"
+    ],
+    "related_families": [
+      "funnel",
+      "problem_cause_solution",
+      "goal_strategy_action"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "process_horizontal",
+    "label": "横向流程",
+    "category": "流程与时间",
+    "description": "以从左到右的步骤串联展示短流程，强调执行顺序和完成路径。",
+    "suitable_for": [
+      "业务流程",
+      "实施步骤",
+      "交付路径"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_vertical"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "process_vertical",
+    "label": "纵向流程",
+    "category": "流程与时间",
+    "description": "以纵向步骤承载较长说明，适合分阶段执行与审批流程。",
+    "suitable_for": [
+      "审批流程",
+      "分阶段实施",
+      "操作说明"
+    ],
+    "avoid_for": [
+      "短步骤横向流程",
+      "无先后关系的并列观点"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "hero_with_supporting_cards",
+    "label": "主视觉卡片",
+    "category": "开场与视觉",
+    "description": "用一个核心主张配合辅助信息卡，突出主题并补充关键亮点。",
+    "suitable_for": [
+      "封面",
+      "核心结论",
+      "主题概览"
+    ],
+    "avoid_for": [
+      "高密度数据",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "主题",
+      "愿景",
+      "故事",
+      "品牌",
+      "主视觉"
+    ],
+    "related_families": [
+      "full_screen_visual",
+      "visual_metaphor"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": false,
+    "visual_strength": "high",
+    "semantic_group": "opening",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "floor_plan",
+    "label": "房型图",
+    "category": "产品与场景",
+    "description": "用平面分区和空间动线展示区域布局、功能分配或服务触点关系。",
+    "suitable_for": [
+      "空间布局",
+      "园区导览",
+      "门店分区",
+      "用户旅程触点",
+      "服务流程地图"
+    ],
+    "avoid_for": [
+      "组织架构",
+      "高密度数据分析",
+      "多维方案对比"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship",
+      "scenario"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "户型",
+      "房型",
+      "平面图",
+      "空间布局",
+      "区域",
+      "动线",
+      "分区"
+    ],
+    "related_families": [
+      "scenario_map",
+      "map_distribution",
+      "scenario_showcase"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "spatial_map",
+    "visual_axis": "spatial"
+  },
+  {
+    "value": "magazine_editorial",
+    "label": "杂志排版",
+    "category": "观点与叙事",
+    "description": "以主视觉、窄栏文字和重点引文组织内容，形成报道或编辑专题感。",
+    "suitable_for": [
+      "人物故事",
+      "案例报道",
+      "品牌叙事"
+    ],
+    "avoid_for": [
+      "复杂表格",
+      "多步骤流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "杂志",
+      "访谈",
+      "故事",
+      "报道",
+      "长文",
+      "引文"
+    ],
+    "related_families": [
+      "split_left_right",
+      "split_top_bottom",
+      "summary_detail"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "editorial",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "full_screen_visual",
+    "label": "全屏视觉",
+    "category": "开场与视觉",
+    "description": "以单一强主视觉和极少文字建立沉浸感与情绪张力。",
+    "suitable_for": [
+      "封面",
+      "章节页",
+      "品牌宣言"
+    ],
+    "avoid_for": [
+      "高密度数据",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "low"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 2,
+    "keywords": [
+      "主题",
+      "愿景",
+      "故事",
+      "品牌",
+      "主视觉"
+    ],
+    "related_families": [
+      "hero_with_supporting_cards",
+      "visual_metaphor"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": false,
+    "visual_strength": "high",
+    "semantic_group": "opening",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "circular_cycle",
+    "label": "环形循环图",
+    "category": "关系与结构",
+    "description": "用环形节点展示持续循环、周期迭代或多阶段往复关系。",
+    "suitable_for": [
+      "迭代周期",
+      "生命周期",
+      "持续改善"
+    ],
+    "avoid_for": [
+      "一次性线性流程",
+      "层级结构"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "pyramid_structure"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "cycle",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "pyramid_structure",
+    "label": "金字塔结构",
+    "category": "关系与结构",
+    "description": "用由底至顶的层级表达支撑关系、优先级或能力递进。",
+    "suitable_for": [
+      "战略分层",
+      "能力体系",
+      "价值优先级"
+    ],
+    "avoid_for": [
+      "平级模块",
+      "循环关系"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "pyramid",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "funnel",
+    "label": "漏斗图",
+    "category": "对比与分析",
+    "description": "用由宽到窄的层级展示筛选、转化或流失过程，并突出各阶段规模。",
+    "suitable_for": [
+      "销售转化",
+      "用户漏斗",
+      "渠道筛选"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "漏斗",
+      "获客",
+      "线索",
+      "成交",
+      "转化",
+      "流失"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "problem_cause_solution",
+      "goal_strategy_action"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "staircase",
+    "label": "阶梯式",
+    "category": "流程与时间",
+    "description": "以阶梯形态表现逐级提升、阶段门槛或能力成长。",
+    "suitable_for": [
+      "能力升级",
+      "阶段目标",
+      "成熟度演进"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "progressive_relation",
+    "label": "递进关系",
+    "category": "流程与时间",
+    "description": "用连续递进的模块说明从前提到结果的层层推进关系。",
+    "suitable_for": [
+      "逻辑推演",
+      "能力递进",
+      "策略展开"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "road_map",
+    "label": "路径地图（Road Map）",
+    "category": "流程与时间",
+    "description": "将阶段目标、重点动作和关键产出排布在路线图上，展示长期推进方向。",
+    "suitable_for": [
+      "战略路线图",
+      "产品规划",
+      "转型路径"
+    ],
+    "avoid_for": [
+      "详细任务排期",
+      "无阶段目标的观点集合"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "path"
+  },
+  {
+    "value": "gantt_chart",
+    "label": "甘特图",
+    "category": "流程与时间",
+    "description": "以时间条展示任务起止、并行关系和项目排期。",
+    "suitable_for": [
+      "项目排期",
+      "研发计划",
+      "交付进度"
+    ],
+    "avoid_for": [
+      "没有起止时间的事项列表",
+      "即时性短流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "甘特",
+      "排期",
+      "工期",
+      "开始时间",
+      "完成时间"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "schedule"
+  },
+  {
+    "value": "cycle_process",
+    "label": "循环流程图",
+    "category": "关系与结构",
+    "description": "将执行步骤首尾闭合，强调流程完成后的反馈与再次启动。",
+    "suitable_for": [
+      "业务闭环",
+      "持续运营",
+      "迭代流程"
+    ],
+    "avoid_for": [
+      "无反馈的标准流程",
+      "项目排期"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "cycle_process",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "swimlane",
+    "label": "泳道图",
+    "category": "流程与时间",
+    "description": "按角色或部门划分泳道，清楚呈现跨团队责任和交接流程。",
+    "suitable_for": [
+      "跨部门协作",
+      "审批流程",
+      "服务交付"
+    ],
+    "avoid_for": [
+      "单角色短流程",
+      "无责任归属的概念说明"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "泳道",
+      "跨部门",
+      "责任人",
+      "角色分工",
+      "审批"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "lane"
+  },
+  {
+    "value": "org_chart",
+    "label": "组织架构图",
+    "category": "关系与结构",
+    "description": "用上下级节点和连接关系展示组织层级、部门归属与汇报路径。",
+    "suitable_for": [
+      "组织架构",
+      "团队分工",
+      "汇报关系"
+    ],
+    "avoid_for": [
+      "跨组织协同网络",
+      "时间计划"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "组织架构",
+      "汇报关系",
+      "部门",
+      "岗位"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "organization",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "relationship_chain",
+    "label": "关系链路图",
+    "category": "关系与结构",
+    "description": "按链路串联主体或环节，说明上下游依赖、传导路径和影响关系。",
+    "suitable_for": [
+      "业务链路",
+      "上下游关系",
+      "影响传导"
+    ],
+    "avoid_for": [
+      "中心辐射结构",
+      "无顺序的模块列表"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "chain",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "venn_relation",
+    "label": "Venn关系图",
+    "category": "关系与结构",
+    "description": "通过相交区域突出多个对象之间的共性、边界与重叠价值。",
+    "suitable_for": [
+      "共同能力",
+      "用户交集",
+      "范围重叠"
+    ],
+    "avoid_for": [
+      "三层以上层级",
+      "时间推进"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "overlap",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "data_cards",
+    "label": "数据卡片",
+    "category": "数据与指标",
+    "description": "以多个指标卡并列呈现核心数值、同比环比和简短结论。",
+    "suitable_for": [
+      "经营概览",
+      "核心 KPI",
+      "数据快报"
+    ],
+    "avoid_for": [
+      "纯叙事内容",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "指标",
+      "数据",
+      "同比",
+      "环比",
+      "趋势"
+    ],
+    "related_families": [
+      "big_number",
+      "dashboard",
+      "bar_chart"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "big_number",
+    "label": "大数字展示",
+    "category": "数据与指标",
+    "description": "用放大的关键数字作为视觉中心，强化单项成果或核心结论。",
+    "suitable_for": [
+      "业绩亮点",
+      "关键成果",
+      "核心指标"
+    ],
+    "avoid_for": [
+      "需要解释多个维度的复杂数据",
+      "长段落说明"
+    ],
+    "density_levels": [
+      "low"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 2,
+    "keywords": [
+      "指标",
+      "数据",
+      "同比",
+      "环比",
+      "趋势"
+    ],
+    "related_families": [
+      "data_cards",
+      "dashboard",
+      "bar_chart"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "dashboard",
+    "label": "仪表盘（Dashboard）",
+    "category": "数据与指标",
+    "description": "组合多个指标、图表和状态组件，形成高密度的数据总览看板。",
+    "suitable_for": [
+      "经营看板",
+      "运营监控",
+      "综合指标"
+    ],
+    "avoid_for": [
+      "单一指标结论",
+      "纯叙事内容"
+    ],
+    "density_levels": [
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "仪表盘",
+      "经营看板",
+      "综合指标",
+      "dashboard"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "bar_chart"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "bar_chart",
+    "label": "柱状图分析",
+    "category": "数据与指标",
+    "description": "用柱形高度比较不同分类或对象的数值差异与排名。",
+    "suitable_for": [
+      "分类比较",
+      "排名分析",
+      "销量对比"
+    ],
+    "avoid_for": [
+      "纯叙事内容",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "柱状图",
+      "排名",
+      "分类数值",
+      "分组比较"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "line_chart",
+    "label": "折线趋势图",
+    "category": "数据与指标",
+    "description": "用连续折线展示时间序列的变化趋势、拐点和波动。",
+    "suitable_for": [
+      "趋势分析",
+      "月度变化",
+      "增长走势"
+    ],
+    "avoid_for": [
+      "纯叙事内容",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "折线",
+      "连续月份",
+      "增长走势",
+      "增长曲线",
+      "波动"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "pie_chart",
+    "label": "饼图占比",
+    "category": "数据与指标",
+    "description": "用扇形占比呈现整体构成，突出各部分所占份额。",
+    "suitable_for": [
+      "占比分析",
+      "结构构成",
+      "市场份额"
+    ],
+    "avoid_for": [
+      "时间趋势",
+      "类别超过八组的复杂构成"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "饼图",
+      "占比",
+      "构成",
+      "份额",
+      "比例"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "scatter_plot",
+    "label": "散点分析",
+    "category": "数据与指标",
+    "description": "以散点位置揭示两个指标的相关性、聚类和异常点。",
+    "suitable_for": [
+      "相关性分析",
+      "象限分析",
+      "客群分布"
+    ],
+    "avoid_for": [
+      "纯叙事内容",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "散点",
+      "相关性",
+      "聚类",
+      "象限",
+      "离群"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "data_table",
+    "label": "数据表格",
+    "category": "数据与指标",
+    "description": "用行列对齐展示多字段明细，便于精确查阅和横向核对。",
+    "suitable_for": [
+      "数据明细",
+      "参数清单",
+      "经营台账"
+    ],
+    "avoid_for": [
+      "需要突出单一结论",
+      "低信息量的概览页"
+    ],
+    "density_levels": [
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "表格",
+      "明细",
+      "台账",
+      "字段",
+      "参数"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "map_distribution",
+    "label": "地图分布",
+    "category": "数据与指标",
+    "description": "将数值或对象标注在地图区域上，展示地域覆盖和分布差异。",
+    "suitable_for": [
+      "区域分布",
+      "市场覆盖",
+      "门店布局"
+    ],
+    "avoid_for": [
+      "纯叙事内容",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "data_analysis"
+    ],
+    "min_items": 2,
+    "max_items": 12,
+    "keywords": [
+      "地图",
+      "省份",
+      "城市",
+      "区域分布"
+    ],
+    "related_families": [
+      "data_cards",
+      "big_number",
+      "dashboard"
+    ],
+    "supports_chart": true,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "data",
+    "visual_axis": "chart"
+  },
+  {
+    "value": "people_profile",
+    "label": "人物介绍",
+    "category": "产品与场景",
+    "description": "以人物照片、身份标签和经历要点快速建立人物认知。",
+    "suitable_for": [
+      "团队介绍",
+      "专家简介",
+      "创始人故事"
+    ],
+    "avoid_for": [
+      "高密度指标",
+      "复杂组织关系"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "product_showcase"
+    ],
+    "min_items": 1,
+    "max_items": 6,
+    "keywords": [
+      "产品",
+      "案例",
+      "场景",
+      "人物",
+      "客户"
+    ],
+    "related_families": [
+      "product_showcase",
+      "case_breakdown",
+      "scenario_showcase"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "showcase",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "product_showcase",
+    "label": "产品展示",
+    "category": "产品与场景",
+    "description": "以产品主图搭配卖点标注，突出外观、功能与价值。",
+    "suitable_for": [
+      "产品发布",
+      "功能亮点",
+      "新品介绍"
+    ],
+    "avoid_for": [
+      "高密度指标",
+      "复杂组织关系"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "product_showcase"
+    ],
+    "min_items": 1,
+    "max_items": 6,
+    "keywords": [
+      "产品",
+      "案例",
+      "场景",
+      "人物",
+      "客户"
+    ],
+    "related_families": [
+      "people_profile",
+      "case_breakdown",
+      "scenario_showcase"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "showcase",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "case_breakdown",
+    "label": "案例拆解",
+    "category": "产品与场景",
+    "description": "按背景、行动和成果拆解案例，说明可复制的方法与价值。",
+    "suitable_for": [
+      "客户案例",
+      "成功实践",
+      "项目复盘"
+    ],
+    "avoid_for": [
+      "高密度指标",
+      "复杂组织关系"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "product_showcase"
+    ],
+    "min_items": 1,
+    "max_items": 6,
+    "keywords": [
+      "产品",
+      "案例",
+      "场景",
+      "人物",
+      "客户"
+    ],
+    "related_families": [
+      "people_profile",
+      "product_showcase",
+      "scenario_showcase"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "showcase",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "problem_cause_solution",
+    "label": "问题—原因—方案",
+    "category": "对比与分析",
+    "description": "将问题、根因与解决方案串联，形成从诊断到行动的闭环。",
+    "suitable_for": [
+      "问题诊断",
+      "改进方案",
+      "痛点分析"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "goal_strategy_action"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "goal_strategy_action",
+    "label": "目标—策略—行动",
+    "category": "对比与分析",
+    "description": "按目标、策略和行动拆分规划，明确从方向到落地的对应关系。",
+    "suitable_for": [
+      "战略落地",
+      "行动计划",
+      "经营规划"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "summary_detail",
+    "label": "总分结构",
+    "category": "观点与叙事",
+    "description": "先给出总体结论，再展开关键细节，适合总分式信息表达。",
+    "suitable_for": [
+      "执行摘要",
+      "方案概述",
+      "结论展开"
+    ],
+    "avoid_for": [
+      "复杂表格",
+      "多步骤流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "主题",
+      "愿景",
+      "故事",
+      "品牌",
+      "主视觉"
+    ],
+    "related_families": [
+      "split_left_right",
+      "split_top_bottom",
+      "magazine_editorial"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "editorial",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "layered_structure",
+    "label": "分层结构",
+    "category": "关系与结构",
+    "description": "用分层版面说明系统组成、架构边界和各层职责。",
+    "suitable_for": [
+      "技术架构",
+      "能力分层",
+      "平台分层"
+    ],
+    "avoid_for": [
+      "组织汇报关系",
+      "闭环流程"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "layers",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "module_combination",
+    "label": "模块组合",
+    "category": "并列与模块",
+    "description": "以大小不同的模块组合表现能力构成和模块之间的协同。",
+    "suitable_for": [
+      "解决方案",
+      "能力体系",
+      "产品模块"
+    ],
+    "avoid_for": [
+      "强时序关系",
+      "复杂因果分析"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "模块",
+      "组件",
+      "能力模块",
+      "组合",
+      "协同"
+    ],
+    "related_families": [
+      "grid_n_x_m",
+      "collage",
+      "tag_categories"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "collage",
+    "label": "拼贴式",
+    "category": "并列与模块",
+    "description": "将多张图片或内容碎片拼贴成视觉集合，强调丰富性和氛围。",
+    "suitable_for": [
+      "作品集",
+      "活动回顾",
+      "多图展示"
+    ],
+    "avoid_for": [
+      "需要精确比较的数值",
+      "严格步骤关系"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "拼贴",
+      "作品集",
+      "图片集",
+      "照片",
+      "画廊"
+    ],
+    "related_families": [
+      "grid_n_x_m",
+      "module_combination",
+      "tag_categories"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "tag_categories",
+    "label": "标签分类",
+    "category": "并列与模块",
+    "description": "用标签分组归纳关键词、主题或对象类别，适合轻量分类。",
+    "suitable_for": [
+      "关键词云",
+      "主题分类",
+      "用户标签"
+    ],
+    "avoid_for": [
+      "需要表达先后顺序",
+      "需要展示数值差异"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "标签",
+      "分类",
+      "类别",
+      "关键词",
+      "分组"
+    ],
+    "related_families": [
+      "grid_n_x_m",
+      "module_combination",
+      "collage"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "checklist",
+    "label": "清单列表",
+    "category": "并列与模块",
+    "description": "按清单逐项展示待办、要求或检查标准，强调执行完整性。",
+    "suitable_for": [
+      "行动清单",
+      "检查事项",
+      "交付要求"
+    ],
+    "avoid_for": [
+      "需要表达复杂依赖关系",
+      "强调视觉叙事的封面"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "清单",
+      "检查项",
+      "待办",
+      "要求",
+      "事项"
+    ],
+    "related_families": [
+      "grid_n_x_m",
+      "module_combination",
+      "collage"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "milestones",
+    "label": "里程碑",
+    "category": "流程与时间",
+    "description": "突出少数关键里程碑及其成果，适合阶段性汇报。",
+    "suitable_for": [
+      "项目节点",
+      "阶段成果",
+      "关键事件"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "priority_ranking",
+    "label": "优先级排序",
+    "category": "对比与分析",
+    "description": "根据重要性、紧急度或价值对事项排序，辅助决策取舍。",
+    "suitable_for": [
+      "优先级管理",
+      "事项排序",
+      "资源投入"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "value_chain",
+    "label": "价值链",
+    "category": "关系与结构",
+    "description": "连接价值创造的前后环节，突出从投入到交付的业务协同。",
+    "suitable_for": [
+      "业务价值链",
+      "产业链",
+      "端到端交付"
+    ],
+    "avoid_for": [
+      "部门层级",
+      "简单观点总结"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "value_chain",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "ecosystem",
+    "label": "生态圈",
+    "category": "关系与结构",
+    "description": "围绕核心主体展示多方参与者、资源连接和协同生态。",
+    "suitable_for": [
+      "合作生态",
+      "利益相关方",
+      "平台网络"
+    ],
+    "avoid_for": [
+      "线性执行流程",
+      "单一组织架构"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "ecosystem",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "closed_loop_management",
+    "label": "闭环管理",
+    "category": "关系与结构",
+    "description": "围绕目标、执行、检查和改进构建管理闭环，突出责任与反馈机制。",
+    "suitable_for": [
+      "管理机制",
+      "PDCA",
+      "运营复盘"
+    ],
+    "avoid_for": [
+      "简单循环展示",
+      "产品功能介绍"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "management_cycle",
+    "visual_axis": "radial"
+  },
+  {
+    "value": "input_process_output",
+    "label": "输入—过程—输出",
+    "category": "关系与结构",
+    "description": "用输入、处理和输出三个阶段说明系统或业务的转化逻辑。",
+    "suitable_for": [
+      "业务机制",
+      "服务交付",
+      "系统运行逻辑"
+    ],
+    "avoid_for": [
+      "多轮循环",
+      "复杂时间排期"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "ipo",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "three_part",
+    "label": "三段式",
+    "category": "并列与模块",
+    "description": "以等宽三段展示固定的三类内容或三个阶段。",
+    "suitable_for": [
+      "三项原则",
+      "三大能力",
+      "三阶段规划"
+    ],
+    "avoid_for": [
+      "强时序关系",
+      "复杂因果分析"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "三段",
+      "三个方面",
+      "三部分",
+      "三阶段"
+    ],
+    "related_families": [
+      "grid_n_x_m",
+      "module_combination",
+      "collage"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "modules",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "five_step",
+    "label": "五步法",
+    "category": "流程与时间",
+    "description": "以固定五步结构拆解方法论或标准执行流程。",
+    "suitable_for": [
+      "五步法",
+      "实施方法",
+      "标准流程"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "comparison_table",
+    "label": "对照表",
+    "category": "对比与分析",
+    "description": "用行列对照多个对象与比较维度，适合参数较多的横向比较。",
+    "suitable_for": [
+      "功能对比",
+      "方案选型",
+      "参数比较"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对照表",
+      "多维对比",
+      "参数对比"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": true,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "pros_cons",
+    "label": "优劣势分析",
+    "category": "对比与分析",
+    "description": "将正反两面并置，直观呈现方案的优点、缺点和取舍。",
+    "suitable_for": [
+      "利弊分析",
+      "方案评估",
+      "决策讨论"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "swot",
+    "label": "SWOT分析",
+    "category": "对比与分析",
+    "description": "以四象限整理优势、劣势、机会和威胁，形成战略分析全景。",
+    "suitable_for": [
+      "SWOT 分析",
+      "战略诊断",
+      "竞争分析"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "fishbone",
+    "label": "鱼骨图",
+    "category": "对比与分析",
+    "description": "以鱼骨分支追溯问题的多类根因，适合系统性诊断。",
+    "suitable_for": [
+      "根因分析",
+      "质量改进",
+      "问题排查"
+    ],
+    "avoid_for": [
+      "单一对象介绍",
+      "时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "comparison"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "对比",
+      "比较",
+      "差异",
+      "方案",
+      "优劣"
+    ],
+    "related_families": [
+      "compare_dual_axis",
+      "funnel",
+      "problem_cause_solution"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "comparison",
+    "visual_axis": "split"
+  },
+  {
+    "value": "iceberg_model",
+    "label": "冰山模型",
+    "category": "关系与结构",
+    "description": "用水面上下的分层区分可见现象与深层原因、能力或风险。",
+    "suitable_for": [
+      "根因分析",
+      "隐性能力",
+      "风险诊断"
+    ],
+    "avoid_for": [
+      "并列要点",
+      "项目时间线"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "iceberg",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "tower_structure",
+    "label": "塔式结构",
+    "category": "关系与结构",
+    "description": "以塔基到塔尖的堆叠结构表达能力建设、支撑关系和目标高度。",
+    "suitable_for": [
+      "能力建设",
+      "战略支撑",
+      "成熟度模型"
+    ],
+    "avoid_for": [
+      "平行模块",
+      "网络关系"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "relationship"
+    ],
+    "min_items": 2,
+    "max_items": 8,
+    "keywords": [
+      "关系",
+      "结构",
+      "体系",
+      "关联",
+      "层级"
+    ],
+    "related_families": [
+      "hub_and_spoke",
+      "floor_plan",
+      "circular_cycle"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "tower",
+    "visual_axis": "vertical"
+  },
+  {
+    "value": "growth_staircase",
+    "label": "阶梯成长",
+    "category": "流程与时间",
+    "description": "用上升阶梯表达个人、产品或组织从当前状态到目标状态的成长路径。",
+    "suitable_for": [
+      "成长路径",
+      "能力进阶",
+      "成熟度模型"
+    ],
+    "avoid_for": [
+      "多维数据比较",
+      "无顺序的观点集合"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "process"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "流程",
+      "步骤",
+      "执行",
+      "环节",
+      "推进"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "horizontal"
+  },
+  {
+    "value": "route_planning",
+    "label": "路径规划",
+    "category": "流程与时间",
+    "description": "用路径节点串联实施路线，突出关键动作、选择点和到达目标。",
+    "suitable_for": [
+      "实施路径",
+      "用户路径",
+      "推进路线"
+    ],
+    "avoid_for": [
+      "精确工期管理",
+      "无路径关系的并列清单"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "path"
+  },
+  {
+    "value": "annual_plan",
+    "label": "年度规划",
+    "category": "流程与时间",
+    "description": "按年度或季度排布目标、重点工作和交付成果，支持节奏化管理。",
+    "suitable_for": [
+      "年度规划",
+      "季度计划",
+      "经营安排"
+    ],
+    "avoid_for": [
+      "单次活动流程",
+      "没有时间周期的策略说明"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "timeline"
+    ],
+    "min_items": 2,
+    "max_items": 6,
+    "keywords": [
+      "时间线",
+      "时间轴",
+      "历程",
+      "阶段",
+      "发展"
+    ],
+    "related_families": [
+      "timeline_horizontal",
+      "timeline_vertical",
+      "process_horizontal"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "flow",
+    "visual_axis": "schedule"
+  },
+  {
+    "value": "retrospective",
+    "label": "复盘总结",
+    "category": "管理与复盘",
+    "description": "回顾目标、结果、经验和改进项，形成可执行的复盘结论。",
+    "suitable_for": [
+      "项目复盘",
+      "经营总结",
+      "经验沉淀"
+    ],
+    "avoid_for": [
+      "沉浸式故事",
+      "复杂数据建模"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "复盘",
+      "总结",
+      "经验",
+      "教训",
+      "改进",
+      "下一步"
+    ],
+    "related_families": [
+      "achievement_wall"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "management",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "achievement_wall",
+    "label": "成果墙",
+    "category": "管理与复盘",
+    "description": "以奖项、数据和成果卡片集中陈列阶段性成绩与背书。",
+    "suitable_for": [
+      "成果展示",
+      "荣誉展示",
+      "年度回顾"
+    ],
+    "avoid_for": [
+      "沉浸式故事",
+      "复杂数据建模"
+    ],
+    "density_levels": [
+      "medium",
+      "high"
+    ],
+    "intent_types": [
+      "action_plan"
+    ],
+    "min_items": 3,
+    "max_items": 10,
+    "keywords": [
+      "成果",
+      "荣誉",
+      "获奖",
+      "成绩",
+      "案例墙"
+    ],
+    "related_families": [
+      "retrospective"
+    ],
+    "supports_chart": false,
+    "supports_image": false,
+    "supports_text": true,
+    "visual_strength": "medium",
+    "semantic_group": "management",
+    "visual_axis": "grid"
+  },
+  {
+    "value": "scenario_showcase",
+    "label": "场景化展示",
+    "category": "产品与场景",
+    "description": "通过具体使用场景呈现对象如何解决问题和创造价值。",
+    "suitable_for": [
+      "应用场景",
+      "客户体验",
+      "服务示例"
+    ],
+    "avoid_for": [
+      "高密度指标",
+      "复杂组织关系"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "product_showcase"
+    ],
+    "min_items": 1,
+    "max_items": 6,
+    "keywords": [
+      "产品",
+      "案例",
+      "场景",
+      "人物",
+      "客户"
+    ],
+    "related_families": [
+      "people_profile",
+      "product_showcase",
+      "case_breakdown"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "showcase",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "scenario_map",
+    "label": "场景地图",
+    "category": "产品与场景",
+    "description": "按场景、角色和触点绘制全景地图，呈现体验流程和机会点。",
+    "suitable_for": [
+      "用户旅程",
+      "服务蓝图",
+      "场景全景"
+    ],
+    "avoid_for": [
+      "高密度指标",
+      "复杂组织关系"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "product_showcase"
+    ],
+    "min_items": 1,
+    "max_items": 6,
+    "keywords": [
+      "产品",
+      "案例",
+      "场景",
+      "人物",
+      "客户"
+    ],
+    "related_families": [
+      "people_profile",
+      "product_showcase",
+      "case_breakdown"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "showcase",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "infographic",
+    "label": "信息图表",
+    "category": "观点与叙事",
+    "description": "将文字、图标和数字融合为一张信息图，快速讲清复杂知识。",
+    "suitable_for": [
+      "知识科普",
+      "数据故事",
+      "概念说明"
+    ],
+    "avoid_for": [
+      "复杂表格",
+      "多步骤流程"
+    ],
+    "density_levels": [
+      "low",
+      "medium"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 4,
+    "keywords": [
+      "主题",
+      "愿景",
+      "故事",
+      "品牌",
+      "主视觉"
+    ],
+    "related_families": [
+      "split_left_right",
+      "split_top_bottom",
+      "magazine_editorial"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": true,
+    "visual_strength": "high",
+    "semantic_group": "editorial",
+    "visual_axis": "visual"
+  },
+  {
+    "value": "visual_metaphor",
+    "label": "视觉隐喻",
+    "category": "开场与视觉",
+    "description": "借助具象隐喻画面表达抽象主题，增强记忆点和情绪感染力。",
+    "suitable_for": [
+      "愿景表达",
+      "品牌主题",
+      "章节开场"
+    ],
+    "avoid_for": [
+      "高密度数据",
+      "复杂流程"
+    ],
+    "density_levels": [
+      "low"
+    ],
+    "intent_types": [
+      "key_message"
+    ],
+    "min_items": 1,
+    "max_items": 2,
+    "keywords": [
+      "主题",
+      "愿景",
+      "故事",
+      "品牌",
+      "主视觉"
+    ],
+    "related_families": [
+      "hero_with_supporting_cards",
+      "full_screen_visual"
+    ],
+    "supports_chart": false,
+    "supports_image": true,
+    "supports_text": false,
+    "visual_strength": "high",
+    "semantic_group": "opening",
+    "visual_axis": "visual"
+  }
+]

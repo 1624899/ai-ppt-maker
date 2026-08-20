@@ -220,6 +220,9 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
             "prompt_compression": "compressed",
         }
 
+    layout_report = build_deck_layout_report([{"value": page.get("layout_family")} for page in pages if page.get("layout_family")])
+    for page in pages:
+        page["layout_report"] = layout_report
     return {
         "source": "fallback",
         "style_name": style_notes or "通用主题化简报",
@@ -631,7 +634,7 @@ def normalize_content_plan(
         "generation_options": generation_options,
         "style_guide": style_guide,
         "pages": pages,
-        "layout_report": build_deck_layout_report([{"value": page.get("layout_family")} for page in pages if page.get("layout_family")]),
+        "layout_report": layout_report,
     }
 
 

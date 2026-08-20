@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from ppt_system.generation.design_grammar import DEFAULT_LAYOUT_FAMILIES, LAYOUT_FAMILY_LABELS
 
@@ -114,6 +116,27 @@ def _build_profile(value: str) -> LayoutProfile:
 
 
 LAYOUT_PROFILES: dict[str, LayoutProfile] = {value: _build_profile(value) for value in DEFAULT_LAYOUT_FAMILIES}
+
+
+def export_layout_profiles(path: str | Path) -> None:
+    """将当前注册表导出为 UTF-8 JSON，供设计侧在外部文件中维护。"""
+    target = Path(path)
+    target.write_text(json.dumps(build_layout_profile_options(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_layout_profiles(path: str | Path) -> dict[str, LayoutProfile]:
+    """校验并加载外部画像，机器值必须与已注册的 68 个版式完全一致。"""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    items = raw.get("items", raw) if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        raise ValueError("版式画像文件必须是数组或包含 items 数组")
+    required = set(LayoutProfile.__dataclass_fields__)
+    values = {str(item.get("value")) for item in items if isinstance(item, dict)}
+    if values != set(DEFAULT_LAYOUT_FAMILIES):
+        raise ValueError("外部版式画像必须完整覆盖已注册的 68 个版式")
+    if any(not required.issubset(item) for item in items if isinstance(item, dict)):
+        raise ValueError("外部版式画像缺少必填字段")
+    return {str(item["value"]): LayoutProfile(**{key: tuple(value) if isinstance(value, list) else value for key, value in item.items() if key in required}) for item in items}
 
 # 房型图的核心是平面分区与动线，不应使用通用结构关系的说明。
 LAYOUT_PROFILES["floor_plan"] = LayoutProfile(
@@ -299,3 +322,12 @@ def build_layout_profile_options(families: list[str] | None = None) -> list[dict
              "supports_chart": p.supports_chart, "supports_image": p.supports_image, "supports_text": p.supports_text,
              "visual_strength": p.visual_strength, "semantic_group": p.semantic_group, "visual_axis": p.visual_axis}
             for value in source if value in LAYOUT_PROFILES for p in [LAYOUT_PROFILES[value]]]
+
+
+# 生产环境优先读取可审阅的 JSON 画像；文件缺失或校验失败时保留代码注册表，保证历史任务可用。
+_EXTERNAL_PROFILE_PATH = Path(__file__).with_name("layout_profiles.json")
+if _EXTERNAL_PROFILE_PATH.exists():
+    try:
+        LAYOUT_PROFILES = load_layout_profiles(_EXTERNAL_PROFILE_PATH)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass

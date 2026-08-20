@@ -38,6 +38,8 @@ export const confirmJobPlan = async (jobId, payload = {}) => {
   return parseJsonResponse(response);
 };
 
+export const optimizeJobPlanLayouts = async (jobId) => postJobAction(jobId, 'plan/optimize-layouts');
+
 export const postJobOperation = async (jobId, operation) => {
   const response = await fetch(`/api/jobs/${jobId}/operations`, {
     method: 'POST',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer } from 'react';
-import { confirmJobPlan, getJobPlan, putJobPlan } from '../utils/jobActions';
+import { confirmJobPlan, getJobPlan, optimizeJobPlanLayouts, putJobPlan } from '../utils/jobActions';
 import { normalizePlan } from '../utils/planningDraft';
 import { getJobMeta } from '../utils/jobPresentation';
 import { resolvePlanTitle } from '../utils/titleExtraction';
@@ -31,6 +31,7 @@ const planFingerprint = (plan) => JSON.stringify(sortForCompare(plan || {}));
 
 export const PLAN_CONFIRM_PENDING_KEY = 'confirm-plan';
 export const PLAN_SAVE_PENDING_KEY = 'save-plan';
+export const PLAN_OPTIMIZE_PENDING_KEY = 'optimize-layouts';
 
 const INITIAL_STATE = {
   loadedJobId: '',
@@ -93,6 +94,12 @@ function planningDraftReducer(state, action) {
         message: '规划修改已保存',
       };
     case 'save_error':
+      return { ...state, pending: '', error: action.error };
+    case 'optimize_start':
+      return { ...state, pending: PLAN_OPTIMIZE_PENDING_KEY, message: '', error: '' };
+    case 'optimize_success':
+      return { ...state, draft: action.plan, savedPlan: action.plan, confirmation: action.confirmation, pending: '', message: action.message };
+    case 'optimize_error':
       return { ...state, pending: '', error: action.error };
     case 'confirm_start':
       return { ...state, pending: PLAN_CONFIRM_PENDING_KEY, message: '', error: '' };
@@ -235,6 +242,22 @@ export function usePlanningDraft(currentJob, onJobUpdated) {
     }
   };
 
+  const optimizeLayouts = async () => {
+    if (!jobId || pending) return null;
+    dispatch({ type: 'optimize_start' });
+    try {
+      const payload = await optimizeJobPlanLayouts(jobId);
+      const plan = normalizePlan(payload.plan);
+      const changed = Number(payload.layout_optimization?.changed_count || 0);
+      dispatch({ type: 'optimize_success', plan, confirmation: payload.plan_confirmation || {}, message: changed ? `已优化 ${changed} 页版式结构` : '当前版式组合已符合结构优化要求' });
+      onJobUpdated?.({ ...currentJob, plan, pages: plan.pages, ...payload });
+      return payload;
+    } catch (err) {
+      dispatch({ type: 'optimize_error', error: err.message || '结构优化失败' });
+      return null;
+    }
+  };
+
   const discardDraft = () => {
     dispatch({ type: 'discard' });
   };
@@ -251,6 +274,7 @@ export function usePlanningDraft(currentJob, onJobUpdated) {
     updateDraft,
     saveDraft,
     confirmPlan,
+    optimizeLayouts,
     discardDraft,
   };
 }
