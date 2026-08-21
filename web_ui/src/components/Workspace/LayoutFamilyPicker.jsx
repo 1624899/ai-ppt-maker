@@ -5,10 +5,14 @@ import { uiClassName } from '../../utils/uiClassName';
 const buildRecommendationReason = (option, page) => {
   const recommendation = page?.layout_recommendation || {};
   const reason = recommendation.value === option?.value ? recommendation.reason : null;
+  const intentLabels = { comparison: '对比分析', process: '流程推进', timeline: '时间演进', relationship: '关系结构', data_analysis: '数据分析', product_showcase: '主视觉展示', summary: '总结结论', action_plan: '行动计划', key_message: '核心观点', cover: '开场主题' };
   if (reason?.content_fit) return [
-    reason.matched_intent ? `页面意图：${reason.matched_intent}。` : '',
+    reason.matched_intent ? `页面意图：${intentLabels[reason.matched_intent] || reason.matched_intent}。` : '',
     reason.matched_signals?.length ? `匹配信号：${reason.matched_signals.join('、')}。` : '',
-    reason.content_fit, reason.density_fit, reason.deck_fit
+    reason.profile_description ? `${reason.profile_description}` : '',
+    reason.content_fit, reason.density_fit,
+    reason.avoid_for?.length ? `不建议用于：${reason.avoid_for.join('、')}。` : '',
+    reason.deck_fit
   ].filter(Boolean).join('');
   return option?.description || `适合用“${option?.label || '当前版式'}”组织页面信息。`;
 };

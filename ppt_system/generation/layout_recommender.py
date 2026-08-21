@@ -15,6 +15,13 @@ def recommend_layout_candidates(title: str, summary: str, bullets: Sequence[str]
     for family in candidates:
         profile = get_layout_profile(family)
         score, reasons = _score_layout(profile, intent, f"{title} {summary} {' '.join(str(item) for item in bullets)}".lower())
+        reasons.update({
+            "layout_label": profile.label,
+            "profile_description": profile.description,
+            "suitable_for": list(profile.suitable_for),
+            "avoid_for": list(profile.avoid_for),
+            "semantic_group": profile.semantic_group,
+        })
         result.append({"value": family, "score": score, "reason": reasons, "layout_intent": intent.to_dict()})
     return sorted(result, key=lambda item: (-item["score"], candidates.index(item["value"])))[:limit]
 
@@ -33,8 +40,8 @@ def choose_layout_family(suggested_family: str, title: str, summary: str, bullet
         return recommend_layout_family(title, summary, bullets, previous_family=previous_family, **kwargs)
     suggested_item = next(item for item in candidates if item["value"] == suggested)
     recommended = candidates[0] if candidates else suggested_item
-    # 仅在候选的语义匹配明显更强时修正模型建议，保留合理的创造性选择。
-    return recommended["value"] if recommended["score"] >= suggested_item["score"] + 8 else suggested
+    # 只要推荐候选在语义上更匹配，就纠正模型可能随意返回的版式。
+    return recommended["value"] if recommended["score"] > suggested_item["score"] else suggested
 
 
 def _score_layout(profile: Any, intent: Any, text: str) -> tuple[int, dict[str, Any]]:

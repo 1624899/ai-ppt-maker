@@ -473,7 +473,10 @@ def normalize_content_plan(
     if not isinstance(pages_input, list):
         pages_input = []
 
-    available_families = style_guide.get("layout_families", list(DEFAULT_LAYOUT_FAMILIES))
+    style_families = style_guide.get("layout_families")
+    available_families = list(DEFAULT_LAYOUT_FAMILIES)
+    if isinstance(style_families, list):
+        available_families = list(dict.fromkeys([*style_families, *available_families]))
     element_primitives = style_guide.get("element_primitives", list(DEFAULT_ELEMENT_PRIMITIVES))
     used_families: list[str] = []
 

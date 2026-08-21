@@ -52,6 +52,22 @@ class ResponseStreamParserTests(unittest.TestCase):
 
         self.assertEqual(extract_response_text(body), '{"title":"规划完成"}')
 
+    def test_accepts_gateway_event_with_untagged_final_response_output(self) -> None:
+        event = {
+            "response": {
+                "id": "resp_gateway",
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": '{"title":"网关响应"}'}],
+                }],
+            }
+        }
+        body = parse_response_sse(f"data: {json.dumps(event, ensure_ascii=False)}\n\n")
+
+        self.assertEqual(extract_response_text(body), '{"title":"网关响应"}')
+
 
 if __name__ == "__main__":
     unittest.main()

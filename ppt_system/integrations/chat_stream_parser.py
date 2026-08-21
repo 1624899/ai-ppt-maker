@@ -101,6 +101,11 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
             response = event.get("response")
             if isinstance(response, dict):
                 final_response = response
+        elif isinstance(event.get("response"), dict):
+            # 兼容网关省略 completed/done 类型但仍携带最终 response 的事件。
+            response = event["response"]
+            if _response_has_text(response):
+                final_response = response
 
     if final_response is not None:
         output_text = _coerce_text(final_response.get("output_text"))
@@ -123,6 +128,14 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
     return None
 
 
+def _response_has_text(response: dict[str, Any]) -> bool:
+    return bool(
+        _coerce_text(response.get("output_text"))
+        or _extract_content_text(response.get("output"))
+        or _extract_content_text(response.get("content"))
+    )
+
+
 def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str:
     "逻辑：兼容只在完成事件中提供完整文本的 Responses 流式实现。"
     if event_type in {"response.output_text.done", "response.text.done"}:
@@ -133,6 +146,10 @@ def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str
         item = event.get("item")
         if isinstance(item, dict):
             return _extract_content_text(item.get("content"))
+    if event_type in {"response.completed", "response.done"}:
+        response = event.get("response")
+        if isinstance(response, dict):
+            return _extract_content_text(response.get("output")) or _extract_content_text(response.get("content"))
     return ""
 
 
@@ -152,7 +169,14 @@ def _extract_content_text(content: Any) -> str:
         direct_text = _coerce_text(content.get("text"), strip=False)
         if direct_text:
             return direct_text
-        return _coerce_text(content.get("value"), strip=False)
+        direct_value = _coerce_text(content.get("value"), strip=False)
+        if direct_value:
+            return direct_value
+        for key in ("content", "output", "part", "item"):
+            nested = _extract_content_text(content.get(key))
+            if nested:
+                return nested
+        return ""
     if not isinstance(content, list):
         return ""
 
@@ -162,6 +186,7 @@ def _extract_content_text(content: Any) -> str:
             fragments.append(item)
             continue
         if not isinstance(item, dict):
+            fragments.append(_extract_content_text(item))
             continue
         text = _coerce_text(item.get("text"), strip=False)
         if text:
@@ -170,6 +195,8 @@ def _extract_content_text(content: Any) -> str:
         value = _coerce_text(item.get("value"), strip=False)
         if value:
             fragments.append(value)
+            continue
+        fragments.append(_extract_content_text(item))
     return "".join(fragments)
 
 
