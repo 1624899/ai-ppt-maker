@@ -271,6 +271,8 @@ def _regenerate_page(
     operation["message"] = "已提交单页重新生成，将复用现有流水线补齐该页并重建导出结果。"
 
     def updater(current_state: dict[str, Any]) -> None:
+        if isinstance(payload.get("plan"), dict):
+            apply_plan_to_state(current_state, payload["plan"])
         _append_operation(current_state, operation)
         _append_page_version(current_state, version)
         _append_page_edit_request(current_state, page_no, operation)
@@ -303,6 +305,8 @@ def _regenerate_reference_page(record, state, payload):
     operation.update({"version_id": version["version_id"], "status": "submitted", "message": "已按当前版式提交原稿图重新生成。"})
 
     def updater(current_state):
+        if isinstance(payload.get("plan"), dict):
+            apply_plan_to_state(current_state, payload["plan"])
         current_page = _find_page(current_state, page_no)
         _append_operation(current_state, operation)
         _append_page_version(current_state, version)

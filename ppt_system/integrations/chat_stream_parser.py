@@ -83,7 +83,8 @@ def parse_sse_events(text: str) -> list[ServerSentEvent]:
 
 
 def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] | None:
-    text_parts: list[str] = []
+    delta_parts: list[str] = []
+    completed_event_texts: dict[str, str] = {}
     final_response: dict[str, Any] | None = None
 
     for event in events:
@@ -91,26 +92,140 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
         if event_type in {"response.output_text.delta", "response.text.delta"}:
             delta = _extract_content_text(event.get("delta"))
             if delta:
-                text_parts.append(delta)
+                delta_parts.append(delta)
             continue
+        # 兼容第三方中转将 Responses 请求改写为 Chat Completions 事件。
+        choice_delta = _extract_choice_delta_text(event)
+        if choice_delta:
+            delta_parts.append(choice_delta)
+            continue
+        generic_text = _extract_relay_text(event)
+        if generic_text:
+            delta_parts.append(generic_text)
+            continue
+        completed_text = _extract_completed_event_text(event_type, event)
+        if completed_text:
+            # 同一输出会在多个完成事件中重复出现，按事件优先级只保留一份。
+            completed_event_texts.setdefault(event_type, completed_text)
         if event_type in {"response.completed", "response.done"}:
             response = event.get("response")
             if isinstance(response, dict):
+                final_response = response
+        elif isinstance(event.get("response"), dict):
+            # 兼容网关省略 completed/done 类型但仍携带最终 response 的事件。
+            response = event["response"]
+            if _response_has_text(response):
                 final_response = response
 
     if final_response is not None:
         output_text = _coerce_text(final_response.get("output_text"))
         if output_text:
             return final_response
-        if text_parts:
+        if delta_parts:
             merged = dict(final_response)
-            merged["output_text"] = "".join(text_parts)
+            merged["output_text"] = "".join(delta_parts)
+            return merged
+        completed_text = _select_completed_event_text(completed_event_texts)
+        if completed_text:
+            merged = dict(final_response)
+            merged["output_text"] = completed_text
             return merged
         return final_response
 
-    if text_parts:
-        return {"output_text": "".join(text_parts)}
+    if delta_parts:
+        return {"output_text": "".join(delta_parts)}
+    completed_text = _select_completed_event_text(completed_event_texts)
+    if completed_text:
+        return {"output_text": completed_text}
     return None
+
+
+def _select_completed_event_text(event_texts: dict[str, str]) -> str:
+    """按完成事件优先级选择一份完整文本，避免同一输出被重复拼接。"""
+    for event_type in (
+        "response.output_text.done",
+        "response.text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+    ):
+        text = event_texts.get(event_type)
+        if text:
+            return text
+    return ""
+
+
+def _response_has_text(response: dict[str, Any]) -> bool:
+    return bool(
+        _coerce_text(response.get("output_text"))
+        or _extract_content_text(response.get("output"))
+        or _extract_content_text(response.get("content"))
+    )
+
+
+def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str:
+    "逻辑：兼容只在完成事件中提供完整文本的 Responses 流式实现。"
+    if event_type in {"response.output_text.done", "response.text.done"}:
+        return _extract_content_text(event.get("text") or event.get("delta"))
+    if event_type == "response.content_part.done":
+        return _extract_content_text(event.get("part"))
+    if event_type == "response.output_item.done":
+        item = event.get("item")
+        if isinstance(item, dict):
+            return _extract_content_text(item.get("content"))
+    if event_type in {"response.completed", "response.done"}:
+        response = event.get("response")
+        if isinstance(response, dict):
+            return _extract_content_text(response.get("output")) or _extract_content_text(response.get("content"))
+    return ""
+
+
+def _extract_choice_delta_text(event: dict[str, Any]) -> str:
+    """提取中转服务常见的 choices 增量或完整消息文本。"""
+    choices = event.get("choices")
+    if not isinstance(choices, list):
+        return ""
+    fragments: list[str] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        delta = choice.get("delta")
+        if isinstance(delta, dict):
+            text = _extract_content_text(delta.get("content"))
+            if text:
+                fragments.append(text)
+                continue
+        message = choice.get("message")
+        if isinstance(message, dict):
+            text = _extract_content_text(message.get("content"))
+            if text:
+                fragments.append(text)
+    return "".join(fragments)
+
+
+def _extract_relay_text(value: Any) -> str:
+    """兼容中转网关把文本包在 data/response/content 等字段中的变体。"""
+    if not isinstance(value, dict):
+        return ""
+    for key in ("data", "response", "result", "output", "content"):
+        nested = value.get(key)
+        if isinstance(nested, str) and key in {"data", "content"}:
+            # data 可能是 JSON 字符串，优先继续解析其结构。
+            try:
+                parsed = json.loads(nested)
+            except json.JSONDecodeError:
+                return nested
+            extracted = _extract_relay_text(parsed)
+            if extracted:
+                return extracted
+        elif isinstance(nested, dict):
+            extracted = _extract_choice_delta_text(nested) or _extract_relay_text(nested)
+            if extracted:
+                return extracted
+        elif isinstance(nested, list):
+            extracted = _extract_content_text(nested)
+            if extracted:
+                return extracted
+    return ""
 
 
 def _split_sse_field(line: str) -> tuple[str, str]:
@@ -129,7 +244,14 @@ def _extract_content_text(content: Any) -> str:
         direct_text = _coerce_text(content.get("text"), strip=False)
         if direct_text:
             return direct_text
-        return _coerce_text(content.get("value"), strip=False)
+        direct_value = _coerce_text(content.get("value"), strip=False)
+        if direct_value:
+            return direct_value
+        for key in ("content", "output", "part", "item"):
+            nested = _extract_content_text(content.get(key))
+            if nested:
+                return nested
+        return ""
     if not isinstance(content, list):
         return ""
 
@@ -139,6 +261,7 @@ def _extract_content_text(content: Any) -> str:
             fragments.append(item)
             continue
         if not isinstance(item, dict):
+            fragments.append(_extract_content_text(item))
             continue
         text = _coerce_text(item.get("text"), strip=False)
         if text:
@@ -147,6 +270,8 @@ def _extract_content_text(content: Any) -> str:
         value = _coerce_text(item.get("value"), strip=False)
         if value:
             fragments.append(value)
+            continue
+        fragments.append(_extract_content_text(item))
     return "".join(fragments)
 
 

@@ -39,24 +39,18 @@ def _chart(kind):
 
 
 def _floor_plan():
+    # 房型图只固定外部框架，六个区域内部可承载任意内容结构。
+    gap = 18
+    room_w = (900 - gap * 2) / 3
+    room_h = 145
+    rooms = [
+        _s("room", f"区域{i + 1}", 50 + (i % 3) * (room_w + gap), 205 + (i // 3) * (room_h + gap), room_w, room_h)
+        for i in range(6)
+    ]
     return [
         _s("roof", "", 35, 55, 930, 95, True),
         _s("title", "总主题", 290, 82, 420, 48),
-        _s("room-header", "用户现状", 45, 158, 180, 38, True),
-        _s("room-header", "核心方案", 245, 158, 510, 38, True),
-        _s("room-header", "服务价值", 775, 158, 180, 38, True),
-        _s("side-room", "现状与需求", 45, 205, 180, 300),
-        _s("main-room", "", 245, 205, 510, 300, True),
-        _s("arrow-left", "输入1", 270, 285, 115, 48),
-        _s("arrow-left", "输入2", 270, 365, 115, 48),
-        _s("hub", "核心能力", 455, 320, 95, 95),
-        _s("hub-node", "能力1", 455, 235, 95, 58),
-        _s("hub-node", "能力2", 565, 300, 95, 58),
-        _s("hub-node", "能力3", 500, 425, 95, 58),
-        _s("hub-node", "能力4", 390, 400, 95, 58),
-        _s("arrow-right", "输出1", 620, 285, 110, 48),
-        _s("arrow-right", "输出2", 620, 365, 110, 48),
-        _s("side-room", "成果与说明", 775, 205, 180, 300),
+        *rooms,
         _s("foundation", "统一支撑能力", 45, 515, 910, 25, True),
     ]
 def _magazine(): return _title()+[_s("visual","主图",55,105,540,285),_s("text-column","正文栏",625,105,145,400),_s("text-column","正文栏",790,105,145,400),_s("caption","引文",55,415,540,90)]

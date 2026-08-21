@@ -73,7 +73,7 @@ def _build_layout_family_options_with_slots() -> list[dict]:
             for name, box in slots.get("slot_coords", {}).items()
         ]
         option["preview_shapes"] = build_layout_preview(option["value"])
-        option["category"] = get_layout_category(option["value"])
+        option["category"] = option.get("category") or get_layout_category(option["value"])
     return options
 
 

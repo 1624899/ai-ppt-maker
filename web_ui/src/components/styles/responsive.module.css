@@ -21,7 +21,7 @@
   }
 
   .workspace-shell {
-    grid-template-columns: minmax(220px, 0.82fr) minmax(420px, 1.5fr);
+    grid-template-columns: minmax(200px, 0.68fr) minmax(460px, 1.8fr);
     align-items: start;
     overflow: visible;
   }

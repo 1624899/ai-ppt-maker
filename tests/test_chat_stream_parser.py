@@ -24,6 +24,89 @@ class ResponseStreamParserTests(unittest.TestCase):
 
         self.assertEqual(extract_response_text(body), '{"title":"提问即竞争力"}')
 
+    def test_merges_completed_text_events_when_no_deltas_are_sent(self) -> None:
+        events = [
+            {"type": "response.output_text.done", "text": '{"title":"模型规划"}'},
+            {"type": "response.completed", "response": {"id": "resp_test", "status": "completed"}},
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), '{"title":"模型规划"}')
+
+    def test_merges_completed_output_item_when_no_deltas_are_sent(self) -> None:
+        events = [
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"title":"规划完成"}'}],
+                },
+            },
+            {"type": "response.completed", "response": {"id": "resp_test", "status": "completed"}},
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), '{"title":"规划完成"}')
+
+    def test_does_not_duplicate_text_shared_by_completed_events(self) -> None:
+        text = '{"title":"统一完成文本"}'
+        events = [
+            {"type": "response.output_text.done", "text": text},
+            {"type": "response.content_part.done", "part": {"text": text}},
+            {
+                "type": "response.output_item.done",
+                "item": {"content": [{"type": "output_text", "text": text}]},
+            },
+            {"type": "response.completed", "response": {"id": "resp_test", "status": "completed"}},
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), text)
+
+    def test_merges_chat_completions_events_from_relay(self) -> None:
+        events = [
+            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {"content": '{"title":"中转'}}]},
+            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {"content": '响应"}'}}]},
+            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), '{"title":"中转响应"}')
+
+    def test_merges_nested_data_event_from_relay(self) -> None:
+        events = [
+            {"data": {"choices": [{"delta": {"content": '{"title":"嵌套中转"}'}}]}},
+        ]
+        sse_text = "data: " + json.dumps(events[0], ensure_ascii=False) + "\n\n"
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), '{"title":"嵌套中转"}')
+
+    def test_accepts_gateway_event_with_untagged_final_response_output(self) -> None:
+        event = {
+            "response": {
+                "id": "resp_gateway",
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": '{"title":"网关响应"}'}],
+                }],
+            }
+        }
+        body = parse_response_sse(f"data: {json.dumps(event, ensure_ascii=False)}\n\n")
+
+        self.assertEqual(extract_response_text(body), '{"title":"网关响应"}')
+
 
 if __name__ == "__main__":
     unittest.main()

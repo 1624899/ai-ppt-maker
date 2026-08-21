@@ -2,20 +2,20 @@ import { useMemo, useState } from 'react';
 import { Check, LayoutGrid } from 'lucide-react';
 import { uiClassName } from '../../utils/uiClassName';
 
-const REASONS = {
-  grid_n_x_m: '适合多个并列观点或模块', timeline_horizontal: '适合按时间从左到右推进', timeline_vertical: '适合阶段较多的时间叙事',
-  process_horizontal: '适合 2-5 个连续步骤', process_vertical: '适合步骤较多或说明较长的流程', hub_and_spoke: '适合中心主题与多个分支',
-  compare_dual_axis: '适合两组方案或对象对照', dashboard: '适合高密度指标总览', funnel: '适合转化、筛选和流失过程',
-  gantt_chart: '适合项目排期和工期展示', swimlane: '适合跨角色或跨部门流程', org_chart: '适合组织层级与汇报关系',
-  circular_cycle: '适合循环、迭代和闭环关系', bar_chart: '适合分类数值比较', line_chart: '适合连续趋势变化', pie_chart: '适合占比和构成展示',
-};
-
 const buildRecommendationReason = (option, page) => {
-  const bullets = Array.isArray(page?.bullets) ? page.bullets.filter(Boolean) : [];
-  const textLength = [page?.title, page?.summary, ...bullets].join('').length;
-  const density = textLength >= 260 || bullets.length >= 6 ? '内容密度较高' : textLength <= 100 && bullets.length <= 3 ? '内容较精炼' : '内容密度适中';
-  const layoutReason = option?.reason || REASONS[option?.value] || `适合用“${option?.label || '当前版式'}”组织页面信息`;
-  return `${density}，共 ${bullets.length} 个要点；${layoutReason}。`;
+  const recommendation = page?.layout_recommendation || {};
+  if (recommendation.value === option?.value && recommendation.ai_reason) return recommendation.ai_reason;
+  const reason = recommendation.value === option?.value ? recommendation.reason : null;
+  const intentLabels = { comparison: '对比分析', process: '流程推进', timeline: '时间演进', relationship: '关系结构', data_analysis: '数据分析', product_showcase: '主视觉展示', summary: '总结结论', action_plan: '行动计划', key_message: '核心观点', cover: '开场主题' };
+  if (reason?.content_fit) return [
+    reason.matched_intent ? `页面意图：${intentLabels[reason.matched_intent] || reason.matched_intent}。` : '',
+    reason.matched_signals?.length ? `匹配信号：${reason.matched_signals.join('、')}。` : '',
+    reason.profile_description ? `${reason.profile_description}` : '',
+    reason.content_fit, reason.density_fit,
+    reason.avoid_for?.length ? `不建议用于：${reason.avoid_for.join('、')}。` : '',
+    reason.deck_fit
+  ].filter(Boolean).join('');
+  return option?.description || `适合用“${option?.label || '当前版式'}”组织页面信息。`;
 };
 
 const LayoutGlyph = ({ shapes, large = false }) => <span className={uiClassName(`layout-picker__glyph${large ? ' is-large' : ''}`)} aria-hidden="true">
@@ -31,18 +31,28 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
   const [category, setCategory] = useState('全部');
   const selectedOption = options.find((option) => option.value === value) || options[0];
   const categories = useMemo(() => ['全部', ...new Set(options.map((option) => option.category || '基础'))], [options]);
-  const recommendedOptions = useMemo(() => {
-    if (!selectedOption) return options.slice(0, 5);
-    const related = options.filter((option) => option.value !== selectedOption.value && option.category === selectedOption.category);
-    return [selectedOption, ...related].slice(0, 5);
-  }, [options, selectedOption]);
+  const candidates = Array.isArray(page?.layout_candidates) ? page.layout_candidates : [];
+  const orderedOptions = candidates.map((candidate) => options.find((option) => option.value === candidate.value)).filter(Boolean).slice(0, 5);
+  const recommendedOptions = orderedOptions.length ? orderedOptions : (selectedOption ? [selectedOption] : options.slice(0, 5));
   const visibleOptions = showAll ? options.filter((option) => category === '全部' || option.category === category) : recommendedOptions;
+  const selectedDetails = selectedOption ? [
+    selectedOption.description,
+    selectedOption.suitable_for?.length ? `适用：${selectedOption.suitable_for.join('、')}` : '',
+    selectedOption.avoid_for?.length ? `不适用：${selectedOption.avoid_for.join('、')}` : '',
+    selectedOption.supports_chart ? '支持图表' : '',
+    selectedOption.supports_image ? '支持图片' : '',
+    selectedOption.density_levels?.length ? `信息密度：${selectedOption.density_levels.join(' / ')}` : '',
+    Number.isFinite(selectedOption.min_items) ? `要点数量：${selectedOption.min_items}-${selectedOption.max_items}` : '',
+    selectedOption.semantic_group ? `语义组：${selectedOption.semantic_group}` : '',
+    selectedOption.related_families?.length ? `相近版式：${selectedOption.related_families.join('、')}` : '',
+  ].filter(Boolean).join(' · ') : '';
   return <div className={uiClassName('layout-picker')}>
     {selectedOption && <div className={uiClassName('layout-picker__current')}>
       <div className={uiClassName('layout-picker__current-head')}>
         <strong>当前版式结构</strong><span>{selectedOption.label}</span>
       </div>
       <LayoutGlyph shapes={selectedOption.preview_shapes} large />
+      <small>{selectedDetails}</small>
     </div>}
     <div className={uiClassName('layout-picker__browser-head')}>
       <strong>{showAll ? '全部版式' : 'AI 推荐候选'}</strong>
@@ -62,16 +72,20 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
           className={uiClassName(`layout-picker__option${selected ? ' is-selected' : ''}`)}
           disabled={disabled}
           onClick={() => onChange?.(option.value)}
-          title={REASONS[option.value] || '根据页面内容选择合适的结构'}>
+          title={option.description || '根据页面内容选择合适的结构'}>
           <span className={uiClassName('layout-picker__option-name')}>{option.label}</span>
           {selected && <Check size={13} />}
           <LayoutGlyph shapes={option.preview_shapes} />
+          <small>{option.description}</small>
         </button>;
       })}
     </div>
     <div className={uiClassName('layout-picker__reason')}>
       <strong>AI 推荐理由</strong>
       <span>{buildRecommendationReason(selectedOption, page)}</span>
+      {page?.layout_report?.enabled && page.layout_report.diversity_score != null && <small>整套结构多样性：{page.layout_report.diversity_score} 分</small>}
+      {page?.layout_report?.enabled && page.layout_report.issues?.length > 0 && <small>{page.layout_report.issues.join('；')}</small>}
+      {page?.layout_report?.enabled && page.layout_report.suggestions?.length > 0 && <small>改进建议：{page.layout_report.suggestions.join('；')}</small>}
     </div>
   </div>;
 };

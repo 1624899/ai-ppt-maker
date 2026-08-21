@@ -136,6 +136,7 @@ def build_reference_prompt(
             style_section,
             f"页面标题：{title}",
             f"页面摘要：{summary}",
+            "房型图结构要求：顶部为屋顶或三角形主题区，下方为六个长方形内容区并保留底部支撑区；各内容区内部按本页信息自由组织，不预设中心圆、辐射分支或输入输出关系。" if page.get("layout_family") == "floor_plan" else "",
             f"本页视觉建议：{visual_suggestion}" if visual_suggestion else "",
             f"参考风格要求：{style_notes}",
             *adherence_lines,

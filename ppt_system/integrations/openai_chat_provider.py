@@ -51,6 +51,8 @@ class OpenAIChatProvider:
             config.get("chat_ambiguous_transport_retry_count", config.get("request_ambiguous_retry_count", 0))
         )
         self.ambiguous_retry_count = int(config.get("chat_ambiguous_retry_count", 1))
+        self.json_retry_count = int(config.get("chat_json_retry_count", 1))
+        self.json_retry_token_multiplier = float(config.get("chat_json_retry_token_multiplier", 2.0))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
 
         if not self.api_key:
@@ -89,8 +91,7 @@ class OpenAIChatProvider:
         )
         self._raise_for_error(response)
         body = _parse_response_json(response)
-        content = self._extract_json_content_with_retry(body, payload)
-        return parse_json_content(content)
+        return self._parse_json_with_retry(body, payload)
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
         return build_responses_image_input_item(file_to_data_url(image_path))
@@ -197,7 +198,9 @@ class OpenAIChatProvider:
         current_body = body
         while True:
             try:
-                return _extract_response_content(current_body)
+                content = _extract_response_content(current_body)
+                print(format_log_line("chat", _build_response_diagnostic(current_body, content)), flush=True)
+                return content
             except AmbiguousResponseError as exc:
                 if _has_billable_usage(current_body):
                     message = _build_billable_ambiguous_response_message(current_body, exc)
@@ -219,6 +222,47 @@ class OpenAIChatProvider:
                 response = self._post_with_retry(payload)
                 self._raise_for_error(response)
                 current_body = _parse_response_json(response)
+
+    def _parse_json_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+        """解析模型 JSON；针对输出截断导致的语法错误重新请求。"""
+        current_body = body
+        current_payload = payload
+        for attempt in range(max(0, self.json_retry_count) + 1):
+            try:
+                _raise_for_incomplete_response(current_body)
+                content = self._extract_json_content_with_retry(current_body, current_payload)
+                return parse_json_content(content)
+            except AmbiguousResponseError:
+                raise
+            except RuntimeError as exc:
+                content = _try_extract_response_content(current_body)
+                print(
+                    format_log_line(
+                        "chat",
+                        "模型 JSON 解析失败诊断："
+                        f"{_build_response_diagnostic(current_body, content)}，"
+                        f"error={_build_text_snippet(str(exc))}",
+                    ),
+                    flush=True,
+                )
+                if attempt >= max(0, self.json_retry_count):
+                    raise
+                next_attempt = attempt + 1
+                print(
+                    format_log_line(
+                        "chat",
+                        f"模型返回的 JSON 无法解析，将执行第 {next_attempt}/{self.json_retry_count} 次重试",
+                    ),
+                    flush=True,
+                )
+                time.sleep(self.retry_initial_delay * (2**attempt))
+                current_payload = _increase_json_output_budget(
+                    current_payload, self.json_retry_token_multiplier
+                )
+                response = self._post_with_retry(current_payload)
+                self._raise_for_error(response)
+                current_body = _parse_response_json(response)
+        raise AssertionError("JSON 解析重试流程异常结束")
 
     @staticmethod
     def _raise_for_error(response: requests.Response) -> None:
@@ -251,13 +295,39 @@ def parse_json_content(content: str) -> dict[str, Any]:
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        match = re.search(r"\{.*\}", text, flags=re.S)
-        if not match:
+        start = text.find("{")
+        if start < 0:
             raise RuntimeError(f"对话模型没有返回 JSON，响应片段：{_build_text_snippet(text)}") from exc
         try:
-            return json.loads(match.group(0))
+            value, _ = json.JSONDecoder().raw_decode(text[start:])
+            if not isinstance(value, dict):
+                raise ValueError("JSON 根节点不是对象")
+            return value
         except json.JSONDecodeError as nested_exc:
             raise RuntimeError(f"对话模型返回了疑似 JSON 片段，但格式无效：{_build_text_snippet(text)}") from nested_exc
+        except ValueError as nested_exc:
+            raise RuntimeError(f"对话模型返回的 JSON 根节点无效：{_build_text_snippet(text)}") from nested_exc
+
+
+def _raise_for_incomplete_response(body: dict[str, Any]) -> None:
+    status = str(body.get("status", "")).strip().lower()
+    details = body.get("incomplete_details")
+    if status != "incomplete" and not isinstance(details, dict):
+        return
+    reason = details.get("reason") if isinstance(details, dict) else "unknown"
+    raise RuntimeError(
+        "对话模型响应未完成，无法解析 JSON："
+        f"status={status or 'unknown'}，reason={reason or 'unknown'}，"
+        f"响应片段：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}"
+    )
+
+
+def _increase_json_output_budget(payload: dict[str, Any], multiplier: float) -> dict[str, Any]:
+    next_payload = dict(payload)
+    current = int(next_payload.get("max_output_tokens", 0))
+    if current > 0:
+        next_payload["max_output_tokens"] = max(current + 1, int(current * max(1.0, multiplier)))
+    return next_payload
 
 
 def file_to_data_url(path: Path) -> str:
@@ -342,6 +412,28 @@ def _build_usage_summary(usage: Any) -> str:
         if key in usage:
             parts.append(f"{key}={usage.get(key)}")
     return "usage=" + (", ".join(parts) if parts else "unknown")
+
+
+def _build_response_diagnostic(body: dict[str, Any], content: str) -> str:
+    """输出响应元数据和文本长度，避免记录完整业务内容。"""
+    response_id = str(body.get("id", "")).strip() or "unknown"
+    status = str(body.get("status", "")).strip() or "unknown"
+    details = body.get("incomplete_details")
+    reason = details.get("reason") if isinstance(details, dict) else ""
+    text = str(content or "")
+    return (
+        "模型响应诊断："
+        f"response_id={response_id}，status={status}，"
+        f"incomplete_reason={reason or 'none'}，{_build_usage_summary(body.get('usage'))}，"
+        f"text_chars={len(text)}，text_utf8_bytes={len(text.encode('utf-8'))}"
+    )
+
+
+def _try_extract_response_content(body: dict[str, Any]) -> str:
+    try:
+        return _extract_response_content(body)
+    except (AmbiguousResponseError, RuntimeError):
+        return ""
 
 
 def _coerce_positive_int(value: Any) -> int:

@@ -81,6 +81,11 @@ def api_update_job_plan(job_id: str):
     return job_plan_api_service.api_update_job_plan(job_id)
 
 
+@bp.post("/api/jobs/<job_id>/plan/optimize-layouts")
+def api_optimize_job_plan_layouts(job_id: str):
+    return job_plan_api_service.api_optimize_job_plan_layouts(job_id)
+
+
 @bp.post("/api/jobs/<job_id>/plan/confirm")
 def api_confirm_job_plan(job_id: str):
     return job_plan_api_service.api_confirm_job_plan(job_id)

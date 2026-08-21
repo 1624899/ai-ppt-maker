@@ -8,7 +8,7 @@ from typing import Any
 from ppt_system.integrations.model_config import read_config as read_json_config
 from ppt_system.jobs.db_lifecycle import collect_db_stats as collect_job_db_stats
 from ppt_system.jobs.db_maintenance_scheduler import JobDbMaintenanceScheduler
-from ppt_system.jobs.job_store import init_db as init_job_db
+from ppt_system.jobs.job_store import init_db as init_job_db, reconcile_job_directories
 from ppt_system.runtime.app_paths import (
     ensure_runtime_directories,
     resolve_application_root,
@@ -36,6 +36,7 @@ LOGS_DIR = RUNTIME_PATHS.logs_dir
 JOBS_DB_PATH = OUTPUT_ROOT / "jobs.sqlite3"
 
 init_job_db(JOBS_DB_PATH)
+reconcile_job_directories(JOBS_DB_PATH, OUTPUT_ROOT)
 
 
 def read_config() -> dict[str, Any]:

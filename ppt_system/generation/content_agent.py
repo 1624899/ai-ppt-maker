@@ -29,7 +29,8 @@ from ppt_system.generation.page_richness import (
     normalize_page_richness_level,
     resolve_page_richness_map,
 )
-from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_family
+from ppt_system.generation.layout_recommender import choose_layout_family, recommend_layout_candidates, recommend_layout_family
+from ppt_system.generation.deck_layout_planner import build_deck_layout_report, plan_deck_layouts
 from ppt_system.generation.planner import infer_style_type
 from ppt_system.generation.reference_style_adherence import (
     build_reference_style_adherence_planning_guidance,
@@ -66,7 +67,10 @@ def build_content_plan(
     )
     generation_options["page_richness_map"] = page_richness_map
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
+    theme_color = str(generation_options.get("theme_color", "auto") or "auto").strip()
     style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
+    if theme_color and theme_color != "auto":
+        style_guide.setdefault("style_core", {})["user_theme_color"] = theme_color
     source_anchors = build_source_content_anchors(content, page_count)
     messages = [
         {
@@ -336,6 +340,7 @@ def build_planning_prompt(
         explicit_map=generation_options.get("page_richness_map", {}),
     )
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
+    theme_color = str(generation_options.get("theme_color", "auto") or "auto").strip()
     resolved_prompt_mode = "slot_brief" if style_image_count > 0 else "compact"
     layout_families = style_guide.get("layout_families", [])
     layout_family_catalog = build_layout_family_prompt_catalog(layout_families)
@@ -370,6 +375,7 @@ def build_planning_prompt(
 - 首页策略：{cover_policy}
 - 原稿图数量：{style_image_count}
 - 原稿图约束：{build_reference_style_adherence_planning_guidance(reference_style_adherence, has_reference_images=style_image_count > 0)}
+- 主题色偏好：{theme_color if theme_color and theme_color != "auto" else "未指定，请根据内容和参考图自动选择"}
 - 后续原稿图阶段会使用 {resolved_prompt_mode} 模式统一生成最终生图提示词；这里的 image_prompt 只写本页独有视觉重点，可为空。
 
 内容丰富度：
@@ -387,6 +393,7 @@ def build_planning_prompt(
 - 可用 element_primitives：{'、'.join(element_primitives)}
 - 禁止自造、翻译、拼接或添加后缀，例如不得输出 layout_1、custom_layout、process_horizontal_2；没有完全匹配项时，从上述枚举中选择语义最接近的一项。
 - 先判断本页信息关系，再选择最贴切的专用版式；优先使用能够直接表达语义的版式，例如转化用漏斗图、排期用甘特图、跨角色流程用泳道图、层级关系用组织架构或金字塔、指标分析用对应图表、根因分析用鱼骨图，不要把所有多要点页面都退化成宫格卡片。
+- 每页先填写 layout_intent，说明本页是在表达对比、流程、时间、关系、数据、场景、总结还是行动计划；layout_family 必须服务于该意图。
 - 同时考虑 page_richness：低密度优先主视觉、大数字、人物或产品展示；高密度优先仪表盘、数据表格、模块组合或清单；时间、流程、对比、循环等明确关系优先级高于密度偏好。
 - layout_slots 必须与所选 layout_family 的结构一致，只写中文语义分区，不写坐标、英文槽位名或另一种版式的结构。
 
@@ -403,8 +410,10 @@ JSON 格式必须如下：
       "title": "页面标题，18字以内",
       "summary": "本页内容摘要",
       "bullets": ["要点1", "要点2", "要点3"],
+      "layout_intent": {{"intent": "comparison/process/timeline/relationship/data_analysis/product_showcase/summary/action_plan/key_message", "content_role": "evidence/method/context/framework/example/closing/action/narrative", "density": "low/medium/high", "item_count": 3, "has_metrics": false, "has_process": false, "visual_priority": "low/medium/high"}},
       "source_anchor_ids": ["S01"],
       "layout_family": "grid_n_x_m",
+      "layout_reason": "用中文完整说明为什么本页内容适合该版式，以及该版式如何组织信息。",
       "layout_slots": ["语义槽位1", "语义槽位2"],
       "element_plan": {{"primitives": ["本页使用的元素原语1", "元素原语2"], "icon_topics": ["图标主题1"], "diagram_type": "图表类型"}},
       "difference_from_previous": "与上一页的排版差异说明",
@@ -420,7 +429,8 @@ JSON 格式必须如下：
 要求：
 1. pages 数量必须正好是 {page_count}。
 2. 每页必须选择一个 layout_family，其值必须与上方封闭枚举中的某个英文机器值完全一致；禁止输出中文名、解释文字、模板编号或任何未列出的值。
-3. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
+3. layout_intent 必须与 title、summary、bullets 的实际内容一致，不能所有页面都填写同一种意图；item_count 与实际要点数量一致。
+4. title、summary、bullets 必须忠于输入内容，不得自行计算、补写或改写数字口径。
 4. page_richness 必须为 low、medium、high 之一，并与上面的丰富度要求一致。
 5. reference_mode 只能填写 "generation" 或 "edit_with_refs"。
 6. 文字会出现在第一阶段原稿图中，请保证标题和正文适合直接上屏。
@@ -464,7 +474,10 @@ def normalize_content_plan(
     if not isinstance(pages_input, list):
         pages_input = []
 
-    available_families = style_guide.get("layout_families", list(DEFAULT_LAYOUT_FAMILIES))
+    style_families = style_guide.get("layout_families")
+    available_families = list(DEFAULT_LAYOUT_FAMILIES)
+    if isinstance(style_families, list):
+        available_families = list(dict.fromkeys([*style_families, *available_families]))
     element_primitives = style_guide.get("element_primitives", list(DEFAULT_ELEMENT_PRIMITIVES))
     used_families: list[str] = []
 
@@ -484,18 +497,37 @@ def normalize_content_plan(
         if bullets:
             fallback["texts"][1]["text"] = _format_body_bullets(bullets)
 
-        layout_family = choose_layout_family(
-            str(raw.get("layout_family", "")).strip(),
+        layout_candidates = recommend_layout_candidates(
             title,
             summary,
             bullets,
             page_richness=page_richness,
             candidate_families=available_families,
-            previous_family=used_families[-1] if used_families else "",
             page_index=index,
             include_cover_page=include_cover_page,
         )
-        if index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
+        inferred_intent = layout_candidates[0].get("layout_intent", {}) if layout_candidates else {}
+        raw_intent = raw.get("layout_intent")
+        layout_intent = raw_intent if isinstance(raw_intent, dict) else inferred_intent
+        layout_reason = str(raw.get("layout_reason") or "").strip()
+        requested_family = normalize_layout_family_name(str(raw.get("layout_family", "")).strip())
+        if validate_layout_family(requested_family):
+            layout_family = requested_family
+        else:
+            layout_family = choose_layout_family(
+                requested_family,
+                title,
+                summary,
+                bullets,
+                page_richness=page_richness,
+                candidate_families=available_families,
+                # 单页没有跨页上下文，不参与相邻去重或整套编排。
+                previous_family=used_families[-1] if page_count > 1 and used_families else "",
+                page_index=index,
+                include_cover_page=include_cover_page,
+            )
+        # 用户确认的版式必须保持不变，不能被相邻去重策略覆盖。
+        if page_count > 1 and not requested_family and index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
             alternatives = [candidate for candidate in available_families if candidate != used_families[-1]]
             layout_family = recommend_layout_family(
                 title,
@@ -507,6 +539,12 @@ def normalize_content_plan(
                 page_index=index,
                 include_cover_page=include_cover_page,
             )
+        # 用已选页面作为上下文进行贪心编排，避免相邻页面结构重复。
+        if page_count > 1 and used_families and not requested_family:
+            previous_candidate = [{"value": used_families[-1], "score": 0, "reason": {}}]
+            planned = plan_deck_layouts([previous_candidate, layout_candidates], locked_families=[None, None])
+            if len(planned) == 2 and planned[1]:
+                layout_family = planned[1]["value"]
         used_families.append(layout_family)
 
         layout_slots = raw.get("layout_slots", [])
@@ -563,8 +601,17 @@ def normalize_content_plan(
             "title": title,
             "summary": summary,
             "bullets": bullets,
-            "layout_intent": str(raw.get("layout_intent", "")).strip(),
+            "layout_intent": layout_intent,
             "layout_family": layout_family,
+            "layout_candidates": layout_candidates,
+            "layout_recommendation": {
+                **(next((item for item in layout_candidates if item["value"] == layout_family), layout_candidates[0] if layout_candidates else {})),
+                "ai_reason": layout_reason,
+            },
+            "layout_reason": layout_reason,
+            "layout_locked": bool(raw.get("layout_locked")),
+            "layout_user_confirmed": bool(raw.get("layout_user_confirmed")),
+            "layout_source": str(raw.get("layout_source") or "ai"),
             "layout_slots": layout_slots,
             "element_plan": element_plan,
             "difference_from_previous": difference_from_previous,
@@ -592,6 +639,12 @@ def normalize_content_plan(
         )
         pages.append(page)
 
+    layout_report = build_deck_layout_report(
+        [{"value": page["layout_family"]} for page in pages]
+    )
+    for page in pages:
+        page["layout_report"] = layout_report
+
     return {
         "title": resolve_plan_title(result.get("title"), fallback_content=content),
         "style_type": style_type,
@@ -601,6 +654,7 @@ def normalize_content_plan(
         "generation_options": generation_options,
         "style_guide": style_guide,
         "pages": pages,
+        "layout_report": layout_report,
     }
 
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, FilePlus2, LoaderCircle, Save } from 'lucide-react';
-import { PLAN_CONFIRM_PENDING_KEY, PLAN_SAVE_PENDING_KEY } from '../../hooks/usePlanningDraft';
+import { CheckCircle2, FilePlus2, LoaderCircle, Save, WandSparkles } from 'lucide-react';
+import { PLAN_CONFIRM_PENDING_KEY, PLAN_OPTIMIZE_PENDING_KEY, PLAN_SAVE_PENDING_KEY } from '../../hooks/usePlanningDraft';
 import { createBlankPagePlan, normalizePlan, renumberPlanPages } from '../../utils/planningDraft';
 import { getWorkflowModeLabel, isAwaitingPlanConfirmation } from '../../utils/workflowMode';
 import PagePlanEditor from './PagePlanEditor';import { uiClassName } from "../../utils/uiClassName";
@@ -18,6 +18,8 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
   const error = planningDraft?.error || '';
   const dirty = Boolean(planningDraft?.dirty);
   const updateDraft = planningDraft?.updateDraft;
+  const optimizeLayouts = planningDraft?.optimizeLayouts;
+  const [layoutOptimization, setLayoutOptimization] = useState(null);
   const [referenceRegeneratePage, setReferenceRegeneratePage] = useState(0);
   const [referenceRegenerateError, setReferenceRegenerateError] = useState('');
   const referencePageNumbers = useMemo(() => new Set((currentJob?.reference_pages || []).map((item) => Number(item.page_no))), [currentJob]);
@@ -107,13 +109,20 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
   const confirmPlan = async () => {
     await onConfirmCurrentPlan?.();
   };
+  const applyLayoutOptimization = async () => {
+    const result = await optimizeLayouts?.();
+    if (result) setLayoutOptimization(result.layout_optimization || null);
+  };
   const regenerateReference = async (pageNo) => {
     if (!currentJob?.job_id || referenceRegeneratePage) return;
     setReferenceRegeneratePage(Number(pageNo));
     setReferenceRegenerateError('');
     try {
       const updatedJob = await postJobOperation(currentJob.job_id, {
-        operation_type: 'page_reference_regenerate', page_no: pageNo, plan,
+        operation_type: elementPageNumbers.has(Number(pageNo)) ? 'page_regenerate' : 'page_reference_regenerate',
+        page_no: pageNo,
+        instruction: '严格按照人工指定版式重新生成',
+        plan,
       });
       onJobUpdated?.(updatedJob);
     } catch (operationError) {
@@ -139,6 +148,10 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
             {pending === PLAN_SAVE_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <Save size={16} />}
             {pending === PLAN_SAVE_PENDING_KEY ? '保存中...' : '保存修改'}
           </button>
+          {plan.pages.length >= 2 && <button type="button" className={uiClassName("btn btn-secondary")} onClick={applyLayoutOptimization} disabled={pending !== '' || loading}>
+            {pending === PLAN_OPTIMIZE_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <WandSparkles size={16} />}
+            {pending === PLAN_OPTIMIZE_PENDING_KEY ? '优化中...' : '应用结构优化'}
+          </button>}
           <button type="button" className={uiClassName("btn btn-primary")} onClick={confirmPlan} disabled={pending !== '' || loading || plan.pages.length === 0}>
             {pending === PLAN_CONFIRM_PENDING_KEY ? <LoaderCircle className={uiClassName("spin")} size={16} /> : <CheckCircle2 size={16} />}
             {pending === PLAN_CONFIRM_PENDING_KEY ? '确认中...' : dirty ? '用当前修改继续生成' : '确认规划并继续生成'}
@@ -172,6 +185,12 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
       {error && <div className={uiClassName("form-error")}>{error}</div>}
       {referenceRegenerateError && <div className={uiClassName("form-error")}>{referenceRegenerateError}</div>}
       {message && <div className={uiClassName("form-success")}>{message}</div>}
+      {layoutOptimization && <section className={uiClassName("plan-quality is-passed")}>
+        <div className={uiClassName('plan-quality__head')}><strong>结构优化结果</strong><span>调整 {layoutOptimization.changed_count || 0} 页</span></div>
+        {layoutOptimization.changes?.length > 0 && <div className={uiClassName('plan-quality__issues')}>
+          {layoutOptimization.changes.map((change) => <div key={change.page_no}><b>第 {change.page_no} 页</b><span>{change.from} → {change.to}；{change.reason}</span></div>)}
+        </div>}
+      </section>}
 
       <section className={uiClassName(`plan-quality${quality.passed ? ' is-passed' : ''}`)}>
         <div className={uiClassName('plan-quality__head')}>

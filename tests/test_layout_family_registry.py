@@ -16,6 +16,7 @@ from ppt_system.generation.text_layout import (
     build_layout_slots_by_family,
     list_supported_layout_slot_families,
 )
+from ppt_system.generation.layout_semantics import semantic_slots_for_family
 
 
 class LayoutFamilyRegistryTests(unittest.TestCase):
@@ -73,6 +74,15 @@ class LayoutFamilyRegistryTests(unittest.TestCase):
         self.assertEqual(len(boxes), 4)
         self.assertEqual([box["role"] for box in boxes], ["title", "body", "body", "body"])
         self.assertLess(boxes[1]["left"], boxes[2]["left"])
+
+    def test_semantic_slots_cover_all_registered_layout_families(self) -> None:
+        for family in ALLOWED_LAYOUT_FAMILIES:
+            slots = semantic_slots_for_family(family)
+            self.assertGreaterEqual(len(slots), 2)
+            self.assertTrue(all(isinstance(slot, str) and slot for slot in slots))
+
+        self.assertEqual(semantic_slots_for_family("floor_plan"), ["顶部主题区", "区域1", "区域2", "区域3", "区域4", "区域5", "区域6", "底部支撑区"])
+        self.assertEqual(semantic_slots_for_family("未注册版式"), ["左侧内容区", "右侧内容区"])
 
 
 if __name__ == "__main__":

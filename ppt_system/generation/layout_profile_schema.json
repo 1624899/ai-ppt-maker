@@ -1,0 +1,5 @@
+{
+  "description": "版式画像外部维护格式。运行时仍以 layout_profiles.py 的注册表为默认来源，后续可将完整画像导出到此文件并由管理工具校验。",
+  "required_fields": ["value", "label", "category", "description", "suitable_for", "avoid_for", "keywords", "intent_types", "density_levels", "min_items", "max_items", "supports_chart", "supports_image", "supports_text", "visual_strength", "semantic_group", "visual_axis", "related_families"],
+  "items": []
+}
