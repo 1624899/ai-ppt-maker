@@ -105,11 +105,5 @@ def _normalize_candidates(values: object) -> list[str]:
         family = normalize_layout_family_name(str(value))
         if validate_layout_family(family) and family not in result:
             result.append(family)
-    # AI 或风格指南给出的候选不足时，从完整注册表补足，之后统一参与评分排序。
-    if len(result) < RECOMMENDED_LAYOUT_COUNT:
-        result.extend(
-            family
-            for family in DEFAULT_LAYOUT_FAMILIES
-            if family not in result
-        )
+    # 候选列表是硬约束：风格指南给出的版式集合之外的版式不得参与推荐。
     return result or list(DEFAULT_LAYOUT_FAMILIES)
