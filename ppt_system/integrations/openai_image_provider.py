@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import time
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +10,13 @@ from requests import RequestException
 
 from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.http_retry_policy import (
+    build_transport_error_summary,
     build_transport_error_message,
     is_retryable_status_code,
     transport_retry_budget,
 )
+
+logger = logging.getLogger(__name__)
 from ppt_system.integrations.image_response import save_image_from_response_payload
 from ppt_system.image.canvas_normalization import ensure_image_canvas_size
 
@@ -36,11 +40,12 @@ class OpenAIImageProvider:
         self.response_format = str(config.get("image_response_format", "url")).strip()
         self.moderation = str(config.get("image_moderation", "low")).strip()
         self.n = int(config.get("image_n", 1))
-        self.timeout = bounded_timeout_seconds(config.get("request_timeout_seconds", 180), default=180)
-        self.total_timeout = bounded_timeout_seconds(config.get("request_total_timeout_seconds", 180), default=180)
+        self.timeout = bounded_timeout_seconds(config.get("request_timeout_seconds", 180), default=180, maximum=180)
+        self.total_timeout = bounded_timeout_seconds(config.get("request_total_timeout_seconds", 600), default=600, maximum=1800)
         self.image_download_timeout = bounded_timeout_seconds(
             config.get("image_download_timeout_seconds", 30),
             default=30,
+            maximum=180,
         )
         self.retry_count = int(config.get("request_retry_count", 3))
         self.transport_retry_count = int(config.get("request_transport_retry_count", 1))
@@ -192,9 +197,19 @@ class OpenAIImageProvider:
         deadline = deadline if deadline is not None else self._request_deadline()
         while True:
             self._rewind_files(kwargs.get("files"))
+            attempt_started_at = time.perf_counter()
             try:
                 request_timeout = self._remaining_request_timeout(deadline)
                 response = requests.post(url, timeout=request_timeout, **kwargs)
+                elapsed = time.perf_counter() - attempt_started_at
+                logger.info(
+                    "图像请求诊断：attempt=%s，status=%s，耗时=%.1fs，剩余总时限=%.1fs，url=%s",
+                    response_attempt + transport_attempt + 1,
+                    response.status_code,
+                    elapsed,
+                    max(0.0, deadline - time.monotonic()),
+                    url,
+                )
                 if not self._should_retry(response) or response_attempt >= self.retry_count:
                     return response
 
@@ -204,8 +219,16 @@ class OpenAIImageProvider:
                 else:
                     delay = self.retry_initial_delay * (2**response_attempt)
                 response_attempt += 1
+                logger.warning("图像请求诊断：命中可重试状态码 %s，将在 %.1fs 后重试，Retry-After=%r", response.status_code, delay, retry_after)
                 self._sleep_with_deadline(delay, deadline)
             except RequestException as exc:
+                logger.warning(
+                    "图像请求诊断：attempt=%s，异常耗时=%.1fs，异常=%s，剩余总时限=%.1fs",
+                    response_attempt + transport_attempt + 1,
+                    time.perf_counter() - attempt_started_at,
+                    build_transport_error_summary(exc),
+                    max(0.0, deadline - time.monotonic()),
+                )
                 retry_budget = transport_retry_budget(
                     exc,
                     transport_retry_count=self.transport_retry_count,
@@ -298,7 +321,7 @@ def image_mime_type(path: Path) -> str:
     return "image/png"
 
 
-def bounded_timeout_seconds(raw_value: Any, *, default: int, maximum: int = 180) -> int:
+def bounded_timeout_seconds(raw_value: Any, *, default: int, maximum: int = 1800) -> int:
     try:
         value = int(float(raw_value))
     except (TypeError, ValueError):

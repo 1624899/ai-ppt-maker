@@ -88,7 +88,7 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(provider.api_base_url, "https://example.com/gateway/v1")
         self.assertEqual(provider.images_generations_url, "https://example.com/gateway/v1/images/generations")
 
-    def test_provider_caps_image_timeouts_to_180_seconds(self) -> None:
+    def test_provider_caps_image_timeouts_to_configured_bounds(self) -> None:
         provider = OpenAIImageProvider(
             {
                 "api_base_url": "https://example.com/v1",
@@ -101,7 +101,7 @@ class ImageRetryPolicyTests(unittest.TestCase):
         )
 
         self.assertEqual(provider.timeout, 180)
-        self.assertEqual(provider.total_timeout, 180)
+        self.assertEqual(provider.total_timeout, 600)
         self.assertEqual(provider.image_download_timeout, 180)
 
     def test_extended_generation_options_are_config_driven(self) -> None:
