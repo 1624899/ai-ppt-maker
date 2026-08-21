@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
-import time
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +15,10 @@ from ppt_system.integrations.http_retry_policy import (
     is_retryable_status_code,
     transport_retry_budget,
 )
-
-logger = logging.getLogger(__name__)
 from ppt_system.integrations.image_response import save_image_from_response_payload
 from ppt_system.image.canvas_normalization import ensure_image_canvas_size
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIImageProvider:
