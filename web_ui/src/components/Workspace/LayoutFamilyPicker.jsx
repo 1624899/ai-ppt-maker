@@ -4,6 +4,7 @@ import { uiClassName } from '../../utils/uiClassName';
 
 const buildRecommendationReason = (option, page) => {
   const recommendation = page?.layout_recommendation || {};
+  if (recommendation.value === option?.value && recommendation.ai_reason) return recommendation.ai_reason;
   const reason = recommendation.value === option?.value ? recommendation.reason : null;
   const intentLabels = { comparison: '对比分析', process: '流程推进', timeline: '时间演进', relationship: '关系结构', data_analysis: '数据分析', product_showcase: '主视觉展示', summary: '总结结论', action_plan: '行动计划', key_message: '核心观点', cover: '开场主题' };
   if (reason?.content_fit) return [

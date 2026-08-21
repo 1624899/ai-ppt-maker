@@ -71,6 +71,8 @@ def _score_layout(profile: Any, intent: Any, text: str) -> tuple[int, dict[str, 
     # 在通用意图候选中优先推荐信息结构最直接的版式，其余同类版式作为替代方案。
     if intent.intent == "comparison" and profile.value == "compare_dual_axis":
         score += 34
+    if intent.intent == "relationship" and profile.value in {"hub_and_spoke", "relationship_chain", "org_chart", "module_combination", "ecosystem"}:
+        score += 28
     if intent.intent == "data_analysis" and profile.value in {"line_chart", "bar_chart", "dashboard"}:
         score += 8
     keyword_hits = [word for word in profile.keywords if word.lower() in text]

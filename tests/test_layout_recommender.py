@@ -14,6 +14,7 @@ class LayoutRecommenderTests(unittest.TestCase):
             ("跨部门审批", "泳道图明确责任人与角色分工", ["业务", "法务", "财务", "管理层"], "high", "swimlane"),
             ("核心人物介绍", "创始人个人简介和履历", ["教育背景", "工作经历"], "low", "people_profile"),
             ("经营看板", "仪表盘展示综合指标", ["收入", "利润", "客户", "转化", "成本"], "high", "dashboard"),
+            ("智能化项目平台", "1个平台承载4个核心功能", ["统一入口", "数据分析", "流程协同", "权限管理"], "high", "hub_and_spoke"),
         ]
 
         for title, summary, bullets, richness, expected in cases:

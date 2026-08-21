@@ -30,6 +30,39 @@ class LayoutPromptConstraintsTests(unittest.TestCase):
         self.assertEqual(plan["layout_report"], plan["pages"][0]["layout_report"])
         self.assertEqual(plan["layout_report"], plan["pages"][1]["layout_report"])
 
+    def test_locked_layout_is_preserved_across_adjacent_pages(self) -> None:
+        plan = normalize_content_plan(
+            {
+                "pages": [
+                    {"title": "核心人物", "layout_family": "people_profile", "layout_locked": True},
+                    {"title": "项目负责人", "layout_family": "people_profile", "layout_locked": True},
+                ]
+            },
+            content="介绍项目核心人物和项目负责人。",
+            page_count=2,
+            image_width=2048,
+            image_height=1152,
+            style_notes="清晰简洁",
+            style_guide=fallback_style_guide("清晰简洁", False),
+            has_reference_images=False,
+        )
+
+        self.assertEqual([page["layout_family"] for page in plan["pages"]], ["people_profile", "people_profile"])
+
+    def test_single_page_does_not_run_deck_layout_optimization(self) -> None:
+        plan = normalize_content_plan(
+            {"pages": [{"title": "核心人物", "layout_family": "people_profile"}]},
+            content="介绍项目核心人物。",
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="清晰简洁",
+            style_guide=fallback_style_guide("清晰简洁", False),
+            has_reference_images=False,
+        )
+
+        self.assertEqual(plan["pages"][0]["layout_family"], "people_profile")
+
     def test_planning_prompt_uses_closed_layout_enum_and_chinese_human_text(self) -> None:
         prompt = build_planning_prompt(
             content="介绍产品定位、实施步骤与方案价值。",

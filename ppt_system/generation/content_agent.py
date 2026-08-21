@@ -413,6 +413,7 @@ JSON 格式必须如下：
       "layout_intent": {{"intent": "comparison/process/timeline/relationship/data_analysis/product_showcase/summary/action_plan/key_message", "content_role": "evidence/method/context/framework/example/closing/action/narrative", "density": "low/medium/high", "item_count": 3, "has_metrics": false, "has_process": false, "visual_priority": "low/medium/high"}},
       "source_anchor_ids": ["S01"],
       "layout_family": "grid_n_x_m",
+      "layout_reason": "用中文完整说明为什么本页内容适合该版式，以及该版式如何组织信息。",
       "layout_slots": ["语义槽位1", "语义槽位2"],
       "element_plan": {{"primitives": ["本页使用的元素原语1", "元素原语2"], "icon_topics": ["图标主题1"], "diagram_type": "图表类型"}},
       "difference_from_previous": "与上一页的排版差异说明",
@@ -508,6 +509,7 @@ def normalize_content_plan(
         inferred_intent = layout_candidates[0].get("layout_intent", {}) if layout_candidates else {}
         raw_intent = raw.get("layout_intent")
         layout_intent = raw_intent if isinstance(raw_intent, dict) else inferred_intent
+        layout_reason = str(raw.get("layout_reason") or "").strip()
         layout_family = choose_layout_family(
             str(raw.get("layout_family", "")).strip(),
             title,
@@ -515,11 +517,13 @@ def normalize_content_plan(
             bullets,
             page_richness=page_richness,
             candidate_families=available_families,
-            previous_family=used_families[-1] if used_families else "",
+            # 单页没有跨页上下文，不参与相邻去重或整套编排。
+            previous_family=used_families[-1] if page_count > 1 and used_families else "",
             page_index=index,
             include_cover_page=include_cover_page,
         )
-        if index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
+        # 用户确认的版式必须保持不变，不能被相邻去重策略覆盖。
+        if page_count > 1 and not raw.get("layout_locked") and index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
             alternatives = [candidate for candidate in available_families if candidate != used_families[-1]]
             layout_family = recommend_layout_family(
                 title,
@@ -532,10 +536,9 @@ def normalize_content_plan(
                 include_cover_page=include_cover_page,
             )
         # 用已选页面作为上下文进行贪心编排，避免相邻页面结构重复。
-        if used_families:
+        if page_count > 1 and used_families and not raw.get("layout_locked"):
             previous_candidate = [{"value": used_families[-1], "score": 0, "reason": {}}]
-            locked_family = layout_family if raw.get("layout_locked") else None
-            planned = plan_deck_layouts([previous_candidate, layout_candidates], locked_families=[None, locked_family])
+            planned = plan_deck_layouts([previous_candidate, layout_candidates], locked_families=[None, None])
             if len(planned) == 2 and planned[1]:
                 layout_family = planned[1]["value"]
         used_families.append(layout_family)
@@ -597,7 +600,11 @@ def normalize_content_plan(
             "layout_intent": layout_intent,
             "layout_family": layout_family,
             "layout_candidates": layout_candidates,
-            "layout_recommendation": next((item for item in layout_candidates if item["value"] == layout_family), layout_candidates[0] if layout_candidates else {}),
+            "layout_recommendation": {
+                **(next((item for item in layout_candidates if item["value"] == layout_family), layout_candidates[0] if layout_candidates else {})),
+                "ai_reason": layout_reason,
+            },
+            "layout_reason": layout_reason,
             "layout_locked": bool(raw.get("layout_locked")),
             "layout_slots": layout_slots,
             "element_plan": element_plan,
