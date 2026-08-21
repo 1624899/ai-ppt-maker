@@ -35,17 +35,8 @@ def read_log_tail(name: str, lines: int = DEFAULT_TAIL_LINES) -> dict[str, objec
         raise ValueError(f"非法的日志文件名：{name}")
     requested = max(1, min(int(lines), MAX_TAIL_LINES))
     path = _logs_dir() / name
-    # 双重校验：解析后的路径必须仍在日志目录内。
-    if path.parent != _logs_dir() or not path.is_file():
+    if not path.is_file():
         raise FileNotFoundError(f"日志文件不存在：{name}")
     with path.open("r", encoding="utf-8", errors="replace") as log_file:
         tail = log_file.readlines()[-requested:]
     return {"name": name, "lines": [line.rstrip("\n") for line in tail]}
-
-
-def api_list_logs() -> dict[str, object]:
-    return {"files": list_log_files()}
-
-
-def api_read_log(name: str, lines: int = DEFAULT_TAIL_LINES) -> dict[str, object]:
-    return read_log_tail(name, lines)
