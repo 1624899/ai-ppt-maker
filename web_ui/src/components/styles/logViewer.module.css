@@ -1,0 +1,81 @@
+.floatingButton {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1200;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--bg-panel, #fff);
+  color: var(--text-primary, #1f2329);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--shadow-panel, 0 4px 16px rgba(0, 0, 0, 0.12));
+}
+
+.floatingButton:hover {
+  opacity: 0.85;
+}
+
+.panel {
+  position: fixed;
+  right: 20px;
+  bottom: 60px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 40px));
+  height: min(480px, calc(100vh - 120px));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  background: var(--bg-panel, #fff);
+  box-shadow: var(--shadow-panel, 0 8px 24px rgba(0, 0, 0, 0.16));
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+}
+
+.fileSelect {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.refreshButton {
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.refreshButton:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.error {
+  padding: 6px 10px;
+  color: #d93026;
+  font-size: 12px;
+}
+
+.logBody {
+  flex: 1;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: #10141a;
+  color: #cfe3d4;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

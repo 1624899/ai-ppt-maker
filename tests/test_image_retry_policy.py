@@ -101,8 +101,16 @@ class ImageRetryPolicyTests(unittest.TestCase):
         )
 
         self.assertEqual(provider.timeout, 180)
+        # 显式配置 600 在上限 1800 以内，应原样保留；默认值才是 200。
         self.assertEqual(provider.total_timeout, 600)
         self.assertEqual(provider.image_download_timeout, 180)
+
+        default_provider = OpenAIImageProvider(
+            {"api_base_url": "https://example.com/v1", "image_model": "gpt-image-2"},
+            {"api_key": "test-key"},
+        )
+
+        self.assertEqual(default_provider.total_timeout, 200)
 
     def test_extended_generation_options_are_config_driven(self) -> None:
         provider = OpenAIImageProvider(

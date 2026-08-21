@@ -9,6 +9,7 @@ from ppt_system.web.access_logging import configure_http_access_logging
 from ppt_system.web.blueprints.artifacts_api import bp as artifacts_api_bp
 from ppt_system.web.blueprints.config_api import bp as config_api_bp
 from ppt_system.web.blueprints.jobs_api import bp as jobs_api_bp
+from ppt_system.web.blueprints.logs_api import bp as logs_api_bp
 from ppt_system.web.blueprints.ui import bp as ui_bp
 
 
@@ -32,6 +33,7 @@ def create_app(
     app.register_blueprint(ui_bp)
     app.register_blueprint(config_api_bp)
     app.register_blueprint(jobs_api_bp)
+    app.register_blueprint(logs_api_bp)
     app.register_blueprint(artifacts_api_bp)
     configure_http_access_logging(app, access_log_mode)
 

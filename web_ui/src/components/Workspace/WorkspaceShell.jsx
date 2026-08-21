@@ -221,6 +221,7 @@ const WorkspaceShell = () => {
 
   return (
     <>
+      <LogViewerPanel />
       <Header
         currentJob={currentJob}
         taskLaunchOpen={taskLaunchOpen}

@@ -41,7 +41,7 @@ class OpenAIImageProvider:
         self.moderation = str(config.get("image_moderation", "low")).strip()
         self.n = int(config.get("image_n", 1))
         self.timeout = bounded_timeout_seconds(config.get("request_timeout_seconds", 180), default=180, maximum=180)
-        self.total_timeout = bounded_timeout_seconds(config.get("request_total_timeout_seconds", 600), default=600, maximum=1800)
+        self.total_timeout = bounded_timeout_seconds(config.get("request_total_timeout_seconds", 200), default=200, maximum=1800)
         self.image_download_timeout = bounded_timeout_seconds(
             config.get("image_download_timeout_seconds", 30),
             default=30,
