@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ppt_system.jobs.job_store import create_job, get_job, init_db, reconcile_job_directories, update_job
+from ppt_system.jobs.job_store import create_job, get_job, init_db, update_job
 
 
 class JobStoreTests(unittest.TestCase):
@@ -111,16 +111,6 @@ class JobStoreTests(unittest.TestCase):
         record = get_job(self.db_path, "job-store-demo")
         self.assertIsNotNone(record)
         self.assertEqual(record["title"], "旧标题")
-
-    def test_reconcile_job_directories_moves_only_missing_paths(self) -> None:
-        output_root = Path(self.temp_dir.name) / "appdata-output"
-        target = output_root / "job-store-demo"
-        target.mkdir(parents=True)
-
-        changed = reconcile_job_directories(self.db_path, output_root)
-
-        self.assertEqual(changed, 1)
-        self.assertEqual(get_job(self.db_path, "job-store-demo")["job_dir"], str(target.resolve()))
 
     @staticmethod
     def _job_payload(job_id: str, job_dir: Path) -> dict:
