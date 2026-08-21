@@ -510,20 +510,24 @@ def normalize_content_plan(
         raw_intent = raw.get("layout_intent")
         layout_intent = raw_intent if isinstance(raw_intent, dict) else inferred_intent
         layout_reason = str(raw.get("layout_reason") or "").strip()
-        layout_family = choose_layout_family(
-            str(raw.get("layout_family", "")).strip(),
-            title,
-            summary,
-            bullets,
-            page_richness=page_richness,
-            candidate_families=available_families,
-            # 单页没有跨页上下文，不参与相邻去重或整套编排。
-            previous_family=used_families[-1] if page_count > 1 and used_families else "",
-            page_index=index,
-            include_cover_page=include_cover_page,
-        )
+        requested_family = normalize_layout_family_name(str(raw.get("layout_family", "")).strip())
+        if validate_layout_family(requested_family):
+            layout_family = requested_family
+        else:
+            layout_family = choose_layout_family(
+                requested_family,
+                title,
+                summary,
+                bullets,
+                page_richness=page_richness,
+                candidate_families=available_families,
+                # 单页没有跨页上下文，不参与相邻去重或整套编排。
+                previous_family=used_families[-1] if page_count > 1 and used_families else "",
+                page_index=index,
+                include_cover_page=include_cover_page,
+            )
         # 用户确认的版式必须保持不变，不能被相邻去重策略覆盖。
-        if page_count > 1 and not raw.get("layout_locked") and index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
+        if page_count > 1 and not requested_family and index > 0 and len(used_families) > 0 and layout_family == used_families[-1]:
             alternatives = [candidate for candidate in available_families if candidate != used_families[-1]]
             layout_family = recommend_layout_family(
                 title,
@@ -536,7 +540,7 @@ def normalize_content_plan(
                 include_cover_page=include_cover_page,
             )
         # 用已选页面作为上下文进行贪心编排，避免相邻页面结构重复。
-        if page_count > 1 and used_families and not raw.get("layout_locked"):
+        if page_count > 1 and used_families and not requested_family:
             previous_candidate = [{"value": used_families[-1], "score": 0, "reason": {}}]
             planned = plan_deck_layouts([previous_candidate, layout_candidates], locked_families=[None, None])
             if len(planned) == 2 and planned[1]:
