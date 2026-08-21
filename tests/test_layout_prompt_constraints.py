@@ -80,6 +80,30 @@ class LayoutPromptConstraintsTests(unittest.TestCase):
 
         self.assertEqual([page["layout_family"] for page in plan["pages"]], ["people_profile", "people_profile"])
 
+    def test_user_confirmed_layout_metadata_is_preserved(self) -> None:
+        plan = normalize_content_plan(
+            {"pages": [{
+                "title": "空间规划",
+                "layout_family": "floor_plan",
+                "layout_locked": True,
+                "layout_user_confirmed": True,
+                "layout_source": "user",
+            }]},
+            content="展示空间规划。",
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="清晰简洁",
+            style_guide=fallback_style_guide("清晰简洁", False),
+            has_reference_images=False,
+        )
+
+        page = plan["pages"][0]
+        self.assertEqual(page["layout_family"], "floor_plan")
+        self.assertTrue(page["layout_locked"])
+        self.assertTrue(page["layout_user_confirmed"])
+        self.assertEqual(page["layout_source"], "user")
+
     def test_planning_prompt_uses_closed_layout_enum_and_chinese_human_text(self) -> None:
         prompt = build_planning_prompt(
             content="介绍产品定位、实施步骤与方案价值。",

@@ -108,7 +108,10 @@ const PagePlanEditor = ({
 
   const resolvedLayoutFamilyOptions = buildLayoutFamilyOptions(layoutFamilyOptions, page.layout_family);
   const selectLayout = (value) => updateContentField('layout_family', value, {
-    layout_source: 'user', layout_user_confirmed: true,
+    layout_source: 'user', layout_user_confirmed: true, layout_locked: true,
+    layout_reason: '人工指定，生成时严格采用该版式',
+    layout_recommendation: { value, reason: { content_fit: '人工指定，生成时严格采用该版式。' } },
+    reference_prompt_manual: false, elements_prompt_manual: false,
     reference_regeneration_required: hasReferenceImage && value !== page.layout_family,
   });
   const refreshLayoutRecommendation = () => {
@@ -179,9 +182,9 @@ const PagePlanEditor = ({
                     {page.layout_locked ? <Lock size={14} /> : <LockOpen size={14} />}{page.layout_locked ? '已锁定本页版式' : '锁定本页版式'}
                   </button>
                   <small>{page.layout_source === 'user' ? '人工选择' : '智能推荐'}{page.layout_reason ? ` · ${page.layout_reason}` : ''}</small>
-                  {hasReferenceImage && !hasElementImage && page.reference_regeneration_required &&
+                  {hasReferenceImage && page.layout_user_confirmed &&
                     <button type="button" className={uiClassName("is-active")} onClick={() => onRegenerateReference?.(page.page_no)} disabled={referenceRegeneratePending}>
-                      <RefreshCw size={14} />{referenceRegeneratePending ? '正在提交...' : '按当前版式重新生成原稿图'}
+                      <RefreshCw size={14} />{referenceRegeneratePending ? '正在提交...' : hasElementImage ? '按当前版式完整重新生成本页' : '按当前版式重新生成原稿图'}
                     </button>}
                 </div>
                 </div>

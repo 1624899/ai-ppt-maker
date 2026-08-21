@@ -610,6 +610,8 @@ def normalize_content_plan(
             },
             "layout_reason": layout_reason,
             "layout_locked": bool(raw.get("layout_locked")),
+            "layout_user_confirmed": bool(raw.get("layout_user_confirmed")),
+            "layout_source": str(raw.get("layout_source") or "ai"),
             "layout_slots": layout_slots,
             "element_plan": element_plan,
             "difference_from_previous": difference_from_previous,

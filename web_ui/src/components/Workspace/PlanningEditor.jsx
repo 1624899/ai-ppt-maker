@@ -119,7 +119,10 @@ const PlanningEditorSession = ({ currentJob, config, planningDraft, onConfirmCur
     setReferenceRegenerateError('');
     try {
       const updatedJob = await postJobOperation(currentJob.job_id, {
-        operation_type: 'page_reference_regenerate', page_no: pageNo, plan,
+        operation_type: elementPageNumbers.has(Number(pageNo)) ? 'page_regenerate' : 'page_reference_regenerate',
+        page_no: pageNo,
+        instruction: '严格按照人工指定版式重新生成',
+        plan,
       });
       onJobUpdated?.(updatedJob);
     } catch (operationError) {
