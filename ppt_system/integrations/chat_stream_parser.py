@@ -154,7 +154,7 @@ def _response_has_text(response: dict[str, Any]) -> bool:
 
 
 def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str:
-    "逻辑：兼容只在完成事件中提供完整文本的 Responses 流式实现。"
+    # 兼容只在完成事件中提供完整文本的 Responses 流式实现。
     if event_type in {"response.output_text.done", "response.text.done"}:
         return _extract_content_text(event.get("text") or event.get("delta"))
     if event_type == "response.content_part.done":

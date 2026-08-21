@@ -19,15 +19,6 @@ CATEGORY_FAMILIES = {
 }
 
 
-def build_special_slot_coords(family: str, blocks: list[str], width: int, height: int, scale: float) -> dict[str, tuple[int, int, int, int]]:
-    return build_layout_slot_coords(family, width, height, scale)
-
-
-def build_layout_slot_coords(family: str, width: int, height: int, scale: float = 1.0) -> dict[str, tuple[int, int, int, int]]:
-    """将唯一蓝图转换为实际排版槽位，缩略图与导出共用这些坐标。"""
-    return {name: spec["box"] for name, spec in build_layout_slot_specs(family, width, height, scale).items()}
-
-
 def build_layout_slot_specs(family: str, width: int, height: int, scale: float = 1.0) -> dict[str, dict]:
     specs: dict[str, dict] = {}
     content_index = 0
