@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import Header from '../Layout/Header';
 import AgentWorkspace from './AgentWorkspace';
 import ImageMarkupPanel from './ImageMarkupPanel';
+import LogViewerPanel from './LogViewerPanel';
 import PPTStudio from './PPTStudio';
 import TaskCenter from './TaskCenter';
 import TaskLaunchPanel from './TaskLaunchPanel';
