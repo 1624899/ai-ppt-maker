@@ -52,6 +52,23 @@ class ResponseStreamParserTests(unittest.TestCase):
 
         self.assertEqual(extract_response_text(body), '{"title":"规划完成"}')
 
+    def test_does_not_duplicate_text_shared_by_completed_events(self) -> None:
+        text = '{"title":"统一完成文本"}'
+        events = [
+            {"type": "response.output_text.done", "text": text},
+            {"type": "response.content_part.done", "part": {"text": text}},
+            {
+                "type": "response.output_item.done",
+                "item": {"content": [{"type": "output_text", "text": text}]},
+            },
+            {"type": "response.completed", "response": {"id": "resp_test", "status": "completed"}},
+        ]
+        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
+
+        body = parse_response_sse(sse_text)
+
+        self.assertEqual(extract_response_text(body), text)
+
     def test_accepts_gateway_event_with_untagged_final_response_output(self) -> None:
         event = {
             "response": {

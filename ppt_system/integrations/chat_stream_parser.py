@@ -84,7 +84,7 @@ def parse_sse_events(text: str) -> list[ServerSentEvent]:
 
 def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     delta_parts: list[str] = []
-    completed_text_parts: list[str] = []
+    completed_event_texts: dict[str, str] = {}
     final_response: dict[str, Any] | None = None
 
     for event in events:
@@ -96,7 +96,8 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
             continue
         completed_text = _extract_completed_event_text(event_type, event)
         if completed_text:
-            completed_text_parts.append(completed_text)
+            # 同一输出会在多个完成事件中重复出现，按事件优先级只保留一份。
+            completed_event_texts.setdefault(event_type, completed_text)
         if event_type in {"response.completed", "response.done"}:
             response = event.get("response")
             if isinstance(response, dict):
@@ -115,17 +116,33 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
             merged = dict(final_response)
             merged["output_text"] = "".join(delta_parts)
             return merged
-        if completed_text_parts:
+        completed_text = _select_completed_event_text(completed_event_texts)
+        if completed_text:
             merged = dict(final_response)
-            merged["output_text"] = "".join(completed_text_parts)
+            merged["output_text"] = completed_text
             return merged
         return final_response
 
     if delta_parts:
         return {"output_text": "".join(delta_parts)}
-    if completed_text_parts:
-        return {"output_text": "".join(completed_text_parts)}
+    completed_text = _select_completed_event_text(completed_event_texts)
+    if completed_text:
+        return {"output_text": completed_text}
     return None
+
+
+def _select_completed_event_text(event_texts: dict[str, str]) -> str:
+    """按完成事件优先级选择一份完整文本，避免同一输出被重复拼接。"""
+    for event_type in (
+        "response.output_text.done",
+        "response.text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+    ):
+        text = event_texts.get(event_type)
+        if text:
+            return text
+    return ""
 
 
 def _response_has_text(response: dict[str, Any]) -> bool:
