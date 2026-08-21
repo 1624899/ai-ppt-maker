@@ -7,11 +7,11 @@ from typing import Any
 import requests
 
 from ppt_system.integrations.api_url import normalize_api_base_url
+from ppt_system.integrations.http_retry_policy import build_text_snippet
 from ppt_system.integrations.responses_payload import build_responses_input, build_responses_url
 
 
 DEFAULT_CONNECTIVITY_TIMEOUT_SECONDS = 20
-RESPONSE_SNIPPET_LIMIT = 300
 
 
 @dataclass(frozen=True)
@@ -181,14 +181,6 @@ def extract_response_error(response: requests.Response) -> str:
             return build_text_snippet(message)
     return build_text_snippet(str(body))
 
-
-def build_text_snippet(text: str, limit: int = RESPONSE_SNIPPET_LIMIT) -> str:
-    normalized = " ".join(str(text or "").split())
-    if not normalized:
-        return ""
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}..."
 
 
 def elapsed_ms_since(started_at: float) -> int:

@@ -14,6 +14,7 @@ from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.chat_response_parser import AmbiguousResponseError, extract_response_text
 from ppt_system.integrations.chat_stream_parser import looks_like_sse_text, parse_response_sse
 from ppt_system.integrations.http_retry_policy import (
+    build_text_snippet,
     build_transport_error_message,
     build_transport_error_summary,
     is_retryable_status_code,
@@ -27,7 +28,6 @@ from ppt_system.integrations.responses_payload import (
 from ppt_system.runtime.logging_utils import format_log_line
 
 
-RESPONSE_SNIPPET_LIMIT = 400
 
 
 class OpenAIChatProvider:
@@ -142,7 +142,7 @@ class OpenAIChatProvider:
                     print(
                         format_log_line(
                             "chat",
-                            f"请求异常已停止自动重试：{_build_text_snippet(error_message)}",
+                            f"请求异常已停止自动重试：{build_text_snippet(error_message)}",
                         ),
                         flush=True,
                     )
@@ -213,7 +213,7 @@ class OpenAIChatProvider:
                     format_log_line(
                         "chat",
                         "检测到歧义空响应，"
-                        f"{_build_text_snippet(str(exc))}，"
+                        f"{build_text_snippet(str(exc))}，"
                         f"将执行第 {attempt}/{self.ambiguous_retry_count} 次补充重试",
                     ),
                     flush=True,
@@ -241,7 +241,7 @@ class OpenAIChatProvider:
                         "chat",
                         "模型 JSON 解析失败诊断："
                         f"{_build_response_diagnostic(current_body, content)}，"
-                        f"error={_build_text_snippet(str(exc))}",
+                        f"error={build_text_snippet(str(exc))}",
                     ),
                     flush=True,
                 )
@@ -272,7 +272,7 @@ class OpenAIChatProvider:
             body = response.json()
         except ValueError:
             body = response.text
-        raise RuntimeError(f"对话模型请求失败：HTTP {response.status_code}，{body}")
+        raise RuntimeError(f"对话模型请求失败：HTTP {response.status_code}，{build_text_snippet(body)}")
 
     @staticmethod
     def _resolve_reasoning_effort(config: dict[str, Any], profile: dict[str, Any]) -> str:
@@ -297,16 +297,16 @@ def parse_json_content(content: str) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         start = text.find("{")
         if start < 0:
-            raise RuntimeError(f"对话模型没有返回 JSON，响应片段：{_build_text_snippet(text)}") from exc
+            raise RuntimeError(f"对话模型没有返回 JSON，响应片段：{build_text_snippet(text)}") from exc
         try:
             value, _ = json.JSONDecoder().raw_decode(text[start:])
             if not isinstance(value, dict):
                 raise ValueError("JSON 根节点不是对象")
             return value
         except json.JSONDecodeError as nested_exc:
-            raise RuntimeError(f"对话模型返回了疑似 JSON 片段，但格式无效：{_build_text_snippet(text)}") from nested_exc
+            raise RuntimeError(f"对话模型返回了疑似 JSON 片段，但格式无效：{build_text_snippet(text)}") from nested_exc
         except ValueError as nested_exc:
-            raise RuntimeError(f"对话模型返回的 JSON 根节点无效：{_build_text_snippet(text)}") from nested_exc
+            raise RuntimeError(f"对话模型返回的 JSON 根节点无效：{build_text_snippet(text)}") from nested_exc
 
 
 def _raise_for_incomplete_response(body: dict[str, Any]) -> None:
@@ -318,7 +318,7 @@ def _raise_for_incomplete_response(body: dict[str, Any]) -> None:
     raise RuntimeError(
         "对话模型响应未完成，无法解析 JSON："
         f"status={status or 'unknown'}，reason={reason or 'unknown'}，"
-        f"响应片段：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}"
+        f"响应片段：{build_text_snippet(json.dumps(body, ensure_ascii=False))}"
     )
 
 
@@ -400,7 +400,7 @@ def _build_billable_ambiguous_response_message(body: dict[str, Any], exc: BaseEx
         "检测到可能已计费的歧义空响应，"
         f"response_id={response_id}，{usage_summary}，"
         "已停止自动补充重试以避免重复扣费。"
-        f"{_build_text_snippet(str(exc))}"
+        f"{build_text_snippet(str(exc))}"
     )
 
 
@@ -446,7 +446,7 @@ def _coerce_positive_int(value: Any) -> int:
 
 def _build_invalid_json_message(response: requests.Response, response_text: str | None = None) -> str:
     snippet_source = response_text if response_text is not None else _read_response_text(response)
-    return f"对话模型返回了非 JSON 响应：HTTP {response.status_code}，响应片段：{_build_text_snippet(snippet_source)}"
+    return f"对话模型返回了非 JSON 响应：HTTP {response.status_code}，响应片段：{build_text_snippet(snippet_source)}"
 
 
 def _read_response_text(response: requests.Response) -> str:
@@ -460,11 +460,3 @@ def _read_response_text(response: requests.Response) -> str:
     response_text = getattr(response, "text", "")
     return response_text if isinstance(response_text, str) else ""
 
-
-def _build_text_snippet(text: str, limit: int = RESPONSE_SNIPPET_LIMIT) -> str:
-    normalized = " ".join(str(text or "").split())
-    if not normalized:
-        return "<empty>"
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}..."

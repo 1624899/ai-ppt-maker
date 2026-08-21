@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from ppt_system.integrations.http_retry_policy import build_text_snippet
+
 
 @dataclass(frozen=True)
 class ServerSentEvent:
@@ -47,7 +49,7 @@ def parse_sse_json_events(text: str) -> list[dict[str, Any]]:
         try:
             parsed = json.loads(data)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"对话模型返回了无法解析的 SSE JSON 片段：{_build_text_snippet(data)}") from exc
+            raise RuntimeError(f"对话模型返回了无法解析的 SSE JSON 片段：{build_text_snippet(data)}") from exc
         if isinstance(parsed, dict):
             events.append(parsed)
     return events
@@ -228,12 +230,3 @@ def _coerce_text(value: Any, *, strip: bool = True) -> str:
 
 def _normalize_line_endings(text: str) -> str:
     return str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _build_text_snippet(text: str, limit: int = 300) -> str:
-    normalized = " ".join(str(text or "").split())
-    if not normalized:
-        return "<empty>"
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}..."

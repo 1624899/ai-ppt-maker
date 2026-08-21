@@ -10,6 +10,7 @@ from requests import RequestException
 
 from ppt_system.integrations.api_url import normalize_api_base_url
 from ppt_system.integrations.http_retry_policy import (
+    build_text_snippet,
     build_transport_error_summary,
     build_transport_error_message,
     is_retryable_status_code,
@@ -294,7 +295,7 @@ class OpenAIImageProvider:
             body = response.json()
         except ValueError:
             body = response.text
-        raise RuntimeError(f"图像接口请求失败：HTTP {response.status_code}，{body}")
+        raise RuntimeError(f"图像接口请求失败：HTTP {response.status_code}，{build_text_snippet(body)}")
 
     def _sleep_with_deadline(self, delay: float, deadline: float) -> None:
         remaining = deadline - time.monotonic()

@@ -85,7 +85,7 @@ def build_transport_error_summary(exc: BaseException) -> str:
         message = str(item).strip()
         class_name = item.__class__.__name__
         parts.append(f"{class_name}: {message}" if message else class_name)
-    return _build_text_snippet(" | ".join(_dedupe(parts)))
+    return build_text_snippet(" | ".join(_dedupe(parts)))
 
 
 def iter_exception_chain(exc: BaseException):
@@ -116,7 +116,8 @@ def _dedupe(values: list[str]) -> list[str]:
     return result
 
 
-def _build_text_snippet(text: str, limit: int = TRANSPORT_ERROR_SNIPPET_LIMIT) -> str:
+def build_text_snippet(text: object, limit: int = TRANSPORT_ERROR_SNIPPET_LIMIT) -> str:
+    """压缩空白并截断到限定长度，用于错误消息中的响应体/异常文本，避免整页 HTML 刷屏。"""
     normalized = " ".join(str(text or "").split())
     if not normalized:
         return "<empty>"

@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-
-RESPONSE_SNIPPET_LIMIT = 400
+from ppt_system.integrations.http_retry_policy import build_text_snippet
 
 
 class AmbiguousResponseError(RuntimeError):
@@ -20,7 +19,7 @@ def extract_response_text(body: dict[str, Any]) -> str:
     status = str(body.get("status", "")).strip() or "unknown"
     raise AmbiguousResponseError(
         "对话模型未返回可用文本内容，"
-        f"status={status}，响应片段：{_build_text_snippet(json.dumps(body, ensure_ascii=False))}"
+        f"status={status}，响应片段：{build_text_snippet(json.dumps(body, ensure_ascii=False))}"
     )
 
 
@@ -81,12 +80,3 @@ def _coerce_text(value: Any, *, strip: bool = True) -> str:
         if isinstance(nested_value, str):
             return nested_value.strip() if strip else nested_value
     return ""
-
-
-def _build_text_snippet(text: str, limit: int = RESPONSE_SNIPPET_LIMIT) -> str:
-    normalized = " ".join(str(text or "").split())
-    if not normalized:
-        return "<empty>"
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[:limit]}..."
