@@ -69,28 +69,6 @@ class ResponseStreamParserTests(unittest.TestCase):
 
         self.assertEqual(extract_response_text(body), text)
 
-    def test_merges_chat_completions_events_from_relay(self) -> None:
-        events = [
-            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {"content": '{"title":"中转'}}]},
-            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {"content": '响应"}'}}]},
-            {"id": "chatcmpl_test", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
-        ]
-        sse_text = "\n\n".join(f"data: {json.dumps(event, ensure_ascii=False)}" for event in events)
-
-        body = parse_response_sse(sse_text)
-
-        self.assertEqual(extract_response_text(body), '{"title":"中转响应"}')
-
-    def test_merges_nested_data_event_from_relay(self) -> None:
-        events = [
-            {"data": {"choices": [{"delta": {"content": '{"title":"嵌套中转"}'}}]}},
-        ]
-        sse_text = "data: " + json.dumps(events[0], ensure_ascii=False) + "\n\n"
-
-        body = parse_response_sse(sse_text)
-
-        self.assertEqual(extract_response_text(body), '{"title":"嵌套中转"}')
-
     def test_accepts_gateway_event_with_untagged_final_response_output(self) -> None:
         event = {
             "response": {

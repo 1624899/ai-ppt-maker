@@ -94,15 +94,6 @@ def _merge_response_api_events(events: list[dict[str, Any]]) -> dict[str, Any] |
             if delta:
                 delta_parts.append(delta)
             continue
-        # 兼容第三方中转将 Responses 请求改写为 Chat Completions 事件。
-        choice_delta = _extract_choice_delta_text(event)
-        if choice_delta:
-            delta_parts.append(choice_delta)
-            continue
-        generic_text = _extract_relay_text(event)
-        if generic_text:
-            delta_parts.append(generic_text)
-            continue
         completed_text = _extract_completed_event_text(event_type, event)
         if completed_text:
             # 同一输出会在多个完成事件中重复出现，按事件优先级只保留一份。
@@ -177,56 +168,6 @@ def _extract_completed_event_text(event_type: str, event: dict[str, Any]) -> str
         if isinstance(response, dict):
             return _extract_content_text(response.get("output")) or _extract_content_text(response.get("content"))
     return ""
-
-
-def _extract_choice_delta_text(event: dict[str, Any]) -> str:
-    """提取中转服务常见的 choices 增量或完整消息文本。"""
-    choices = event.get("choices")
-    if not isinstance(choices, list):
-        return ""
-    fragments: list[str] = []
-    for choice in choices:
-        if not isinstance(choice, dict):
-            continue
-        delta = choice.get("delta")
-        if isinstance(delta, dict):
-            text = _extract_content_text(delta.get("content"))
-            if text:
-                fragments.append(text)
-                continue
-        message = choice.get("message")
-        if isinstance(message, dict):
-            text = _extract_content_text(message.get("content"))
-            if text:
-                fragments.append(text)
-    return "".join(fragments)
-
-
-def _extract_relay_text(value: Any) -> str:
-    """兼容中转网关把文本包在 data/response/content 等字段中的变体。"""
-    if not isinstance(value, dict):
-        return ""
-    for key in ("data", "response", "result", "output", "content"):
-        nested = value.get(key)
-        if isinstance(nested, str) and key in {"data", "content"}:
-            # data 可能是 JSON 字符串，优先继续解析其结构。
-            try:
-                parsed = json.loads(nested)
-            except json.JSONDecodeError:
-                return nested
-            extracted = _extract_relay_text(parsed)
-            if extracted:
-                return extracted
-        elif isinstance(nested, dict):
-            extracted = _extract_choice_delta_text(nested) or _extract_relay_text(nested)
-            if extracted:
-                return extracted
-        elif isinstance(nested, list):
-            extracted = _extract_content_text(nested)
-            if extracted:
-                return extracted
-    return ""
-
 
 def _split_sse_field(line: str) -> tuple[str, str]:
     if ":" not in line:
