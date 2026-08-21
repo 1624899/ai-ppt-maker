@@ -15,6 +15,7 @@ def semantic_slots_for_family(layout_family: str) -> list[str]:
         "split_top_bottom": ["上方内容区", "下方内容区"],
         "compare_dual_axis": ["标题区", "左侧对比项", "右侧对比项", "对比维度"],
         "hero_with_supporting_cards": ["主视觉区", "辅助卡片1", "辅助卡片2", "辅助卡片3"],
+        "floor_plan": ["顶部主题区", "区域1", "区域2", "区域3", "区域4", "区域5", "区域6", "底部支撑区"],
         "split_left_right": ["左侧内容区", "右侧内容区"],
     }
     if layout_family in slots_by_family:

@@ -234,7 +234,17 @@ class OpenAIChatProvider:
                 return parse_json_content(content)
             except AmbiguousResponseError:
                 raise
-            except RuntimeError:
+            except RuntimeError as exc:
+                content = _try_extract_response_content(current_body)
+                print(
+                    format_log_line(
+                        "chat",
+                        "模型 JSON 解析失败诊断："
+                        f"{_build_response_diagnostic(current_body, content)}，"
+                        f"error={_build_text_snippet(str(exc))}",
+                    ),
+                    flush=True,
+                )
                 if attempt >= max(0, self.json_retry_count):
                     raise
                 next_attempt = attempt + 1
@@ -285,13 +295,18 @@ def parse_json_content(content: str) -> dict[str, Any]:
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        match = re.search(r"\{.*\}", text, flags=re.S)
-        if not match:
+        start = text.find("{")
+        if start < 0:
             raise RuntimeError(f"对话模型没有返回 JSON，响应片段：{_build_text_snippet(text)}") from exc
         try:
-            return json.loads(match.group(0))
+            value, _ = json.JSONDecoder().raw_decode(text[start:])
+            if not isinstance(value, dict):
+                raise ValueError("JSON 根节点不是对象")
+            return value
         except json.JSONDecodeError as nested_exc:
             raise RuntimeError(f"对话模型返回了疑似 JSON 片段，但格式无效：{_build_text_snippet(text)}") from nested_exc
+        except ValueError as nested_exc:
+            raise RuntimeError(f"对话模型返回的 JSON 根节点无效：{_build_text_snippet(text)}") from nested_exc
 
 
 def _raise_for_incomplete_response(body: dict[str, Any]) -> None:
@@ -412,6 +427,13 @@ def _build_response_diagnostic(body: dict[str, Any], content: str) -> str:
         f"incomplete_reason={reason or 'none'}，{_build_usage_summary(body.get('usage'))}，"
         f"text_chars={len(text)}，text_utf8_bytes={len(text.encode('utf-8'))}"
     )
+
+
+def _try_extract_response_content(body: dict[str, Any]) -> str:
+    try:
+        return _extract_response_content(body)
+    except (AmbiguousResponseError, RuntimeError):
+        return ""
 
 
 def _coerce_positive_int(value: Any) -> int:

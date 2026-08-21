@@ -81,7 +81,7 @@ class LayoutFamilyRegistryTests(unittest.TestCase):
             self.assertGreaterEqual(len(slots), 2)
             self.assertTrue(all(isinstance(slot, str) and slot for slot in slots))
 
-        self.assertEqual(semantic_slots_for_family("floor_plan"), ["标题区", "房型图（户型图）主体区"])
+        self.assertEqual(semantic_slots_for_family("floor_plan"), ["顶部主题区", "区域1", "区域2", "区域3", "区域4", "区域5", "区域6", "底部支撑区"])
         self.assertEqual(semantic_slots_for_family("未注册版式"), ["左侧内容区", "右侧内容区"])
 
 
