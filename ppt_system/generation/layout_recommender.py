@@ -7,8 +7,11 @@ from ppt_system.generation.layout_intent import infer_layout_intent
 from ppt_system.generation.layout_profiles import LAYOUT_PROFILES, get_layout_profile
 
 
-def recommend_layout_candidates(title: str, summary: str, bullets: Sequence[str], *, page_richness: str = "medium", candidate_families: Iterable[str] | None = None, page_index: int = 0, include_cover_page: bool = True, limit: int = 5) -> list[dict[str, Any]]:
-    """基于页面意图生成可解释的版式候选，供编排器和前端共同使用。"""
+RECOMMENDED_LAYOUT_COUNT = 5
+
+
+def recommend_layout_candidates(title: str, summary: str, bullets: Sequence[str], *, page_richness: str = "medium", candidate_families: Iterable[str] | None = None, page_index: int = 0, include_cover_page: bool = True) -> list[dict[str, Any]]:
+    """基于页面意图生成并按评分排序的五个版式候选。"""
     intent = infer_layout_intent(title, summary, bullets, page_richness=page_richness, page_index=page_index, include_cover_page=include_cover_page)
     candidates = _normalize_candidates(candidate_families)
     result: list[dict[str, Any]] = []
@@ -23,7 +26,7 @@ def recommend_layout_candidates(title: str, summary: str, bullets: Sequence[str]
             "semantic_group": profile.semantic_group,
         })
         result.append({"value": family, "score": score, "reason": reasons, "layout_intent": intent.to_dict()})
-    return sorted(result, key=lambda item: (-item["score"], candidates.index(item["value"])))[:limit]
+    return sorted(result, key=lambda item: (-item["score"], candidates.index(item["value"])))[:RECOMMENDED_LAYOUT_COUNT]
 
 
 def recommend_layout_family(title: str, summary: str, bullets: Sequence[str], *, previous_family: str = "", **kwargs: object) -> str:
@@ -75,6 +78,10 @@ def _score_layout(profile: Any, intent: Any, text: str) -> tuple[int, dict[str, 
     if profile.value in {"funnel", "gantt_chart", "swimlane", "dashboard", "line_chart", "bar_chart", "org_chart", "map_distribution"}:
         score += min(len(keyword_hits), 3) * 14
     signals.extend(keyword_hits[:3])
+    # 人物介绍必须有明确的人物语义；否则不能因为“主视觉”或低密度而误选。
+    if profile.value == "people_profile" and not any(word in text for word in ("人物", "创始人", "专家", "履历", "个人简介", "团队成员")):
+        score -= 80
+        signals.append("缺少人物语义")
     if intent.intent == "comparison" and intent.comparison_object_count:
         content_fit = f"页面包含 {intent.comparison_object_count} 组对象和 {intent.dimension_count} 个比较维度，适合{profile.label}的对照结构。"
     elif intent.has_metrics:
@@ -96,4 +103,11 @@ def _normalize_candidates(values: object) -> list[str]:
         family = normalize_layout_family_name(str(value))
         if validate_layout_family(family) and family not in result:
             result.append(family)
+    # AI 或风格指南给出的候选不足时，从完整注册表补足，之后统一参与评分排序。
+    if len(result) < RECOMMENDED_LAYOUT_COUNT:
+        result.extend(
+            family
+            for family in DEFAULT_LAYOUT_FAMILIES
+            if family not in result
+        )
     return result or list(DEFAULT_LAYOUT_FAMILIES)

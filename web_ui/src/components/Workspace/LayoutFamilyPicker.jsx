@@ -32,7 +32,7 @@ const LayoutFamilyPicker = ({ options, value, page, onChange, disabled = false }
   const categories = useMemo(() => ['全部', ...new Set(options.map((option) => option.category || '基础'))], [options]);
   const recommendedOptions = useMemo(() => {
     const candidates = Array.isArray(page?.layout_candidates) ? page.layout_candidates : [];
-    const ordered = candidates.map((candidate) => options.find((option) => option.value === candidate.value)).filter(Boolean);
+    const ordered = candidates.map((candidate) => options.find((option) => option.value === candidate.value)).filter(Boolean).slice(0, 5);
     return ordered.length ? ordered : (selectedOption ? [selectedOption] : options.slice(0, 5));
   }, [options, page?.layout_candidates, selectedOption]);
   const visibleOptions = showAll ? options.filter((option) => category === '全部' || option.category === category) : recommendedOptions;

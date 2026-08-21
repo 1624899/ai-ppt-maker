@@ -24,6 +24,33 @@ class LayoutProfilesTests(unittest.TestCase):
         self.assertEqual(candidates[0]["value"], "compare_dual_axis")
         self.assertIn("content_fit", candidates[0]["reason"])
 
+    def test_candidates_are_always_filled_to_five_and_sorted_by_score(self) -> None:
+        candidates = recommend_layout_candidates(
+            "单一候选也需要替代版式",
+            "根据内容匹配程度展示候选",
+            ["核心观点", "辅助说明"],
+            candidate_families=["split_left_right"],
+            include_cover_page=False,
+        )
+
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(
+            [item["score"] for item in candidates],
+            sorted((item["score"] for item in candidates), reverse=True),
+        )
+
+    def test_candidates_remain_exactly_five_with_a_small_preferred_pool(self) -> None:
+        candidates = recommend_layout_candidates(
+            "项目推进",
+            "按阶段完成交付",
+            ["准备", "执行", "验收"],
+            candidate_families=["process_horizontal", "timeline_horizontal", "swimlane"],
+            include_cover_page=False,
+        )
+
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(len({item["value"] for item in candidates}), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

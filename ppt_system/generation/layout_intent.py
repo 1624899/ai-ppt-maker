@@ -41,7 +41,7 @@ def infer_layout_intent(title: str, summary: str, bullets: Sequence[str], *, pag
     metrics = found(("指标", "数据", "同比", "环比", "增长", "金额", "%", "趋势"), "关键指标") or bool(numeric_values)
     timeline = found(("时间线", "时间轴", "历程", "里程碑", "发展阶段", "演进"), "时间顺序")
     process = found(("流程", "步骤", "环节", "执行", "推进"), "步骤关系")
-    relation = found(("关系", "体系", "架构", "层级", "生态", "协同"), "结构关系")
+    relation = found(("关系", "体系", "架构", "层级", "生态", "协同", "平台", "核心功能", "能力体系", "功能模块"), "结构关系")
     comparison = found(("对比", "比较", "差异", "优劣", "vs", "对照"), "对比对象")
     image_focus = found(("产品", "人物", "案例", "场景", "品牌", "主视觉"), "主视觉对象")
     if include_cover_page and page_index == 0: intent, role = "cover", "opening"
