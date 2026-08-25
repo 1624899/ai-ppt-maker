@@ -18,7 +18,5 @@ def test_text_script_runtime_hidden_imports_are_separate_module_names() -> None:
         "ppt_system.export.export_artifact_policy",
         "ppt_system.export.text_style_runtime",
         "ppt_system.export.editable_charts",
-        "ppt_system.export.native_shapes",
-        "ppt_system.export.hybrid_asset_policy",
     }
     assert all(" " not in module_name for module_name in TEXT_SCRIPT_RUNTIME_MODULES)

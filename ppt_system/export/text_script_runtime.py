@@ -177,11 +177,6 @@ def build_project_script_source(
         for page in project.get("pages", [])
         if int(page.get("page_no", 0)) > 0 and page.get("chart_data")
     }
-    page_metadata = {
-        int(page.get("page_no", 0)): dict(page)
-        for page in project.get("pages", [])
-        if int(page.get("page_no", 0)) > 0
-    }
     page_asset_adjustments = {
         str(int(item["page_no"])): normalize_asset_adjustments(item.get("asset_adjustments"))
         for item in page_scripts
@@ -212,8 +207,6 @@ from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 from ppt_system.export.export_artifact_policy import save_presentation_artifact
 from ppt_system.export.editable_charts import add_editable_chart
-from ppt_system.export.hybrid_asset_policy import should_keep_hybrid_asset
-from ppt_system.export.native_shapes import add_native_shapes
 from ppt_system.export.text_style_runtime import should_wrap_text
 
 
@@ -235,7 +228,6 @@ INCLUDE_ASSETS = {bool(include_assets)!r}
 LAYER_MODE = {resolved_layer_mode!r}
 PAGE_TEXTS = {page_texts!r}
 PAGE_CHARTS = {page_charts!r}
-PAGE_METADATA = {page_metadata!r}
 PAGE_ASSET_ADJUSTMENTS = {json.dumps(page_asset_adjustments, ensure_ascii=False, indent=2)}
 SLIDE_LAYER_SPECS = {slide_layer_specs!r}
 
@@ -434,15 +426,13 @@ def _resolve_asset_box(asset, adjustment_plan):
     return left, top, width, height
 
 
-def add_assets(slide, manifest_path, page_no, page=None, hybrid_filter=False):
+def add_assets(slide, manifest_path, page_no):
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     assets_dir = Path(manifest_path).parent
     asset_img_w = max(1, int(manifest.get("image_width", IMG_W) or IMG_W))
     asset_img_h = max(1, int(manifest.get("image_height", IMG_H) or IMG_H))
     adjustment_plan = PAGE_ASSET_ADJUSTMENTS.get(str(page_no), {{}})
     for asset in manifest.get("assets", []):
-        if hybrid_filter and not should_keep_hybrid_asset(asset, page or {{}}, asset_img_w, asset_img_h):
-            continue
         asset_path = assets_dir / str(asset["file"])
         left, top, width, height = _resolve_asset_box(asset, adjustment_plan)
         if width <= 0 or height <= 0:
@@ -460,18 +450,13 @@ def add_assets(slide, manifest_path, page_no, page=None, hybrid_filter=False):
 
 
 def add_page_content(slide, page_no, builder, layer_spec):
-    page = PAGE_METADATA.get(page_no) or {{}}
     if bool(layer_spec.get("include_assets")) and INCLUDE_ASSETS:
         add_assets(
             slide,
             WORK_DIR / f"page_{{page_no:02d}}" / "assets" / "assets.json",
             page_no,
-            page,
-            hybrid_filter=bool(layer_spec.get("include_text")) and bool(page.get("native_blueprint")),
         )
     if bool(layer_spec.get("include_text")):
-        if page and page.get("native_blueprint"):
-            add_native_shapes(slide, page, px_x, px_y, px_w, px_h)
         builder(slide)
         chart = PAGE_CHARTS.get(page_no)
         if chart:

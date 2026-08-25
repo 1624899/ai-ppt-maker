@@ -27,7 +27,6 @@ from ppt_system.generation.text_layout import (
 from ppt_system.export.text_script_runtime import execute_generated_text_script
 from ppt_system.export.editable_charts import normalize_chart_data
 from ppt_system.generation.design_grammar import normalize_layout_family_name
-from ppt_system.generation.layout_blueprint_catalog import build_blueprint
 
 
 StageLogger = Callable[[str], None]
@@ -105,19 +104,6 @@ def resolve_job_artifact_path(job_dir: Path, image_ref: str) -> Path:
     return job_dir / normalized
 
 
-def _scale_native_blueprint(layout_family: str, image_width: int, image_height: int) -> list[dict[str, Any]]:
-    normalized_family = normalize_layout_family_name(layout_family)
-    scaled = []
-    for item in build_blueprint(normalized_family):
-        shape = dict(item)
-        shape["left"] = round(float(item["left"]) / 1000 * image_width)
-        shape["top"] = round(float(item["top"]) / 562 * image_height)
-        shape["width"] = round(float(item["width"]) / 1000 * image_width)
-        shape["height"] = round(float(item["height"]) / 562 * image_height)
-        scaled.append(shape)
-    return scaled
-
-
 def build_project_from_web_job(
     job: dict[str, Any],
     job_dir: Path,
@@ -177,7 +163,6 @@ def build_project_from_web_job(
                 "texts": rebuilt_texts,
                 "layout_family": layout_family,
                 "layout_slots": raw_page.get("layout_slots") if isinstance(raw_page.get("layout_slots"), dict) else {},
-                "native_blueprint": _scale_native_blueprint(layout_family, image_width, image_height),
                 "chart_data": normalize_chart_data(raw_page.get("chart_data")),
             }
         )

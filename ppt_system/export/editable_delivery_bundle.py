@@ -12,8 +12,6 @@ from ppt_system.export.delivery_options import (
 )
 from ppt_system.export.export_layer_mode import count_output_slides
 from ppt_system.export.text_script_runtime import build_project_script_source, execute_generated_text_script
-from ppt_system.generation.design_grammar import normalize_layout_family_name
-from ppt_system.generation.layout_blueprint_catalog import build_blueprint
 
 
 def write_editable_delivery_bundle(
@@ -70,7 +68,6 @@ def export_editable_delivery_from_bundle(
 ) -> dict[str, Any]:
     payload = load_editable_delivery_bundle(bundle_path)
     project = dict(payload.get("project") or {})
-    _ensure_native_blueprints(project)
     work_dir = Path(str(payload.get("work_dir") or "")).resolve()
     page_scripts = list(payload.get("page_scripts") or [])
     resolved_layer_mode = normalize_editable_delivery_layer_mode(
@@ -103,22 +100,3 @@ def export_editable_delivery_from_bundle(
         "page_results": list(payload.get("page_results") or []),
     }
 
-
-def _ensure_native_blueprints(project: dict[str, Any]) -> None:
-    """旧 bundle 在本地补齐蓝图，不重新调用模型。"""
-    image_width = max(1, int(project.get("image_width", 2000) or 2000))
-    image_height = max(1, int(project.get("image_height", 1125) or 1125))
-    for page in project.get("pages", []):
-        if not isinstance(page, dict) or page.get("native_blueprint"):
-            continue
-        family = normalize_layout_family_name(str(page.get("layout_family") or ""))
-        page["native_blueprint"] = [
-            {
-                **shape,
-                "left": round(float(shape["left"]) / 1000 * image_width),
-                "top": round(float(shape["top"]) / 562 * image_height),
-                "width": round(float(shape["width"]) / 1000 * image_width),
-                "height": round(float(shape["height"]) / 562 * image_height),
-            }
-            for shape in build_blueprint(family)
-        ]
