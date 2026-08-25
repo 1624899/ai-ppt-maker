@@ -243,7 +243,7 @@ def sync_stale_prompts(state: Mapping[str, Any], plan: dict[str, Any]) -> None:
             )
             page["reference_prompt_stale"] = False
         if should_sync_elements:
-            page["elements_prompt"] = build_elements_prompt(page, style_guide)
+            page["elements_prompt"] = build_elements_prompt()
             page["elements_prompt_stale"] = False
 
 

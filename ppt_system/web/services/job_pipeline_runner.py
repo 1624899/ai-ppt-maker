@@ -192,13 +192,8 @@ def run_job_pipeline(
                     }
                     for page in pages
                 ]
-                style_guide = plan.get("style_guide", {})
                 for page_item in current_state["pages"]:
-                    page_data = next((p for p in pages if int(p["page_no"]) == int(page_item["page_no"])), {})
-                    try:
-                        page_item["elements_prompt"] = build_elements_prompt(page_data, style_guide)
-                    except TypeError:
-                        page_item["elements_prompt"] = build_elements_prompt()
+                    page_item["elements_prompt"] = build_elements_prompt()
 
             mutate_job_state(job_dir, job_id, planning_done)
 

@@ -381,34 +381,13 @@ def merge_prompt_with_style_lock(
     return result
 
 
-def build_elements_prompt(page: dict[str, Any] | None = None, style_guide: dict[str, Any] | None = None) -> str:
-    page = page or {}
-    style_guide = style_guide or {}
+# 元素图去文字提示词：保持简短以获得最佳生图效果，过长提示词会产生噪点白斑。
+ELEMENTS_EDIT_PROMPT = "删除图片中的所有文字"
 
-    element_primitives = style_guide.get("element_primitives", [])
-    prompt_anchor = style_guide.get("prompt_anchor", "")
 
-    primitives_desc = ""
-    if element_primitives:
-        primitives_desc = f"保留以下元素类型：{'、'.join(element_primitives)}。"
-
-    anchor_desc = ""
-    if prompt_anchor:
-        anchor_desc = f"尽量继承以下风格锚点：{prompt_anchor}。"
-
-    return (
-        "将该图片中除了文字以外的所有元素生成1张背景为纯白色的图像"
-        "（注意区分文字与logo/icon的区别，保留logo/icon，只去除文字），"
-        "高对比度，高保真，没有任何阴影；保持所有元素的原始位置，"
-        "不要移动或改变比例；不要有背景；画幅16：9。"
-        f"{primitives_desc}"
-        "仅删除文字，保留卡片/图标/箭头/编号/标签/容器。"
-        "保持原有层级和相对位置。"
-        "保留描边粗细和圆角风格。"
-        "保留流程关系和反馈链路。"
-        "不要重绘成另一套素材风格。"
-        f"{anchor_desc}"
-    )
+def build_elements_prompt() -> str:
+    """构建去文字元素图的编辑提示词。"""
+    return ELEMENTS_EDIT_PROMPT
 
 
 def normalize_list(items: Any) -> list[str]:

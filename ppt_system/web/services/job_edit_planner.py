@@ -260,7 +260,7 @@ def rebuild_page_prompts(page: dict[str, Any], context: EditContext) -> None:
         has_reference_images=context.has_reference_images,
         reference_style_adherence=context.reference_style_adherence,
     )
-    page["elements_prompt"] = build_elements_prompt(page, context.style_guide)
+    page["elements_prompt"] = build_elements_prompt()
 
 
 def infer_layout_family(instruction: str, explicit_value: Any, fallback: str) -> str:
