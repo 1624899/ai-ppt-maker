@@ -21,6 +21,7 @@ from ppt_system.export.text_script_runtime import (
     normalize_asset_adjustments,
     normalize_page_script,
 )
+from ppt_system.export.text_script_schema import build_allowed_calls_doc
 from ppt_system.runtime.interruptible_execution import run_interruptible_call
 
 
@@ -28,6 +29,11 @@ DEFAULT_SLIDE_WIDTH_INCH = 13.333333
 DEFAULT_FONT_NAME = "Microsoft YaHei"
 DEFAULT_FONT_COLOR = "355C7D"
 StopChecker = Callable[[], bool]
+
+
+# 单页直出链路允许的调用，与后端 Schema 白名单保持一致来源。
+DIRECT_PAGE_ALLOWED_CALLS = ("add_text", "add_center_text", "add_runs")
+DIRECT_PAGE_EXCLUDED_CALLS = ("add_text_ref", "add_center_text_ref")
 
 
 def _ensure_not_stopped(stop_checker: StopChecker | None) -> None:
@@ -98,12 +104,13 @@ def build_direct_page_prompt(
         "像 </>、箭头、空白方框、流程线、窗口按钮等默认视为图形，不要额外生成文字，除非原稿图里明确存在真实文本。"
         "元素图只用于帮助你判断文字与图形的相对关系，输出时仍然只写文字框，不要写背景、边框、图标、箭头、装饰线，也不要调用 add_assets。元素会在导出时单独加入。"
         "坐标单位必须是像素，基于给定画布。"
-        "优先使用 add_text / add_center_text / add_runs，不要使用 add_text_ref / add_center_text_ref。"
-        "允许的调用只有："
-        'add_text(slide, "文字", x, y, w, h, size=12, color="163A63", bold=False, align="LEFT", anchor="TOP")；'
-        'add_center_text(slide, "文字", x, y, w, h, size=12, color="163A63", bold=False, anchor="MIDDLE")；'
-        'add_runs(slide, [{"text":"前半句","size":18,"color":"163A63","bold":True},{"text":"后半句","size":18,"color":"EE3D47","bold":True}], x, y, w, h, align="LEFT", anchor="TOP")。'
-        '输出必须是严格 JSON，格式为 {"page_script":"..."}。'
+        + "\n"
+        + build_allowed_calls_doc(
+            DIRECT_PAGE_ALLOWED_CALLS,
+            excluded_names=DIRECT_PAGE_EXCLUDED_CALLS,
+        )
+        + "\n"
+        + '输出必须是严格 JSON，格式为 {"page_script":"..."}。'
         "page_script 中只能包含以上函数调用、空行和以 # 开头的注释。"
         f"\n页面信息：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
@@ -132,8 +139,13 @@ def build_direct_page_refine_prompt(
         "如果原稿图里是多条独立单行 bullet，就按单行分别保留，不要合并成一个大段文本框。"
         "编号徽标、短标签、芯片字样、底部长横幅标题都要单独成框，并尽量保持单行。"
         "只允许写原稿图里肉眼可见的真实文字，不要把图标、流程图轮廓、装饰符号、窗口按钮脑补成文字。"
-        "允许的文字调用只有 add_text / add_center_text / add_runs。"
-        '输出必须是严格 JSON，格式为 {"page_script":"...","asset_adjustments":{...}}。'
+        + "\n"
+        + build_allowed_calls_doc(
+            DIRECT_PAGE_ALLOWED_CALLS,
+            excluded_names=DIRECT_PAGE_EXCLUDED_CALLS,
+        )
+        + "\n"
+        + '输出必须是严格 JSON，格式为 {"page_script":"...","asset_adjustments":{...}}。'
         "asset_adjustments 固定返回空对象 {}。"
         "返回完整 page_script 和完整 asset_adjustments，不要只返回 diff。"
         f"\n页面信息：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"

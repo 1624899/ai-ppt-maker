@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 ALLOWED_ALIGNS = {"LEFT", "CENTER", "RIGHT", "JUSTIFY"}
@@ -22,6 +26,7 @@ class ScriptParamSpec:
     aliases: dict[str, str] | None = None
     item_schema: dict[str, "ScriptParamSpec"] | None = None
     allow_none: bool = False
+    example: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -145,11 +150,31 @@ def _normalize_keyword_args(
     for keyword in expression.keywords:
         if keyword.arg is None:
             raise RuntimeError(f"不允许使用 **kwargs：{line}")
-        spec = allowed_specs.get(keyword.arg)
+        canonical_name = KEYWORD_ALIASES.get(keyword.arg, keyword.arg)
+        spec = allowed_specs.get(canonical_name)
         if spec is None:
-            raise RuntimeError(f"脚本关键词参数超出白名单：{keyword.arg}")
+            # 未知关键词参数优先丢弃并留痕，避免模型多写的风格参数报废整页脚本。
+            LOGGER.warning(
+                "关键词参数不在白名单，已丢弃：%s（函数 %s）",
+                keyword.arg,
+                schema.function_name,
+            )
+            continue
+        if canonical_name != keyword.arg:
+            # 常见写法差异按别名归一化到规范参数名，等价于正常处理。
+            LOGGER.info(
+                "关键词参数已按别名归一化：%s -> %s（函数 %s）",
+                keyword.arg,
+                canonical_name,
+                schema.function_name,
+            )
         value = _literal_eval(keyword.value)
-        normalized[keyword.arg] = _normalize_value(value, spec, line=line, param_label=f"关键词参数 {keyword.arg}")
+        normalized[canonical_name] = _normalize_value(
+            value,
+            spec,
+            line=line,
+            param_label=f"关键词参数 {canonical_name}",
+        )
 
     for spec in schema.keyword_params:
         if spec.required and spec.name not in normalized:
@@ -200,18 +225,26 @@ def _normalize_runs(value: Any, spec: ScriptParamSpec, *, line: str, param_label
     for index, item in enumerate(value, start=1):
         if not isinstance(item, dict):
             raise RuntimeError(f"{param_label} 第 {index} 项必须是对象：{line}")
-        allowed_keys = set(item_schema)
-        unknown_keys = sorted(set(item) - allowed_keys)
-        if unknown_keys:
-            joined = ", ".join(unknown_keys)
-            raise RuntimeError(f"{param_label} 第 {index} 项包含未知字段：{joined}")
+        # 字段名做别名归一化，未知字段优先丢弃并留痕，与关键词参数策略一致。
+        canonical_item: dict[str, Any] = {}
+        for field_name, field_value in item.items():
+            canonical_name = KEYWORD_ALIASES.get(field_name, field_name)
+            if canonical_name not in item_schema:
+                LOGGER.warning(
+                    "runs 字段不在白名单，已丢弃：%s（%s 第 %d 项）",
+                    field_name,
+                    param_label,
+                    index,
+                )
+                continue
+            canonical_item[canonical_name] = field_value
         text_spec = item_schema.get("text")
         if text_spec is None:
             raise RuntimeError("runs 参数缺少 text 字段约束")
-        if "text" not in item:
+        if "text" not in canonical_item:
             raise RuntimeError(f"{param_label} 第 {index} 项缺少字段：text")
         normalized_text = _normalize_value(
-            item.get("text"),
+            canonical_item.get("text"),
             text_spec,
             line=line,
             param_label=f"{param_label}.text",
@@ -223,12 +256,12 @@ def _normalize_runs(value: Any, spec: ScriptParamSpec, *, line: str, param_label
         for field_name, field_spec in item_schema.items():
             if field_name == "text":
                 continue
-            if field_name not in item:
+            if field_name not in canonical_item:
                 if field_spec.required:
                     raise RuntimeError(f"{param_label} 第 {index} 项缺少字段：{field_name}")
                 continue
             normalized_item[field_name] = _normalize_value(
-                item[field_name],
+                canonical_item[field_name],
                 field_spec,
                 line=line,
                 param_label=f"{param_label}.{field_name}",
@@ -386,8 +419,21 @@ def _eval_allowed_literal_node(node: ast.AST) -> Any:
     raise ValueError(f"unsupported literal node: {type(node).__name__}")
 
 
-def _build_numeric_param(name: str, *, min_value: float | None = None, max_value: float | None = None) -> ScriptParamSpec:
-    return ScriptParamSpec(name=name, value_kind="number", required=False, min_value=min_value, max_value=max_value)
+def _build_numeric_param(
+    name: str,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    example: Any | None = None,
+) -> ScriptParamSpec:
+    return ScriptParamSpec(
+        name=name,
+        value_kind="number",
+        required=False,
+        min_value=min_value,
+        max_value=max_value,
+        example=example,
+    )
 
 
 def _build_enum_param(
@@ -396,6 +442,7 @@ def _build_enum_param(
     enum_values: tuple[str, ...],
     aliases: dict[str, str] | None = None,
     required: bool = False,
+    example: str | None = None,
 ) -> ScriptParamSpec:
     return ScriptParamSpec(
         name=name,
@@ -403,37 +450,67 @@ def _build_enum_param(
         required=required,
         enum_values=enum_values,
         aliases=aliases,
+        example=example,
     )
+
+
+# 关键词参数名别名：把模型常见的写法差异归一化到规范参数名，而不是丢弃。
+# 命中别名的参数按规范名校验与渲染；完全不在白名单的参数才丢弃并记录警告。
+KEYWORD_ALIASES: dict[str, str] = {
+    "font": "font_name",
+    "font_family": "font_name",
+    "font_size": "size",
+    "font_color": "color",
+}
 
 
 RUN_ITEM_SCHEMA: dict[str, ScriptParamSpec] = {
     "text": ScriptParamSpec(name="text", value_kind="string", allow_none=True),
-    "size": ScriptParamSpec(name="size", value_kind="number", min_value=1, max_value=400),
-    "color": ScriptParamSpec(name="color", value_kind="string", min_length=1, required=False),
-    "bold": ScriptParamSpec(name="bold", value_kind="bool", required=False),
-    "italic": ScriptParamSpec(name="italic", value_kind="bool", required=False, allow_none=True),
-    "font_name": ScriptParamSpec(name="font_name", value_kind="string", min_length=1, required=False),
+    "size": ScriptParamSpec(name="size", value_kind="number", min_value=1, max_value=400, example=18),
+    "color": ScriptParamSpec(name="color", value_kind="string", min_length=1, required=False, example="163A63"),
+    "bold": ScriptParamSpec(name="bold", value_kind="bool", required=False, example=False),
+    "italic": ScriptParamSpec(name="italic", value_kind="bool", required=False, allow_none=True, example=False),
+    "font_name": ScriptParamSpec(name="font_name", value_kind="string", min_length=1, required=False, example="Microsoft YaHei"),
 }
 
 
 TEXT_KWARGS: tuple[ScriptParamSpec, ...] = (
-    _build_numeric_param("size", min_value=1, max_value=400),
-    ScriptParamSpec(name="color", value_kind="string", required=False, min_length=1),
-    ScriptParamSpec(name="bold", value_kind="bool", required=False),
+    _build_numeric_param("size", min_value=1, max_value=400, example=12),
+    ScriptParamSpec(name="color", value_kind="string", required=False, min_length=1, example="163A63"),
+    ScriptParamSpec(name="bold", value_kind="bool", required=False, example=False),
     _build_enum_param(
         "align",
         enum_values=tuple(sorted(ALLOWED_ALIGNS)),
         aliases={"middle": "CENTER", "centre": "CENTER"},
         required=False,
+        example="LEFT",
     ),
-    ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1),
+    ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1, example="Microsoft YaHei"),
     _build_enum_param(
         "anchor",
         enum_values=tuple(sorted(ALLOWED_ANCHORS)),
         aliases={"center": "MIDDLE", "mid": "MIDDLE"},
         required=False,
+        example="TOP",
     ),
-    ScriptParamSpec(name="italic", value_kind="bool", required=False),
+    ScriptParamSpec(name="italic", value_kind="bool", required=False, example=False),
+)
+
+
+# 居中文本与居中文本引用共享的关键词参数，字段集一致，避免两处重复定义。
+CENTER_TEXT_KWARGS: tuple[ScriptParamSpec, ...] = (
+    _build_numeric_param("size", min_value=1, max_value=400, example=12),
+    ScriptParamSpec(name="color", value_kind="string", required=False, min_length=1, example="163A63"),
+    ScriptParamSpec(name="bold", value_kind="bool", required=False, example=False),
+    ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1, example="Microsoft YaHei"),
+    _build_enum_param(
+        "anchor",
+        enum_values=tuple(sorted(ALLOWED_ANCHORS)),
+        aliases={"center": "MIDDLE", "mid": "MIDDLE"},
+        required=False,
+        example="TOP",
+    ),
+    ScriptParamSpec(name="italic", value_kind="bool", required=False, example=False),
 )
 
 
@@ -461,19 +538,7 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
             _build_numeric_param("w", min_value=1),
             _build_numeric_param("h", min_value=1),
         ),
-        keyword_params=(
-            _build_numeric_param("size", min_value=1, max_value=400),
-            ScriptParamSpec(name="color", value_kind="string", required=False, min_length=1),
-            ScriptParamSpec(name="bold", value_kind="bool", required=False),
-            ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1),
-            _build_enum_param(
-                "anchor",
-                enum_values=tuple(sorted(ALLOWED_ANCHORS)),
-                aliases={"center": "MIDDLE", "mid": "MIDDLE"},
-                required=False,
-            ),
-            ScriptParamSpec(name="italic", value_kind="bool", required=False),
-        ),
+        keyword_params=CENTER_TEXT_KWARGS,
         content_params=("text",),
     ),
     "add_runs": ScriptCallSchema(
@@ -492,13 +557,15 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
                 enum_values=tuple(sorted(ALLOWED_ALIGNS)),
                 aliases={"middle": "CENTER", "centre": "CENTER"},
                 required=False,
+                example="LEFT",
             ),
-            ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1),
+            ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1, example="Microsoft YaHei"),
             _build_enum_param(
                 "anchor",
                 enum_values=tuple(sorted(ALLOWED_ANCHORS)),
                 aliases={"center": "MIDDLE", "mid": "MIDDLE"},
                 required=False,
+                example="TOP",
             ),
         ),
         content_params=("runs",),
@@ -527,18 +594,106 @@ CALL_SCHEMAS: dict[str, ScriptCallSchema] = {
             _build_numeric_param("w", min_value=1),
             _build_numeric_param("h", min_value=1),
         ),
-        keyword_params=(
-            _build_numeric_param("size", min_value=1, max_value=400),
-            ScriptParamSpec(name="color", value_kind="string", required=False, min_length=1),
-            ScriptParamSpec(name="bold", value_kind="bool", required=False),
-            ScriptParamSpec(name="font_name", value_kind="string", required=False, min_length=1),
-            _build_enum_param(
-                "anchor",
-                enum_values=tuple(sorted(ALLOWED_ANCHORS)),
-                aliases={"center": "MIDDLE", "mid": "MIDDLE"},
-                required=False,
-            ),
-            ScriptParamSpec(name="italic", value_kind="bool", required=False),
-        ),
+        keyword_params=CENTER_TEXT_KWARGS,
     ),
 }
+
+
+def build_allowed_calls_doc(
+    function_names: Sequence[str],
+    *,
+    excluded_names: Sequence[str] = (),
+) -> str:
+    """由 CALL_SCHEMAS 渲染“允许的调用”说明，供生成提示词引用。
+
+    提示词依赖此函数而不是手写签名，保证生成侧规则与后端白名单始终一致。
+    """
+    names = tuple(function_names)
+    if not names:
+        raise ValueError("至少需要一个允许调用的函数名")
+    for name in names:
+        if name not in CALL_SCHEMAS:
+            raise ValueError(f"未知函数名：{name}")
+
+    lines: list[str] = []
+    excluded = tuple(excluded_names)
+    if excluded:
+        lines.append(f"允许的调用只有 {'/'.join(names)}，不要使用 {'/'.join(excluded)}。")
+    else:
+        lines.append(f"允许的调用只有 {'/'.join(names)}。")
+    lines.append("参数名必须使用白名单中的规范书写，不允许写成别名或自创写法；多余参数会被丢弃。")
+
+    for name in names:
+        schema = CALL_SCHEMAS[name]
+        positional_parts = [_render_positional_example(spec) for spec in schema.positional_params]
+        keyword_parts = [f"{spec.name}={_render_keyword_example(spec)}" for spec in schema.keyword_params]
+        signature = f"{name}({', '.join(positional_parts)}"
+        if keyword_parts:
+            signature = f"{signature}, {', '.join(keyword_parts)}"
+        lines.append(f"{signature})")
+        if schema.keyword_params:
+            descriptions = "、".join(f"{spec.name}（{_describe_spec(spec)}）" for spec in schema.keyword_params)
+            lines.append(f"  {name} 关键词参数：{descriptions}")
+        for spec in schema.positional_params:
+            if spec.value_kind == "runs" and spec.item_schema:
+                item_descriptions = "、".join(
+                    f"{field_name}（{_describe_spec(field_spec)}）"
+                    for field_name, field_spec in spec.item_schema.items()
+                )
+                lines.append(f"  runs 每项字段：{item_descriptions}")
+    return "\n".join(lines)
+
+
+def _describe_spec(spec: ScriptParamSpec) -> str:
+    required_suffix = "，必填" if spec.required else ""
+    if spec.value_kind == "number":
+        if spec.min_value is not None or spec.max_value is not None:
+            lower = spec.min_value if spec.min_value is not None else "不限"
+            upper = spec.max_value if spec.max_value is not None else "不限"
+            return f"数值{lower}-{upper}{required_suffix}"
+        return f"数值{required_suffix}"
+    if spec.value_kind == "bool":
+        return f"布尔{required_suffix}"
+    if spec.value_kind == "enum":
+        values = "/".join(spec.enum_values or ())
+        return f"枚举{values}{required_suffix}"
+    if spec.value_kind == "string":
+        return f"字符串{required_suffix}"
+    return f"{spec.value_kind}{required_suffix}"
+
+
+_STRING_EXAMPLES: dict[str, str] = {
+    "text": '"文字"',
+    "color": '"163A63"',
+    "font_name": '"Microsoft YaHei"',
+}
+
+
+def _render_keyword_example(spec: ScriptParamSpec) -> str:
+    if spec.example is not None:
+        return _render_literal(spec.example)
+    if spec.value_kind == "number":
+        return str(_example_number(spec))
+    if spec.value_kind == "bool":
+        return "False"
+    if spec.value_kind == "enum":
+        return repr(spec.enum_values[0])
+    if spec.value_kind == "string":
+        return _STRING_EXAMPLES.get(spec.name, '"示例"')
+    return spec.value_kind
+
+
+def _example_number(spec: ScriptParamSpec) -> int:
+    min_value = spec.min_value if spec.min_value is not None else 0
+    max_value = spec.max_value if spec.max_value is not None else 12
+    return int(max(min_value, min(12, max_value)))
+
+
+def _render_positional_example(spec: ScriptParamSpec) -> str:
+    if spec.value_kind in {"slide", "page_texts"}:
+        return spec.value_kind
+    if spec.value_kind == "string":
+        return '"文字"'
+    if spec.value_kind == "runs":
+        return '[{"text": "前半句", "size": 12}]'
+    return spec.name
