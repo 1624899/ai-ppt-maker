@@ -297,7 +297,10 @@ def test_export_project_to_pptx_reuses_refine_step_checkpoint_after_later_failur
         first_run_provider = FakeChatProvider(
             [
                 {"page_script": 'add_text(slide, "首轮文字", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
-                {"page_script": 'add_text(slide, "修正文字", 16, 18, 140, 40, size=22, color="163A63", bold=True)'},
+                {
+                    "page_script": 'add_text(slide, "修正文字", 16, 18, 140, 40, size=22, color="163A63", bold=True)',
+                    "asset_adjustments": {},
+                },
             ]
         )
         second_run_provider = FakeChatProvider([])

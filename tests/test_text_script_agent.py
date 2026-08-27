@@ -106,7 +106,7 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertIn("默认沿用 placeholder", prompt)
         self.assertIn("元素会在导出时单独加入", prompt)
 
-    def test_direct_page_refine_prompt_allows_asset_adjustments(self) -> None:
+    def test_direct_page_refine_prompt_uses_numbered_boxes_and_edits_contract(self) -> None:
         prompt = build_direct_page_refine_prompt(
             image_width=2048,
             image_height=1152,
@@ -117,7 +117,219 @@ class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
         self.assertIn("asset_adjustments", prompt)
         self.assertIn("本轮只修文字", prompt)
         self.assertIn("asset_adjustments 固定返回空对象 {}", prompt)
-        self.assertIn("请直接修正 page_script", prompt)
+        self.assertIn("只输出需要执行的 edits 差分", prompt)
+        self.assertIn('"op":\"delete\"', prompt)
+        self.assertIn('"op":\"insert\"', prompt)
+        self.assertIn('1: add_text(slide, \\"标题\\", 100, 100, 300, 60, size=24)', prompt)
+        self.assertNotIn("请直接修正 page_script", prompt)
+        self.assertNotIn("不要只返回 diff", prompt)
+
+    def test_format_text_box_view_numbers_only_whitelist_calls(self) -> None:
+        from ppt_system.export.text_script_edits import format_text_box_view
+
+        script = (
+            '# 注释行一\n'
+            'add_text(slide, "标题", 100, 100, 300, 60, size=24)\n'
+            '\n'
+            'add_center_text(slide, "副标题", 80, 200, 500, 50, size=18, color="88AA00", bold=True)\n'
+            '# 注释行二'
+        )
+        view = format_text_box_view(script)
+        self.assertIn('1: add_text(slide, "标题", 100, 100, 300, 60, size=24)', view)
+        self.assertIn('2: add_center_text(slide, "副标题", 80, 200, 500, 50, size=18, color="88AA00", bold=True)', view)
+        self.assertNotIn("注释行", view)
+
+    def test_apply_page_script_edits_updates_field_values(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_text(slide, "标题", 100, 100, 300, 60, size=24, color="163A63", bold=False, align="LEFT")'
+        result = apply_page_script_edits(
+            script,
+            [{"box": 1, "size": 32, "color": "FF7F50", "bold": True, "align": "CENTER"}],
+        )
+        self.assertIn('size=32', result)
+        self.assertIn('color="FF7F50"', result)
+        self.assertIn("bold=True", result)
+        self.assertIn('align="CENTER"', result)
+        self.assertEqual(result.count("add_text("), 1)
+        self.assertIn('"标题"', result)
+
+    def test_apply_page_script_edits_updates_text_and_geometry_multiple_boxes(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = (
+            'add_text(slide, "标题", 100, 100, 300, 60, size=24)\n'
+            'add_center_text(slide, "副标题", 80, 200, 500, 50, size=18, color="88AA00")'
+        )
+        result = apply_page_script_edits(
+            script,
+            [
+                {"box": 1, "text": "新标题", "x": 120, "y": 90, "w": 320, "h": 64},
+                {"box": 2, "size": 20, "color": "335588"},
+            ],
+        )
+        self.assertIn('add_text(slide, "新标题", 120, 90, 320, 64, size=24)', result)
+        self.assertIn('add_center_text(slide, "副标题", 80, 200, 500, 50, size=20, color="335588")', result)
+
+    def test_apply_page_script_edits_ignores_invalid_box_and_field(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        result = apply_page_script_edits(
+            script,
+            [
+                {"box": 99, "size": 30},
+                {"box": 1, "font_style": "bold"},
+            ],
+        )
+        self.assertEqual(result, normalize_page_script(script))
+
+    def test_apply_page_script_edits_keeps_line_when_value_invalid(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        result = apply_page_script_edits(script, [{"box": 1, "size": 0}])
+        self.assertEqual(result, normalize_page_script(script))
+
+    def test_apply_page_script_edits_replaces_runs_array(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_runs(slide, [{"text": "从", "size": 64}], 100, 120, 500, 90, align="LEFT")'
+        result = apply_page_script_edits(
+            script,
+            [
+                {
+                    "box": 1,
+                    "runs": [
+                        {"text": "前", "size": 72, "color": "08265C"},
+                        {"text": "后", "size": 36, "color": "0B55E6", "bold": True},
+                    ],
+                }
+            ],
+        )
+        self.assertIn('"text": "前"', result)
+        self.assertIn('"size": 72', result)
+        self.assertIn('"text": "后"', result)
+        self.assertIn('"bold": True', result)
+
+    def test_apply_page_script_edits_keeps_unchanged_boxes_intact(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = (
+            'add_text(slide, "标题", 100, 100, 300, 60, size=24)\n'
+            'add_text(slide, "正文一", 100, 200, 300, 40, size=14)\n'
+            'add_text(slide, "正文二", 100, 250, 300, 40, size=14)'
+        )
+        result = apply_page_script_edits(script, [{"box": 2, "size": 16}])
+        self.assertIn('add_text(slide, "标题", 100, 100, 300, 60, size=24)', result)
+        self.assertIn('add_text(slide, "正文一", 100, 200, 300, 40, size=16)', result)
+        self.assertIn('add_text(slide, "正文二", 100, 250, 300, 40, size=14)', result)
+        self.assertEqual(result.count("add_text("), 3)
+
+    def test_apply_page_script_edits_composes_multiple_updates_for_same_box(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_text(slide, "标题", 100, 100, 300, 60, size=24, color="163A63")'
+        result = apply_page_script_edits(
+            script,
+            [{"box": 1, "size": 30}, {"box": 1, "color": "FFFFFF"}],
+        )
+        self.assertIn("size=30", result)
+        self.assertIn('color="FFFFFF"', result)
+
+    def test_apply_page_script_edits_rejects_non_integer_box_identifiers(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = (
+            'add_text(slide, "标题", 100, 100, 300, 60, size=24)\n'
+            'add_text(slide, "正文", 100, 200, 300, 40, size=14)'
+        )
+        for invalid_box in (1.6, "1", True):
+            with self.subTest(box=invalid_box):
+                result = apply_page_script_edits(script, [{"box": invalid_box, "text": "错误修改"}])
+                self.assertEqual(result, normalize_page_script(script))
+
+    def test_apply_page_script_edits_deletes_and_inserts_boxes(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = (
+            'add_text(slide, "保留", 100, 100, 300, 60, size=24)\n'
+            'add_text(slide, "删除", 100, 200, 300, 40, size=14)'
+        )
+        result = apply_page_script_edits(
+            script,
+            [
+                {"op": "delete", "box": 2},
+                {"op": "insert", "call": 'add_center_text(slide, "新增", 80, 220, 400, 50, size=18)'},
+            ],
+        )
+        self.assertIn('add_text(slide, "保留"', result)
+        self.assertNotIn('"删除"', result)
+        self.assertIn('add_center_text(slide, "新增", 80, 220, 400, 50, size=18)', result)
+
+    def test_apply_page_script_edits_empty_text_removes_box(self) -> None:
+        from ppt_system.export.text_script_edits import apply_page_script_edits
+
+        script = 'add_text(slide, "删除", 100, 100, 300, 60, size=24)'
+        self.assertEqual(apply_page_script_edits(script, [{"box": 1, "text": ""}]), "")
+
+    def test_resolve_refine_result_applies_edits_by_default(self) -> None:
+        from ppt_system.export.direct_page_script import resolve_refine_result
+
+        current = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        revision = resolve_refine_result(
+            {"edits": [{"box": 1, "size": 30}], "asset_adjustments": {}},
+            page_script=current,
+            asset_adjustments={"asset_map": {"1": {"dy": 6}}},
+        )
+        self.assertIn("size=30", revision.page_script)
+        self.assertEqual(revision.asset_adjustments, {"asset_map": {"1": {"dy": 6}}})
+
+    def test_resolve_refine_result_empty_edits_keeps_current_script(self) -> None:
+        from ppt_system.export.direct_page_script import resolve_refine_result
+
+        current = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        revision = resolve_refine_result(
+            {"edits": [], "asset_adjustments": {}},
+            page_script=current,
+            asset_adjustments={},
+        )
+        self.assertEqual(revision.page_script, current)
+
+    def test_resolve_refine_result_full_rewrite_uses_exclusive_contract(self) -> None:
+        from ppt_system.export.direct_page_script import resolve_refine_result
+
+        current = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        revision = resolve_refine_result(
+            {
+                "page_script": 'add_text(slide, "整页重写", 10, 10, 200, 40, size=18)',
+                "asset_adjustments": {},
+            },
+            page_script=current,
+            asset_adjustments={},
+        )
+        self.assertIn("整页重写", revision.page_script)
+        self.assertNotIn("标题", revision.page_script)
+
+    def test_resolve_refine_result_rejects_invalid_contract(self) -> None:
+        from ppt_system.export.direct_page_script import resolve_refine_result
+
+        current = 'add_text(slide, "标题", 100, 100, 300, 60, size=24)'
+        invalid_results = (
+            {"asset_adjustments": {}},
+            {"edits": {"box": 1, "size": 30}, "asset_adjustments": {}},
+            {"edits": [{"box": 1.6, "size": 30}], "asset_adjustments": {}},
+            {"edits": [{"box": 1, "runs": [{"text": "错误字段"}]}], "asset_adjustments": {}},
+            {"edits": [], "asset_adjustments": {}, "explanation": "无需修改"},
+            {
+                "edits": [{"box": 1, "size": 30}],
+                "page_script": current,
+            },
+        )
+        for result in invalid_results:
+            with self.subTest(result=result):
+                with self.assertRaises(RuntimeError):
+                    resolve_refine_result(result, page_script=current, asset_adjustments={})
 
     def test_write_page_preview_script_normalizes_page_script(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -783,6 +995,7 @@ def build_deck():
                     {"page_script": 'add_text(slide, "首轮文字", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
                     {
                         "page_script": 'add_text(slide, "二轮改字", 20, 24, 150, 40, size=22, color="163A63", bold=True)',
+                        "asset_adjustments": {},
                     },
                 ]
             )
@@ -829,6 +1042,84 @@ def build_deck():
             self.assertIn("二轮改字", final_script)
             self.assertIn('"dx": -10', final_script)
             self.assertIn('"dy": 40', final_script)
+
+    def test_export_project_refine_round_applies_edits_diff(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            work_dir = root / "work"
+            output_pptx = root / "result.pptx"
+            visual_path = root / "visual.png"
+            reference_path = root / "reference.png"
+            Image.new("RGBA", (400, 240), (255, 255, 255, 0)).save(visual_path)
+            with Image.open(visual_path).convert("RGBA") as image:
+                image.paste((0, 82, 214, 255), (40, 40, 120, 100))
+                image.save(visual_path)
+            Image.new("RGBA", (400, 240), (255, 255, 255, 255)).save(reference_path)
+            project = {
+                "slide_width_inch": 13.333333,
+                "image_width": 400,
+                "image_height": 240,
+                "default_font": {"font_name": "Microsoft YaHei", "font_size": 24, "color": "355C7D"},
+                "pages": [
+                    {
+                        "page_no": 1,
+                        "title": "脚本页",
+                        "summary": "摘要",
+                        "visual_image": str(visual_path),
+                        "reference_image": str(reference_path),
+                        "texts": [],
+                    }
+                ],
+            }
+            provider = FakeChatProvider(
+                [
+                    {"page_script": 'add_text(slide, "首轮文字", 12, 14, 130, 36, size=20, color="163A63", bold=True)'},
+                    {"edits": [{"box": 1, "text": "二轮改字", "size": 30}], "asset_adjustments": {}},
+                ]
+            )
+            _write_minimal_assets_manifest(work_dir / "page_01" / "assets", image_width=400, image_height=240)
+
+            fake_asset_result = type(
+                "FakePreparedAssets",
+                (),
+                {
+                    "manifest_path": str(work_dir / "page_01" / "assets" / "assets.json"),
+                    "manifest": {},
+                    "image_width": 400,
+                    "image_height": 240,
+                    "split_source_image": str(visual_path),
+                    "removed_intermediate_images": [],
+                    "asset_adjustments": {},
+                },
+            )()
+
+            with patch("ppt_system.export.direct_project_script.render_pptx_first_slide_to_png", return_value=reference_path):
+                with patch("ppt_system.export.direct_project_script.prepare_direct_page_assets", return_value=fake_asset_result):
+                    with patch(
+                        "ppt_system.export.direct_project_script.analyze_text_asset_overlaps",
+                        return_value=type(
+                            "FakeOverlap",
+                            (),
+                            {
+                                "total_boxes": 1,
+                                "overlap_box_count": 0,
+                                "overlap_ratio": 0.0,
+                                "max_overlap_pixels": 0,
+                                "overlapping_box_indices": [],
+                            },
+                        )(),
+                    ):
+                        result = export_project_to_pptx(
+                            project,
+                            work_dir,
+                            output_pptx,
+                            chat_provider=provider,  # type: ignore[arg-type]
+                        )
+
+            final_script = Path(result["text_script_path"]).read_text(encoding="utf-8")
+            self.assertIn('add_text(slide, "二轮改字", 12, 14, 130, 36, size=30, color="163A63", bold=True)', final_script)
+            self.assertNotIn("首轮文字", final_script)
+            self.assertEqual(provider.calls.__len__(), 2)
 
     def test_export_project_to_pptx_requires_chat_provider(self) -> None:
         with TemporaryDirectory() as temp_dir:

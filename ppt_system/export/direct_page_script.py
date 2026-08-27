@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,7 @@ from ppt_system.image.intermediate_artifact_cleanup import cleanup_split_interme
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
 from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 from ppt_system.image.splitter import split_transparent_png
+from ppt_system.export.text_script_edits import apply_page_script_edits_with_stats, format_text_box_view
 from ppt_system.export.text_script_runtime import (
     build_project_script_source,
     execute_generated_text_script,
@@ -29,6 +31,8 @@ DEFAULT_SLIDE_WIDTH_INCH = 13.333333
 DEFAULT_FONT_NAME = "Microsoft YaHei"
 DEFAULT_FONT_COLOR = "355C7D"
 StopChecker = Callable[[], bool]
+
+LOGGER = logging.getLogger(__name__)
 
 
 # 单页直出链路允许的调用，与后端 Schema 白名单保持一致来源。
@@ -124,15 +128,27 @@ def build_direct_page_refine_prompt(
     asset_adjustments: dict[str, Any],
     round_index: int,
 ) -> str:
-    """构建基于真实 PPT 渲染图的单页文字修正提示词。"""
+    """构建基于真实 PPT 渲染图的单页文字修正提示词。
+
+    二轮优先让模型输出 edits 差分（按编号引用现有文字框），不再重复整页脚本。
+    """
     payload = {
         "canvas": {"width": int(image_width), "height": int(image_height)},
         "refine_round": int(round_index) + 1,
-        "current_page_script": str(page_script),
+        "current_text_boxes": format_text_box_view(page_script),
     }
     return (
         "第一张图是完整原稿图，第二张图是当前 PPT 的真实导出渲染图。"
-        "请直接修正 page_script，让第二张图尽量贴近第一张图。"
+        "请逐框对比，只输出需要执行的 edits 差分，不要重复未修改的文字框。"
+        "current_text_boxes 中每一行是一个文字框的当前调用，行首正整数编号就是该框的 box。"
+        "每个 edit 必须使用以下一种操作："
+        "update 使用 {\"box\":编号,\"字段\":新值}，为减少 token 可省略 op=update；"
+        "delete 使用 {\"op\":\"delete\",\"box\":编号}；"
+        "insert 使用 {\"op\":\"insert\",\"call\":\"一个完整的 add_text/add_center_text/add_runs 调用\"}，新增调用追加到脚本末尾。"
+        "update 可修改字段：text/x/y/w/h/size/color/bold/align/font_name/anchor/italic；add_runs 的框可用 runs 字段整体替换。"
+        "box 必须是 current_text_boxes 中已有的正整数，不能使用小数、字符串或布尔值。"
+        "如果没有任何需要修改的地方，返回 {\"edits\": [], \"asset_adjustments\": {}}。"
+        "只有文字框整体严重错乱、差分操作无法合理表达时，才改用 page_script 返回完整脚本；edits 与 page_script 二选一。"
         "重点检查：字号、位置、宽高、对齐、换行、是否压线、是否偏离元素中心、文本是否过大或过小。"
         "本轮只修文字，不要修改元素贴图位置与尺寸。"
         "不要输出新的图形、背景或边框。"
@@ -145,9 +161,10 @@ def build_direct_page_refine_prompt(
             excluded_names=DIRECT_PAGE_EXCLUDED_CALLS,
         )
         + "\n"
-        + '输出必须是严格 JSON，格式为 {"page_script":"...","asset_adjustments":{...}}。'
+        + '输出必须是严格 JSON。通常格式为 {"edits":[...],"asset_adjustments":{}}；'
+        '仅整页重写时格式为 {"page_script":"...","asset_adjustments":{}}。'
         "asset_adjustments 固定返回空对象 {}。"
-        "返回完整 page_script 和完整 asset_adjustments，不要只返回 diff。"
+        "不要同时返回 edits 和 page_script；不要输出合同之外的字段。"
         f"\n页面信息：\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
 
@@ -352,6 +369,53 @@ def _generate_page_script_from_images(
     return normalize_page_script(raw_script)
 
 
+def resolve_refine_result(
+    result: dict[str, Any],
+    *,
+    page_script: str,
+    asset_adjustments: dict[str, Any],
+) -> DirectPageScriptRevision:
+    """把二轮模型响应解析为新的文字脚本。
+
+    edits 差分为主通道（模型只改被引用的文字框）；
+    page_script 是差分无法表达时使用的互斥整页重写通道。
+    """
+    if not isinstance(result, dict):
+        raise RuntimeError("二轮回看响应的 JSON 根节点必须是对象。")
+    allowed_result_fields = {"edits", "page_script", "asset_adjustments"}
+    unknown_fields = set(result) - allowed_result_fields
+    if unknown_fields:
+        raise RuntimeError(f"二轮回看响应包含合同之外的字段：{sorted(unknown_fields)}")
+    if result.get("asset_adjustments") != {}:
+        raise RuntimeError("二轮回看响应的 asset_adjustments 必须是空对象。")
+    raw_script = str(result.get("page_script", "") or "").strip()
+    has_edits = "edits" in result
+    if raw_script and has_edits:
+        raise RuntimeError("二轮回看响应不能同时包含 page_script 和 edits。")
+    if raw_script:
+        LOGGER.info("二轮回看命中整页重写通道，直接采用模型返回的完整脚本")
+        resolved_script = normalize_page_script(raw_script)
+        if not resolved_script:
+            raise RuntimeError("二轮回看返回的 page_script 为空。")
+    else:
+        if not has_edits:
+            raise RuntimeError("二轮回看响应缺少 edits 或非空 page_script。")
+        raw_edits = result.get("edits")
+        if not isinstance(raw_edits, list):
+            raise RuntimeError("二轮回看响应的 edits 必须是数组。")
+        application = apply_page_script_edits_with_stats(page_script, raw_edits)
+        if application.accepted_count != len(raw_edits):
+            raise RuntimeError(
+                "二轮回看响应包含无法应用的 edit："
+                f"共 {len(raw_edits)} 项，成功校验 {application.accepted_count} 项。"
+            )
+        resolved_script = application.script
+    return DirectPageScriptRevision(
+        page_script=resolved_script,
+        asset_adjustments=normalize_asset_adjustments(asset_adjustments),
+    )
+
+
 def _revise_page_script_with_rendered_preview(
     provider: OpenAIChatProvider,
     *,
@@ -375,7 +439,7 @@ def _revise_page_script_with_rendered_preview(
     messages = [
         {
             "role": "system",
-            "content": "你是 PPT 单页文字修正助手。你根据原稿图与真实导出图只修正 page_script，asset_adjustments 必须返回空对象，只输出 JSON。",
+            "content": "你是 PPT 单页文字修正助手。优先输出 edits 差分；只有差分无法表达整页修正时才输出 page_script。两种格式二选一，asset_adjustments 必须为空对象，只输出 JSON。",
         },
         {
             "role": "user",
@@ -391,10 +455,8 @@ def _revise_page_script_with_rendered_preview(
         stop_checker=stop_checker,
         interruption_message="文字脚本回看修正模型请求已被中断",
     )
-    raw_script = str(result.get("page_script", "")).strip()
-    resolved_script = normalize_page_script(raw_script) if raw_script else page_script
-    resolved_adjustments = normalize_asset_adjustments(asset_adjustments)
-    return DirectPageScriptRevision(
-        page_script=resolved_script,
-        asset_adjustments=resolved_adjustments,
+    return resolve_refine_result(
+        result,
+        page_script=page_script,
+        asset_adjustments=asset_adjustments,
     )
