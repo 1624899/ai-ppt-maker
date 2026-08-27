@@ -17,6 +17,7 @@ from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE
 from ppt_system.export.export_page_resume import CHECKPOINT_FILE_NAME
 from ppt_system.export.export_step_checkpoint import STEP_CHECKPOINT_DIR_NAME
 from ppt_system.export.direct_page_script import (
+    _page_script_purpose,
     _write_page_preview_script,
     build_direct_page_refine_prompt,
     build_direct_page_prompt,
@@ -45,7 +46,9 @@ class FakeChatProvider:
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
         return {"type": "input_image", "image_url": str(image_path)}
 
-    def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def complete_json(
+        self, messages: list[dict[str, Any]], *, purpose: str = ""
+    ) -> dict[str, Any]:
         self.calls.append(messages)
         if not self.responses:
             raise RuntimeError("no more responses")
@@ -71,6 +74,14 @@ def _write_minimal_assets_manifest(page_assets_dir: Path, *, image_width: int, i
 
 
 class TextScriptRuntimeAndDirectPathTests(unittest.TestCase):
+    def test_page_script_purpose_prefixes_page_number(self) -> None:
+        self.assertEqual(_page_script_purpose("文字脚本（首轮直出）", None), "文字脚本（首轮直出）")
+        self.assertEqual(_page_script_purpose("文字脚本（首轮直出）", 3), "第 3 页文字脚本（首轮直出）")
+        self.assertEqual(
+            _page_script_purpose("文字脚本回看修正（第 1 轮）", 3),
+            "第 3 页文字脚本回看修正（第 1 轮）",
+        )
+
     def test_should_wrap_text_keeps_single_line_banner_and_badge_unwrapped(self) -> None:
         self.assertFalse(should_wrap_text("01", 118, 88, 38))
         self.assertFalse(should_wrap_text("AI 转换", 300, 58, 26))

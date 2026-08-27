@@ -18,7 +18,14 @@ class _CapturingImageProvider:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Path, Path]] = []
 
-    def generate_elements_page(self, prompt: str, reference_page_path: Path, output_path: Path) -> dict[str, object]:
+    def generate_elements_page(
+        self,
+        prompt: str,
+        reference_page_path: Path,
+        output_path: Path,
+        *,
+        context: str = "",
+    ) -> dict[str, object]:
         self.calls.append((prompt, reference_page_path, output_path))
         output_path.write_bytes(b"elements")
         return {"provider": "fake"}

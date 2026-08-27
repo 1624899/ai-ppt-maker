@@ -25,9 +25,25 @@ from ppt_system.integrations.responses_payload import (
     build_responses_image_input_item,
     build_responses_url,
 )
-from ppt_system.runtime.logging_utils import format_log_line
+from ppt_system.runtime.logging_utils import format_log_line, format_stage_tag
 
 
+class _RequestAttemptCounter:
+    """一次完整模型调用内跨多次 HTTP 请求共享的累计序号。
+
+    JSON 解析重试、空响应补充重试都会重新进入请求循环，
+    只有把序号放在这次调用的共享状态里，日志中的“第 N 次请求”
+    才能连续递增而不是每次从 1 重新计算。
+    """
+
+    __slots__ = ("count",)
+
+    def __init__(self) -> None:
+        self.count = 0
+
+    def next(self) -> int:
+        self.count += 1
+        return self.count
 
 
 class OpenAIChatProvider:
@@ -59,11 +75,22 @@ class OpenAIChatProvider:
     def responses_url(self) -> str:
         return build_responses_url(self.api_base_url)
 
-    def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def complete_json(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        purpose: str = "模型调用",
+    ) -> dict[str, Any]:
+        """请求对话模型并解析 JSON 结果。
+
+        purpose 用于在日志中标注本次调用的业务阶段（如“内容规划”“单页文字脚本”），
+        避免多条并行日志无法定位来自哪个阶段。
+        """
+        stage_tag = format_stage_tag(purpose)
         print(
             format_log_line(
                 "chat",
-                f"开始请求模型 `{self.model}`，timeout={self.timeout}s",
+                f"开始请求模型 `{self.model}`{stage_tag}，timeout={self.timeout}s",
             ),
             flush=True,
         )
@@ -74,159 +101,213 @@ class OpenAIChatProvider:
             stream=True,
         )
         started_at = time.perf_counter()
-        with CHAT_REQUEST_SEMAPHORE:
-            response = self._post_with_retry(payload)
+        attempt = _RequestAttemptCounter()
+        try:
+            response = self._post_with_retry(payload, attempt, purpose=purpose)
+            self._raise_for_error(response)
+            body = _parse_response_json(response)
+            result, response = self._parse_json_with_retry(
+                body, payload, attempt, purpose=purpose, response=response
+            )
+        except Exception as exc:
+            elapsed = time.perf_counter() - started_at
+            print(
+                format_log_line(
+                    "chat",
+                    f"模型请求失败{stage_tag}：{build_text_snippet(str(exc))}，"
+                    f"共请求 {attempt.count} 次，耗时={elapsed:.1f}s",
+                ),
+                flush=True,
+            )
+            raise
         elapsed = time.perf_counter() - started_at
         print(
             format_log_line(
                 "chat",
-                f"模型响应完成，status={response.status_code}，耗时={elapsed:.1f}s",
+                f"模型响应完成{stage_tag}，status={response.status_code}，"
+                f"共请求 {attempt.count} 次，耗时={elapsed:.1f}s",
             ),
             flush=True,
         )
-        self._raise_for_error(response)
-        body = _parse_response_json(response)
-        return self._parse_json_with_retry(body, payload)
+        return result
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
         return build_responses_image_input_item(file_to_data_url(image_path))
 
-    def _post_with_retry(self, payload: dict[str, Any]) -> requests.Response:
+    def _post_with_retry(
+        self,
+        payload: dict[str, Any],
+        attempt: _RequestAttemptCounter,
+        *,
+        purpose: str,
+        reason: str = "",
+    ) -> requests.Response:
+        """发送 HTTP 请求并按策略重试。
+
+        attempt 在一次完整的模型调用内跨所有重试层共享，
+        保证 JSON 解析重试、空响应补充重试后序号仍然连续递增。
+        reason 用于标注本次请求是由哪一层重试触发的。
+        限流只覆盖本轮实际 HTTP 及其传输/状态码重试，
+        解析层退避必须在锁外进行，避免空响应或 JSON 重试占满槽位。
+        """
         response_attempt = 0
         transport_attempt = 0
-        request_attempt = 0
-        max_attempts_label = self._build_max_attempts_label()
         deadline = time.monotonic() + self.total_timeout
-        while True:
-            request_attempt += 1
-            print(
-                format_log_line(
-                    "chat",
-                    f"发送第 {request_attempt}/{max_attempts_label} 次请求 -> {self.responses_url}",
-                ),
-                flush=True,
-            )
-            request_started_at = time.perf_counter()
-            try:
-                response = requests.post(
-                    self.responses_url,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                    timeout=min(self.timeout, max(0.001, deadline - time.monotonic())),
-                )
-            except requests.RequestException as exc:
-                elapsed = time.perf_counter() - request_started_at
-                error_summary = build_transport_error_summary(exc)
+        stage_tag = format_stage_tag(purpose)
+        with CHAT_REQUEST_SEMAPHORE:
+            while True:
+                request_attempt = attempt.next()
+                reason_suffix = f"（{reason}）" if reason else ""
                 print(
                     format_log_line(
                         "chat",
-                        f"第 {request_attempt} 次请求异常：{error_summary}，耗时={elapsed:.1f}s",
+                        f"发送第 {request_attempt} 次请求{stage_tag}{reason_suffix} -> {self.responses_url}",
                     ),
                     flush=True,
                 )
-                retry_budget = transport_retry_budget(
-                    exc,
-                    transport_retry_count=self.transport_retry_count,
-                    ambiguous_transport_retry_count=self.ambiguous_transport_retry_count,
-                )
-                if transport_attempt >= retry_budget:
-                    error_message = build_transport_error_message(exc, api_name="对话模型")
+                request_started_at = time.perf_counter()
+                try:
+                    response = requests.post(
+                        self.responses_url,
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                        timeout=min(self.timeout, max(0.001, deadline - time.monotonic())),
+                    )
+                except requests.RequestException as exc:
+                    elapsed = time.perf_counter() - request_started_at
+                    error_summary = build_transport_error_summary(exc)
                     print(
                         format_log_line(
                             "chat",
-                            f"请求异常已停止自动重试：{build_text_snippet(error_message)}",
+                            f"第 {request_attempt} 次请求异常{stage_tag}：{error_summary}，耗时={elapsed:.1f}s",
                         ),
                         flush=True,
                     )
-                    raise RuntimeError(error_message) from exc
-                delay = self.retry_initial_delay * (2**transport_attempt)
-                transport_attempt += 1
+                    retry_budget = transport_retry_budget(
+                        exc,
+                        transport_retry_count=self.transport_retry_count,
+                        ambiguous_transport_retry_count=self.ambiguous_transport_retry_count,
+                    )
+                    if transport_attempt >= retry_budget:
+                        error_message = build_transport_error_message(exc, api_name="对话模型")
+                        print(
+                            format_log_line(
+                                "chat",
+                                f"请求异常已停止自动重试{stage_tag}：{build_text_snippet(error_message)}",
+                            ),
+                            flush=True,
+                        )
+                        raise RuntimeError(error_message) from exc
+                    delay = self.retry_initial_delay * (2**transport_attempt)
+                    transport_attempt += 1
+                    print(
+                        format_log_line(
+                            "chat",
+                            f"将在 {delay:.1f}s 后重试传输异常（{transport_attempt}/{retry_budget}）{stage_tag}",
+                        ),
+                        flush=True,
+                    )
+                    if time.monotonic() + delay >= deadline:
+                        raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试") from exc
+                    time.sleep(delay)
+                    continue
+                elapsed = time.perf_counter() - request_started_at
                 print(
                     format_log_line(
                         "chat",
-                        f"将在 {delay:.1f}s 后重试传输异常（{transport_attempt}/{retry_budget}）",
+                        f"第 {request_attempt} 次请求返回 HTTP {response.status_code}{stage_tag}，耗时={elapsed:.1f}s",
+                    ),
+                    flush=True,
+                )
+                if not should_retry(response) or response_attempt >= self.retry_count:
+                    return response
+
+                retry_after = response.headers.get("Retry-After", "").strip()
+                delay = float(retry_after) if retry_after.isdigit() else self.retry_initial_delay * (2**response_attempt)
+                response_attempt += 1
+                print(
+                    format_log_line(
+                        "chat",
+                        f"命中可重试状态码 {response.status_code}，将在 {delay:.1f}s 后重试{stage_tag}",
                     ),
                     flush=True,
                 )
                 if time.monotonic() + delay >= deadline:
-                    raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试") from exc
+                    raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试")
                 time.sleep(delay)
-                continue
-            elapsed = time.perf_counter() - request_started_at
-            print(
-                format_log_line(
-                    "chat",
-                    f"第 {request_attempt} 次请求返回 HTTP {response.status_code}，耗时={elapsed:.1f}s",
-                ),
-                flush=True,
-            )
-            if not should_retry(response) or response_attempt >= self.retry_count:
-                return response
 
-            retry_after = response.headers.get("Retry-After", "").strip()
-            delay = float(retry_after) if retry_after.isdigit() else self.retry_initial_delay * (2**response_attempt)
-            response_attempt += 1
-            print(
-                format_log_line(
-                    "chat",
-                    f"命中可重试状态码 {response.status_code}，将在 {delay:.1f}s 后重试",
-                ),
-                flush=True,
-            )
-            if time.monotonic() + delay >= deadline:
-                raise RuntimeError(f"对话模型请求超过总时限 {self.total_timeout} 秒，已停止重试")
-            time.sleep(delay)
-
-    def _build_max_attempts_label(self) -> str:
-        response_attempts = max(0, int(self.retry_count)) + 1
-        transport_attempts = max(
-            max(0, int(self.transport_retry_count)),
-            max(0, int(self.ambiguous_transport_retry_count)),
-        )
-        return str(response_attempts + transport_attempts)
-
-    def _extract_json_content_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> str:
-        attempt = 0
+    def _extract_json_content_with_retry(
+        self,
+        body: dict[str, Any],
+        payload: dict[str, Any],
+        attempt: _RequestAttemptCounter,
+        *,
+        purpose: str,
+        response: requests.Response,
+    ) -> tuple[str, requests.Response]:
+        attempt_in_retry = 0
         current_body = body
+        current_response = response
         while True:
             try:
                 content = _extract_response_content(current_body)
                 print(format_log_line("chat", _build_response_diagnostic(current_body, content)), flush=True)
-                return content
+                return content, current_response
             except AmbiguousResponseError as exc:
                 if _has_billable_usage(current_body):
                     message = _build_billable_ambiguous_response_message(current_body, exc)
                     print(format_log_line("chat", message), flush=True)
                     raise AmbiguousResponseError(message) from exc
-                if attempt >= self.ambiguous_retry_count:
+                if attempt_in_retry >= self.ambiguous_retry_count:
                     raise
-                attempt += 1
+                attempt_in_retry += 1
                 print(
                     format_log_line(
                         "chat",
                         "检测到歧义空响应，"
                         f"{build_text_snippet(str(exc))}，"
-                        f"将执行第 {attempt}/{self.ambiguous_retry_count} 次补充重试",
+                        f"将执行第 {attempt_in_retry}/{self.ambiguous_retry_count} 次补充重试"
+                        f"{format_stage_tag(purpose)}",
                     ),
                     flush=True,
                 )
-                time.sleep(self.retry_initial_delay * (2 ** (attempt - 1)))
-                response = self._post_with_retry(payload)
-                self._raise_for_error(response)
-                current_body = _parse_response_json(response)
+                time.sleep(self.retry_initial_delay * (2 ** (attempt_in_retry - 1)))
+                current_response = self._post_with_retry(
+                    payload,
+                    attempt,
+                    purpose=purpose,
+                    reason=f"空响应补充重试 {attempt_in_retry}/{self.ambiguous_retry_count}",
+                )
+                self._raise_for_error(current_response)
+                current_body = _parse_response_json(current_response)
 
-    def _parse_json_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    def _parse_json_with_retry(
+        self,
+        body: dict[str, Any],
+        payload: dict[str, Any],
+        attempt: _RequestAttemptCounter,
+        *,
+        purpose: str,
+        response: requests.Response,
+    ) -> tuple[dict[str, Any], requests.Response]:
         """解析模型 JSON；对返回异常且无法解析的响应按原参数重试。"""
         current_body = body
         current_payload = payload
-        for attempt in range(max(0, self.json_retry_count) + 1):
+        current_response = response
+        for attempt_in_retry in range(max(0, self.json_retry_count) + 1):
             try:
                 _raise_for_incomplete_response(current_body)
-                content = self._extract_json_content_with_retry(current_body, current_payload)
-                return parse_json_content(content)
+                content, current_response = self._extract_json_content_with_retry(
+                    current_body,
+                    current_payload,
+                    attempt,
+                    purpose=purpose,
+                    response=current_response,
+                )
+                return parse_json_content(content), current_response
             except AmbiguousResponseError:
                 raise
             except RuntimeError as exc:
@@ -240,20 +321,26 @@ class OpenAIChatProvider:
                     ),
                     flush=True,
                 )
-                if attempt >= max(0, self.json_retry_count):
+                if attempt_in_retry >= max(0, self.json_retry_count):
                     raise
-                next_attempt = attempt + 1
+                next_attempt = attempt_in_retry + 1
                 print(
                     format_log_line(
                         "chat",
-                        f"模型返回的 JSON 无法解析，将执行第 {next_attempt}/{self.json_retry_count} 次重试",
+                        f"模型返回的 JSON 无法解析，将执行第 {next_attempt}/{self.json_retry_count} 次重试"
+                        f"{format_stage_tag(purpose)}",
                     ),
                     flush=True,
                 )
-                time.sleep(self.retry_initial_delay * (2**attempt))
-                response = self._post_with_retry(current_payload)
-                self._raise_for_error(response)
-                current_body = _parse_response_json(response)
+                time.sleep(self.retry_initial_delay * (2**attempt_in_retry))
+                current_response = self._post_with_retry(
+                    current_payload,
+                    attempt,
+                    purpose=purpose,
+                    reason=f"JSON 解析重试 {next_attempt}/{self.json_retry_count}",
+                )
+                self._raise_for_error(current_response)
+                current_body = _parse_response_json(current_response)
         raise AssertionError("JSON 解析重试流程异常结束")
 
     @staticmethod

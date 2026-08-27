@@ -32,6 +32,7 @@ def submit_reference_task(
         image_path,
         style_reference_paths,
         reference_mode,
+        context=f"第 {page_no} 页原稿图",
     )
     return future, page_no, prompt, image_path
 
@@ -51,5 +52,11 @@ def submit_elements_task(
     prompt_path.write_text(elements_prompt, encoding="utf-8")
     update_page_state(job_dir, job_id, page_no, status="rendering_elements", elements_prompt=elements_prompt)
     append_stage_log(job_dir, job_id, "elements_generation", f"第 {page_no} 页元素图已进入并发队列")
-    future = executor.submit(image_provider.generate_elements_page, elements_prompt, reference_page_path, out_path)
+    future = executor.submit(
+        image_provider.generate_elements_page,
+        elements_prompt,
+        reference_page_path,
+        out_path,
+        context=f"第 {page_no} 页元素图",
+    )
     return future, page_no, out_path

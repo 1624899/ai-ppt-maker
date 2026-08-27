@@ -68,7 +68,7 @@ def plan_agent_draft_with_model(
         annotations=annotations,
         messages=messages,
     )
-    result = provider.complete_json(request_messages)
+    result = provider.complete_json(request_messages, purpose="改稿草稿规划")
     return normalize_model_draft(
         result,
         state=state,

@@ -292,6 +292,7 @@ def _generate_initial_page_script_with_checkpoint(
         image_width=image_width,
         image_height=image_height,
         text_placeholders=text_placeholders,
+        page_no=page_no,
         stop_checker=stop_checker,
     )
     save_export_step_checkpoint(
@@ -394,6 +395,7 @@ def _revise_page_script_with_checkpoint(
         page_script=page_script,
         asset_adjustments=asset_adjustments,
         round_index=round_index,
+        page_no=page_no,
         stop_checker=stop_checker,
     )
     payload = {

@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -18,8 +17,7 @@ from ppt_system.integrations.http_retry_policy import (
 )
 from ppt_system.integrations.image_response import save_image_from_response_payload
 from ppt_system.image.canvas_normalization import ensure_image_canvas_size
-
-logger = logging.getLogger(__name__)
+from ppt_system.runtime.logging_utils import format_log_line, format_stage_tag
 
 
 class OpenAIImageProvider:
@@ -78,6 +76,8 @@ class OpenAIImageProvider:
         output_path: Path,
         style_reference_paths: list[Path],
         reference_mode: str = "generation",
+        *,
+        context: str = "原稿图生成",
     ) -> dict[str, Any]:
         if reference_mode == "edit_with_refs" and style_reference_paths:
             prompt = prompt.rstrip() + "只继承视觉语言与风格，不复用原图的具体构图和布局。"
@@ -86,31 +86,42 @@ class OpenAIImageProvider:
                 output_path=output_path,
                 image_paths=style_reference_paths,
                 purpose="reference_page",
+                context=context,
             )
 
-        deadline = self._request_deadline()
-        response = self._post_with_retry(
-            self.images_generations_url,
-            deadline=deadline,
-            headers={**self._headers(), "Content-Type": "application/json"},
-            json=self._image_payload(prompt, mode="generation"),
-        )
-        self._raise_for_image_error(response)
-        result = self._save_response_image(response.json(), output_path)
-        result["purpose"] = "reference_page"
-        return result
+        started_at = time.perf_counter()
+        try:
+            deadline = self._request_deadline()
+            response = self._post_with_retry(
+                self.images_generations_url,
+                deadline=deadline,
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json=self._image_payload(prompt, mode="generation"),
+                context=context,
+            )
+            self._raise_for_image_error(response)
+            result = self._save_response_image(response.json(), output_path)
+            result["purpose"] = "reference_page"
+            self._log_generation_complete(context, output_path, started_at, result)
+            return result
+        except Exception as exc:
+            self._log_generation_failed(context, started_at, exc)
+            raise
 
     def generate_elements_page(
         self,
         prompt: str,
         reference_page_path: Path,
         output_path: Path,
+        *,
+        context: str = "元素图生成",
     ) -> dict[str, Any]:
         return self._edit_with_references(
             prompt=prompt,
             output_path=output_path,
             image_paths=[reference_page_path],
             purpose="elements_page",
+            context=context,
         )
 
     def generate_edited_image(
@@ -118,6 +129,8 @@ class OpenAIImageProvider:
         prompt: str,
         output_path: Path,
         image_paths: list[Path],
+        *,
+        context: str = "图片编辑生成",
     ) -> dict[str, Any]:
         if not image_paths:
             raise ValueError("编辑图片至少需要一张参考图。")
@@ -126,6 +139,7 @@ class OpenAIImageProvider:
             output_path=output_path,
             image_paths=image_paths,
             purpose="image_edit_candidate",
+            context=context,
         )
 
     def _edit_with_references(
@@ -134,9 +148,12 @@ class OpenAIImageProvider:
         output_path: Path,
         image_paths: list[Path],
         purpose: str,
+        *,
+        context: str,
     ) -> dict[str, Any]:
         files = []
         opened_files = []
+        started_at = time.perf_counter()
         try:
             for image_path in image_paths:
                 handle = image_path.open("rb")
@@ -151,12 +168,17 @@ class OpenAIImageProvider:
                 headers=self._headers(),
                 data=self._image_payload(prompt, mode="edit"),
                 files=files,
+                context=context,
             )
             self._raise_for_image_error(response)
             result = self._save_response_image(response.json(), output_path)
             result["purpose"] = purpose
             result["input_images"] = [str(path) for path in image_paths]
+            self._log_generation_complete(context, output_path, started_at, result)
             return result
+        except Exception as exc:
+            self._log_generation_failed(context, started_at, exc)
+            raise
         finally:
             for handle in opened_files:
                 handle.close()
@@ -192,24 +214,46 @@ class OpenAIImageProvider:
     def _supports_extended_options(self) -> bool:
         return self.supports_extended_options
 
-    def _post_with_retry(self, url: str, *, deadline: float | None = None, **kwargs: Any) -> requests.Response:
+    def _post_with_retry(
+        self,
+        url: str,
+        *,
+        deadline: float | None = None,
+        context: str = "",
+        **kwargs: Any,
+    ) -> requests.Response:
         response_attempt = 0
         transport_attempt = 0
         deadline = deadline if deadline is not None else self._request_deadline()
+        stage_tag = format_stage_tag(context)
+        print(
+            format_log_line(
+                "image",
+                f"开始生图模型 `{self.model}`{stage_tag}，timeout={self.timeout}s，url={url}",
+            ),
+            flush=True,
+        )
         while True:
             self._rewind_files(kwargs.get("files"))
             attempt_started_at = time.perf_counter()
+            attempt_no = response_attempt + transport_attempt + 1
+            print(
+                format_log_line(
+                    "image",
+                    f"发送第 {attempt_no} 次生图请求{stage_tag} -> {url}",
+                ),
+                flush=True,
+            )
             try:
                 request_timeout = self._remaining_request_timeout(deadline)
                 response = requests.post(url, timeout=request_timeout, **kwargs)
                 elapsed = time.perf_counter() - attempt_started_at
-                logger.info(
-                    "图像请求诊断：attempt=%s，status=%s，耗时=%.1fs，剩余总时限=%.1fs，url=%s",
-                    response_attempt + transport_attempt + 1,
-                    response.status_code,
-                    elapsed,
-                    max(0.0, deadline - time.monotonic()),
-                    url,
+                print(
+                    format_log_line(
+                        "image",
+                        f"第 {attempt_no} 次生图请求返回 HTTP {response.status_code}{stage_tag}，耗时={elapsed:.1f}s",
+                    ),
+                    flush=True,
                 )
                 if not self._should_retry(response) or response_attempt >= self.retry_count:
                     return response
@@ -220,15 +264,22 @@ class OpenAIImageProvider:
                 else:
                     delay = self.retry_initial_delay * (2**response_attempt)
                 response_attempt += 1
-                logger.warning("图像请求诊断：命中可重试状态码 %s，将在 %.1fs 后重试，Retry-After=%r", response.status_code, delay, retry_after)
+                print(
+                    format_log_line(
+                        "image",
+                        f"命中可重试状态码 {response.status_code}，将在 {delay:.1f}s 后重试生图{stage_tag}，Retry-After={retry_after!r}",
+                    ),
+                    flush=True,
+                )
                 self._sleep_with_deadline(delay, deadline)
             except RequestException as exc:
-                logger.warning(
-                    "图像请求诊断：attempt=%s，异常耗时=%.1fs，异常=%s，剩余总时限=%.1fs",
-                    response_attempt + transport_attempt + 1,
-                    time.perf_counter() - attempt_started_at,
-                    build_transport_error_summary(exc),
-                    max(0.0, deadline - time.monotonic()),
+                elapsed = time.perf_counter() - attempt_started_at
+                print(
+                    format_log_line(
+                        "image",
+                        f"第 {attempt_no} 次生图请求异常{stage_tag}：{build_transport_error_summary(exc)}，耗时={elapsed:.1f}s",
+                    ),
+                    flush=True,
                 )
                 retry_budget = transport_retry_budget(
                     exc,
@@ -239,8 +290,48 @@ class OpenAIImageProvider:
                     raise RuntimeError(build_transport_error_message(exc)) from exc
                 delay = self.retry_initial_delay * (2**transport_attempt)
                 transport_attempt += 1
+                print(
+                    format_log_line(
+                        "image",
+                        f"将在 {delay:.1f}s 后重试生图传输异常（{transport_attempt}/{retry_budget}）{stage_tag}",
+                    ),
+                    flush=True,
+                )
                 self._sleep_with_deadline(delay, deadline)
                 continue
+
+    def _log_generation_complete(
+        self,
+        context: str,
+        output_path: Path,
+        started_at: float,
+        result: dict[str, Any],
+    ) -> None:
+        elapsed = time.perf_counter() - started_at
+        canvas = result.get("canvas") or {}
+        canvas_text = (
+            f"，画幅={canvas.get('width')}x{canvas.get('height')}"
+            if isinstance(canvas, dict) and canvas.get("width") and canvas.get("height")
+            else ""
+        )
+        print(
+            format_log_line(
+                "image",
+                f"生图完成{format_stage_tag(context)}：模型={self.model}，size={result.get('size', '')}，"
+                f"输出={output_path.name}{canvas_text}，耗时={elapsed:.1f}s",
+            ),
+            flush=True,
+        )
+
+    def _log_generation_failed(self, context: str, started_at: float, exc: BaseException) -> None:
+        elapsed = time.perf_counter() - started_at
+        print(
+            format_log_line(
+                "image",
+                f"生图失败{format_stage_tag(context)}：{build_text_snippet(str(exc))}，耗时={elapsed:.1f}s",
+            ),
+            flush=True,
+        )
 
     @staticmethod
     def _rewind_files(files: Any) -> None:

@@ -271,7 +271,7 @@ class JobOperationsApiTests(unittest.TestCase):
             def build_image_message_item(self, image_path: Path) -> dict[str, object]:
                 return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
-            def complete_json(self, messages):
+            def complete_json(self, messages, *, purpose: str = ""):
                 raise RuntimeError("上游模型不可用")
 
         with patch.object(runtime_context, "read_config", return_value=config), patch(
@@ -314,7 +314,7 @@ class JobOperationsApiTests(unittest.TestCase):
             def build_image_message_item(self, image_path: Path) -> dict[str, object]:
                 return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
-            def complete_json(self, messages):
+            def complete_json(self, messages, *, purpose: str = ""):
                 return {
                     "edit_kind": "style",
                     "affected_pages": [1, 2],
@@ -378,7 +378,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 captured["image_path"] = image_path
                 return {"type": "input_image", "image_url": "data:image/png;base64,stub"}
 
-            def complete_json(self, messages):
+            def complete_json(self, messages, *, purpose: str = ""):
                 captured["messages"] = messages
                 return {
                     "edit_kind": "layout",
@@ -536,7 +536,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 captured["config"] = provider_config
                 captured["profile"] = profile
 
-            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path], *, context: str = "") -> dict[str, object]:
                 captured["prompt"] = prompt
                 captured["image_paths"] = image_paths
                 output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -602,7 +602,7 @@ class JobOperationsApiTests(unittest.TestCase):
             def __init__(self, provider_config, profile) -> None:
                 pass
 
-            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path], *, context: str = "") -> dict[str, object]:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"candidate-image")
                 return {"provider": "fake"}
@@ -686,7 +686,7 @@ class JobOperationsApiTests(unittest.TestCase):
                 self.moderation = str(provider_config.get("image_moderation") or "")
                 self.n = int(provider_config.get("image_n") or 1)
 
-            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path], *, context: str = "") -> dict[str, object]:
                 captured["image_paths"].append(list(image_paths))
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(f"candidate-image-{len(captured['image_paths'])}".encode("utf-8"))
@@ -778,7 +778,7 @@ class JobOperationsApiTests(unittest.TestCase):
             def __init__(self, provider_config, profile) -> None:
                 pass
 
-            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path]) -> dict[str, object]:
+            def generate_edited_image(self, prompt: str, output_path: Path, image_paths: list[Path], *, context: str = "") -> dict[str, object]:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"candidate-image")
                 return {"provider": "fake"}

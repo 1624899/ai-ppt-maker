@@ -26,7 +26,9 @@ class FakeChatProvider:
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:
         return {"type": "input_image", "image_url": str(image_path)}
 
-    def complete_json(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def complete_json(
+        self, messages: list[dict[str, Any]], *, purpose: str = ""
+    ) -> dict[str, Any]:
         self.calls.append(messages)
         if not self.responses:
             raise RuntimeError("no more responses")

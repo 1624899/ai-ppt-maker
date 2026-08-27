@@ -100,7 +100,7 @@ def build_content_plan(
             ),
         },
     ]
-    result = provider.complete_json(messages)
+    result = provider.complete_json(messages, purpose="内容规划")
     return normalize_content_plan(
         result,
         content=content,
@@ -148,7 +148,7 @@ def build_reference_style_guide(
         },
     ]
     try:
-        result = provider.complete_json(messages)
+        result = provider.complete_json(messages, purpose="视觉风格分析")
     except Exception:
         return fallback
     return normalize_style_guide(result, fallback)

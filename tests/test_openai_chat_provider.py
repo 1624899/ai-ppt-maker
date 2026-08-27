@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
 import json
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from http.client import RemoteDisconnected
 from typing import Any
 from unittest.mock import patch
@@ -441,12 +443,22 @@ class OpenAIChatProviderTests(unittest.TestCase):
         with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
             with patch("ppt_system.integrations.openai_chat_provider.print") as mock_print:
                 with patch("ppt_system.integrations.openai_chat_provider.requests.post", side_effect=responses):
-                    provider.complete_json([{"role": "user", "content": "test"}])
+                    provider.complete_json(
+                        [{"role": "user", "content": "test"}],
+                        purpose="第 3 页文字脚本（首轮直出）",
+                    )
 
         log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
         self.assertIn("检测到歧义空响应", log_text)
         self.assertIn("status=completed", log_text)
         self.assertIn("resp_empty", log_text)
+        self.assertIn("发送第 1 次请求（阶段：第 3 页文字脚本（首轮直出））", log_text)
+        self.assertIn(
+            "发送第 2 次请求（阶段：第 3 页文字脚本（首轮直出））（空响应补充重试 1/1）",
+            log_text,
+        )
+        self.assertIn("共请求 2 次", log_text)
+        self.assertNotIn("/20", log_text)
 
     def test_complete_json_does_not_retry_billable_empty_response(self) -> None:
         config = {
@@ -624,6 +636,167 @@ class OpenAIChatProviderTests(unittest.TestCase):
         self.assertIn("ConnectionError", log_text)
         self.assertIn("RemoteDisconnected", log_text)
         self.assertIn("请求异常已停止自动重试", log_text)
+
+    def test_complete_json_json_parse_retry_keeps_sequential_request_numbers(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "request_retry_initial_delay_seconds": 0,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        responses = [
+            _FakeResponse(
+                {
+                    "id": "resp_invalid",
+                    "object": "response",
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [
+                                {"type": "output_text", "text": "not-json"},
+                            ],
+                        }
+                    ],
+                }
+            ),
+            _FakeResponse(status_code=201),
+        ]
+
+        with patch("ppt_system.integrations.openai_chat_provider.time.sleep", return_value=None):
+            with patch("ppt_system.integrations.openai_chat_provider.print") as mock_print:
+                with patch(
+                    "ppt_system.integrations.openai_chat_provider.requests.post",
+                    side_effect=responses,
+                ) as mock_post:
+                    result = provider.complete_json(
+                        [{"role": "user", "content": "test"}],
+                        purpose="第 3 页文字脚本（首轮直出）",
+                    )
+
+        log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertIn("发送第 1 次请求（阶段：第 3 页文字脚本（首轮直出））", log_text)
+        self.assertIn(
+            "发送第 2 次请求（阶段：第 3 页文字脚本（首轮直出））（JSON 解析重试 1/1）",
+            log_text,
+        )
+        self.assertIn("模型响应完成（阶段：第 3 页文字脚本（首轮直出）），status=201，共请求 2 次", log_text)
+        self.assertNotIn("/20", log_text)
+
+    def test_json_retry_backoff_does_not_block_other_chat_requests(self) -> None:
+        config = {
+            "chat_api_base_url": "https://example.com/v1",
+            "request_retry_initial_delay_seconds": 5,
+        }
+        profile = {
+            "api_key": "sk-test",
+            "base_url": "https://example.com/v1",
+            "model": "gpt-5.5",
+        }
+        provider = OpenAIChatProvider(config, profile)
+        invalid_response = _FakeResponse(
+            {
+                "id": "resp_invalid",
+                "object": "response",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [{"type": "output_text", "text": "not-json"}],
+                    }
+                ],
+            }
+        )
+        retry_pages = {"page-0", "page-1"}
+        first_attempt_seen: set[str] = set()
+        seen_lock = threading.Lock()
+        backoff_count = 0
+        entered_backoff = threading.Event()
+        ready_page_started = threading.Event()
+        allow_backoff_finish = threading.Event()
+
+        def _request_page(payload: Any) -> str:
+            if not isinstance(payload, dict):
+                return ""
+            for item in payload.get("input") or []:
+                if not isinstance(item, dict):
+                    continue
+                content = item.get("content")
+                if isinstance(content, str):
+                    return content
+            return ""
+
+        def fake_post(*_args: object, **kwargs: object) -> _FakeResponse:
+            page = _request_page(kwargs.get("json"))
+            with seen_lock:
+                first_attempt = page not in first_attempt_seen
+                if first_attempt:
+                    first_attempt_seen.add(page)
+            if page in retry_pages and first_attempt:
+                return invalid_response
+            if page == "page-2" and first_attempt:
+                ready_page_started.set()
+            return _FakeResponse()
+
+        def fake_sleep(_seconds: float) -> None:
+            nonlocal backoff_count
+            with seen_lock:
+                backoff_count += 1
+                current = backoff_count
+            if current == 2:
+                entered_backoff.set()
+            ready_page_started.wait(timeout=2)
+            allow_backoff_finish.wait(timeout=2)
+
+        with patch("ppt_system.integrations.openai_chat_provider.print"):
+            with patch("ppt_system.integrations.openai_chat_provider.time.sleep", side_effect=fake_sleep):
+                with patch(
+                    "ppt_system.integrations.openai_chat_provider.requests.post",
+                    side_effect=fake_post,
+                ) as mock_post:
+                    with ThreadPoolExecutor(max_workers=3) as executor:
+                        retry_futures = [
+                            executor.submit(
+                                provider.complete_json,
+                                [{"role": "user", "content": "page-0"}],
+                            ),
+                            executor.submit(
+                                provider.complete_json,
+                                [{"role": "user", "content": "page-1"}],
+                            ),
+                        ]
+                        self.assertTrue(
+                            entered_backoff.wait(timeout=2),
+                            "两个 JSON 重试任务没有进入解析层退避",
+                        )
+                        ready_future = executor.submit(
+                            provider.complete_json,
+                            [{"role": "user", "content": "page-2"}],
+                        )
+                        try:
+                            ready_result = ready_future.result(timeout=2)
+                        except TimeoutError:
+                            self.fail(
+                                "两个 JSON 重试任务在退避期间占满了对话请求限流，第三个首次请求未能发出"
+                            )
+                        allow_backoff_finish.set()
+                        retry_results = [future.result(timeout=5) for future in retry_futures]
+
+        self.assertEqual(ready_result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
+        self.assertEqual(len(retry_results), 2)
+        self.assertTrue(all(item["page_script"] for item in retry_results))
+        self.assertEqual(mock_post.call_count, 5)
+        self.assertTrue(ready_page_started.is_set())
 
 
 if __name__ == "__main__":

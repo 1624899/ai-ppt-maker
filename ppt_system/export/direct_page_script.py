@@ -45,6 +45,13 @@ def _ensure_not_stopped(stop_checker: StopChecker | None) -> None:
         raise InterruptedError("导出流程已被中断")
 
 
+def _page_script_purpose(stage: str, page_no: int | None) -> str:
+    """给单页文字脚本请求补上页码，便于并行日志按页对账。"""
+    if page_no is None:
+        return stage
+    return f"第 {int(page_no)} 页{stage}"
+
+
 @dataclass
 class DirectPageScriptRevision:
     page_script: str
@@ -336,6 +343,7 @@ def _generate_page_script_from_images(
     image_width: int,
     image_height: int,
     text_placeholders: dict[str, Any] | None = None,
+    page_no: int | None = None,
     stop_checker: StopChecker | None = None,
 ) -> str:
     """首轮基于原稿图和元素图请求模型生成单页文字脚本。"""
@@ -359,7 +367,10 @@ def _generate_page_script_from_images(
         },
     ]
     result = run_interruptible_call(
-        lambda: provider.complete_json(messages),
+        lambda: provider.complete_json(
+            messages,
+            purpose=_page_script_purpose("文字脚本（首轮直出）", page_no),
+        ),
         stop_checker=stop_checker,
         interruption_message="首轮文字脚本模型请求已被中断",
     )
@@ -426,6 +437,7 @@ def _revise_page_script_with_rendered_preview(
     page_script: str,
     asset_adjustments: dict[str, Any],
     round_index: int,
+    page_no: int | None = None,
     stop_checker: StopChecker | None = None,
 ) -> DirectPageScriptRevision:
     """基于真实 PPT 渲染图请求模型修正单页文字脚本。"""
@@ -451,7 +463,13 @@ def _revise_page_script_with_rendered_preview(
         },
     ]
     result = run_interruptible_call(
-        lambda: provider.complete_json(messages),
+        lambda: provider.complete_json(
+            messages,
+            purpose=_page_script_purpose(
+                f"文字脚本回看修正（第 {int(round_index) + 1} 轮）",
+                page_no,
+            ),
+        ),
         stop_checker=stop_checker,
         interruption_message="文字脚本回看修正模型请求已被中断",
     )

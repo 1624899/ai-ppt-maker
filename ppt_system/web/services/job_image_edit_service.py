@@ -144,7 +144,12 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
     )
     _write_image_edit_metadata(metadata_path, {**request_meta, "status": "submitting"})
     try:
-        generation_meta = image_provider.generate_edited_image(prompt, output_path, [source_path])
+        generation_meta = image_provider.generate_edited_image(
+            prompt,
+            output_path,
+            [source_path],
+            context=f"第 {page_no} 页图片编辑（{preview_type}）",
+        )
     except Exception as exc:
         _write_image_edit_metadata(
             metadata_path,

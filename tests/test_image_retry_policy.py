@@ -73,6 +73,27 @@ class ImageRetryPolicyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_post.call_count, 2)
 
+    @patch("ppt_system.integrations.openai_image_provider.time.sleep", return_value=None)
+    @patch("ppt_system.integrations.openai_image_provider.requests.post")
+    def test_http_retry_logs_include_stage_context(self, mock_post, _mock_sleep) -> None:
+        mock_post.side_effect = [
+            build_response(503),
+            build_response(200),
+        ]
+
+        with patch("ppt_system.integrations.openai_image_provider.print") as mock_print:
+            response = self.provider._post_with_retry(
+                "https://example.com/v1/images/generations",
+                context="第 3 页原稿图",
+            )
+
+        log_text = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertIn("发送第 1 次生图请求（阶段：第 3 页原稿图）", log_text)
+        self.assertIn("发送第 2 次生图请求（阶段：第 3 页原稿图）", log_text)
+        self.assertNotIn("/5", log_text)
+
     def test_provider_normalizes_profile_base_url(self) -> None:
         provider = OpenAIImageProvider(
             {
