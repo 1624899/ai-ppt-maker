@@ -46,8 +46,6 @@ def build_provider_signature(provider: Any) -> dict[str, Any]:
         "provider_class": provider.__class__.__name__,
         "base_url": str(getattr(provider, "api_base_url", "")),
         "model": str(getattr(provider, "model", "")),
-        "temperature": _json_scalar(getattr(provider, "temperature", None)),
-        "max_tokens": _json_scalar(getattr(provider, "max_tokens", None)),
         "reasoning_effort": str(getattr(provider, "reasoning_effort", "")),
     }
 
@@ -146,12 +144,6 @@ def _normalize_step_name(step_name: str) -> str:
     if not value:
         raise ValueError("子步骤名称不能为空。")
     return re.sub(r"[^a-z0-9_.-]+", "_", value).strip("._-")
-
-
-def _json_scalar(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
 
 
 def _json_roundtrip(payload: Any) -> Any:

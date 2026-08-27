@@ -195,8 +195,6 @@ def sanitize_model_config(model_type: str, payload: dict[str, Any]) -> dict[str,
         raise ValueError("配置名称、Base URL 和模型名不能为空。")
 
     if model_type == "chat":
-        item["temperature"] = float(payload.get("temperature", 0.3))
-        item["max_tokens"] = int(payload.get("max_tokens", 5000))
         reasoning_effort = str(payload.get("reasoning_effort", "")).strip().lower()
         item["reasoning_effort"] = reasoning_effort if reasoning_effort in {"low", "medium", "high"} else ""
     else:

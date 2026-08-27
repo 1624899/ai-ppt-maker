@@ -44,8 +44,6 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
                             "api_key": "sk-chat",
                             "model": "gpt-5.5",
                             "enabled": True,
-                            "temperature": 0.3,
-                            "max_tokens": 5000,
                             "reasoning_effort": "",
                         }
                     ],
@@ -80,8 +78,6 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
                         "api_key": "sk-chat",
                         "model": "gpt-5.5",
                         "enabled": True,
-                        "temperature": 0.3,
-                        "max_tokens": 5000,
                         "reasoning_effort": "",
                     }
                 ],
@@ -187,8 +183,6 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
         "api_key": "",
         "model": "gpt-5.5",
         "enabled": true,
-        "temperature": 0.3,
-        "max_tokens": 5000,
         "reasoning_effort": ""
       }
     ],
@@ -212,8 +206,6 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
         "api_key": "",
         "model": "local-chat",
         "enabled": true,
-        "temperature": 0.2,
-        "max_tokens": 3000,
         "reasoning_effort": ""
       }
     ],
@@ -271,8 +263,6 @@ class ModelConfigEnvStorageTests(unittest.TestCase):
                             "api_key": "sk-user",
                             "model": "gpt-5.5",
                             "enabled": True,
-                            "temperature": 0.3,
-                            "max_tokens": 5000,
                             "reasoning_effort": "",
                         }
                     ],

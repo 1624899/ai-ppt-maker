@@ -11,16 +11,12 @@ def build_json_response_payload(
     *,
     model: str,
     messages: list[dict[str, Any]],
-    temperature: float,
-    max_output_tokens: int,
     reasoning_effort: str,
     stream: bool,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "input": build_responses_input(messages),
-        "temperature": temperature,
-        "max_output_tokens": max_output_tokens,
         "text": {"format": {"type": "json_object"}},
         "store": False,
         "stream": stream,

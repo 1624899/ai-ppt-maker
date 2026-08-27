@@ -20,9 +20,7 @@ const createModelDefaults = (modelType) => {
       name: '新的对话模型',
       base_url: DEFAULT_BASE_URL,
       api_key: '',
-      model: DEFAULT_CHAT_MODEL,
-      temperature: 0.3,
-      max_tokens: 5000
+      model: DEFAULT_CHAT_MODEL
     };
   }
   return {
@@ -42,8 +40,6 @@ const createFormValues = (modelType, item = null) => {
     base_url: item?.base_url || defaults.base_url,
     api_key: item?.api_key || '',
     model: item?.model || defaults.model,
-    temperature: item?.temperature ?? defaults.temperature ?? 0.3,
-    max_tokens: item?.max_tokens ?? defaults.max_tokens ?? 5000,
     output_format: item?.output_format || defaults.output_format || 'png',
     api_key_configured: Boolean(item?.api_key_configured)
   };
@@ -113,10 +109,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
       model: form.model.trim(),
       enabled: true
     };
-    if (activeModelType === 'chat') {
-      payload.temperature = Number(form.temperature || 0.3);
-      payload.max_tokens = Number(form.max_tokens || 5000);
-    } else {
+    if (activeModelType !== 'chat') {
       payload.output_format = form.output_format.trim() || 'png';
     }
     return payload;
@@ -343,31 +336,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
                     </label>
                   </div>
 
-                  {activeModelType === 'chat' ?
-              <div className={uiClassName("model-form__grid")}>
-                      <label className={uiClassName("field")}>
-                        <span>Temperature</span>
-                        <input
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={form.temperature}
-                    onChange={(event) => updateForm('temperature', event.target.value)} />
-                  
-                      </label>
-                      <label className={uiClassName("field")}>
-                        <span>Max tokens</span>
-                        <input
-                    type="number"
-                    min="512"
-                    step="256"
-                    value={form.max_tokens}
-                    onChange={(event) => updateForm('max_tokens', event.target.value)} />
-                  
-                      </label>
-                    </div> :
-
+              {activeModelType !== 'chat' &&
               <label className={uiClassName("field")}>
                       <span>输出格式</span>
                       <input value={form.output_format} onChange={(event) => updateForm('output_format', event.target.value)} placeholder="png" />

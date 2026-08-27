@@ -38,8 +38,6 @@ class OpenAIChatProvider:
             str(profile.get("base_url", config.get("chat_api_base_url", "https://api.openai.com/v1")))
         )
         self.model = str(profile.get("model", config.get("chat_model", "gpt-5.5")))
-        self.temperature = float(profile.get("temperature", config.get("chat_temperature", 0.3)))
-        self.max_tokens = int(profile.get("max_tokens", config.get("chat_max_tokens", 5000)))
         self.reasoning_effort = self._resolve_reasoning_effort(config, profile)
         self.timeout = int(config.get("request_timeout_seconds", 180))
         self.total_timeout = max(1, int(config.get("chat_total_timeout_seconds", 240)))
@@ -52,7 +50,6 @@ class OpenAIChatProvider:
         )
         self.ambiguous_retry_count = int(config.get("chat_ambiguous_retry_count", 1))
         self.json_retry_count = int(config.get("chat_json_retry_count", 1))
-        self.json_retry_token_multiplier = float(config.get("chat_json_retry_token_multiplier", 2.0))
         self.retry_initial_delay = float(config.get("request_retry_initial_delay_seconds", 5))
 
         if not self.api_key:
@@ -66,15 +63,13 @@ class OpenAIChatProvider:
         print(
             format_log_line(
                 "chat",
-                f"开始请求模型 `{self.model}`，timeout={self.timeout}s，max_tokens={self.max_tokens}",
+                f"开始请求模型 `{self.model}`，timeout={self.timeout}s",
             ),
             flush=True,
         )
         payload = build_json_response_payload(
             model=self.model,
             messages=messages,
-            temperature=self.temperature,
-            max_output_tokens=self.max_tokens,
             reasoning_effort=self.reasoning_effort,
             stream=True,
         )
@@ -224,7 +219,7 @@ class OpenAIChatProvider:
                 current_body = _parse_response_json(response)
 
     def _parse_json_with_retry(self, body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-        """解析模型 JSON；针对输出截断导致的语法错误重新请求。"""
+        """解析模型 JSON；对返回异常且无法解析的响应按原参数重试。"""
         current_body = body
         current_payload = payload
         for attempt in range(max(0, self.json_retry_count) + 1):
@@ -256,9 +251,6 @@ class OpenAIChatProvider:
                     flush=True,
                 )
                 time.sleep(self.retry_initial_delay * (2**attempt))
-                current_payload = _increase_json_output_budget(
-                    current_payload, self.json_retry_token_multiplier
-                )
                 response = self._post_with_retry(current_payload)
                 self._raise_for_error(response)
                 current_body = _parse_response_json(response)
@@ -320,14 +312,6 @@ def _raise_for_incomplete_response(body: dict[str, Any]) -> None:
         f"status={status or 'unknown'}，reason={reason or 'unknown'}，"
         f"响应片段：{build_text_snippet(json.dumps(body, ensure_ascii=False))}"
     )
-
-
-def _increase_json_output_budget(payload: dict[str, Any], multiplier: float) -> dict[str, Any]:
-    next_payload = dict(payload)
-    current = int(next_payload.get("max_output_tokens", 0))
-    if current > 0:
-        next_payload["max_output_tokens"] = max(current + 1, int(current * max(1.0, multiplier)))
-    return next_payload
 
 
 def file_to_data_url(path: Path) -> str:

@@ -107,8 +107,6 @@ class ModelConnectivityApiTests(unittest.TestCase):
                         "api_key": "sk-saved",
                         "model": "gpt-5.5",
                         "enabled": True,
-                        "temperature": 0.3,
-                        "max_tokens": 5000,
                         "reasoning_effort": "",
                     }
                 ],

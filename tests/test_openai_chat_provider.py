@@ -81,6 +81,24 @@ class OpenAIChatProviderTests(unittest.TestCase):
 
         self.assertEqual(item["reasoning_effort"], "")
 
+    def test_sanitize_model_config_ignores_obsolete_sampling_fields(self) -> None:
+        item = sanitize_model_config(
+            "chat",
+            {
+                "name": "gpt-5.5",
+                "base_url": "https://example.com/v1",
+                "api_key": "sk-test",
+                "model": "gpt-5.5",
+                "temperature": 0.7,
+                "max_tokens": 9999,
+                "reasoning_effort": "medium",
+            },
+        )
+
+        self.assertNotIn("temperature", item)
+        self.assertNotIn("max_tokens", item)
+        self.assertEqual(item["reasoning_effort"], "medium")
+
     def test_sanitize_model_config_normalizes_base_url_path(self) -> None:
         item = sanitize_model_config(
             "chat",
@@ -98,16 +116,12 @@ class OpenAIChatProviderTests(unittest.TestCase):
         config = {
             "chat_api_base_url": "https://example.com/v1",
             "chat_model": "gpt-5.5",
-            "chat_temperature": 0.3,
-            "chat_max_tokens": 2048,
             "chat_reasoning_effort": "high",
         }
         profile = {
             "api_key": "sk-test",
             "base_url": "https://example.com/v1",
             "model": "gpt-5.5",
-            "temperature": 0.3,
-            "max_tokens": 2048,
         }
         provider = OpenAIChatProvider(config, profile)
 
@@ -121,12 +135,13 @@ class OpenAIChatProviderTests(unittest.TestCase):
             result = provider.complete_json([{"role": "user", "content": "test"}])
 
         self.assertEqual(captured_payload["reasoning"], {"effort": "high"})
-        self.assertEqual(captured_payload["max_output_tokens"], 2048)
         self.assertEqual(captured_payload["text"], {"format": {"type": "json_object"}})
         self.assertEqual(captured_payload["stream"], True)
         self.assertEqual(captured_payload["store"], False)
         self.assertNotIn("messages", captured_payload)
         self.assertNotIn("max_tokens", captured_payload)
+        self.assertNotIn("max_output_tokens", captured_payload)
+        self.assertNotIn("temperature", captured_payload)
         self.assertNotIn("response_format", captured_payload)
         self.assertEqual(result["page_script"], 'add_text(slide, "标题", 0, 0, 100, 40)')
 

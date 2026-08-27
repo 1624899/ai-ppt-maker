@@ -40,8 +40,6 @@ class FakeChatProvider:
         self.calls: list[list[dict[str, Any]]] = []
         self.api_base_url = "https://example.com/v1"
         self.model = "fake-chat"
-        self.temperature = 0.3
-        self.max_tokens = 5000
         self.reasoning_effort = ""
 
     def build_image_message_item(self, image_path: Path) -> dict[str, Any]:

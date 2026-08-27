@@ -361,8 +361,6 @@ class JobOperationsApiTests(unittest.TestCase):
                         "base_url": "https://example.com/v1",
                         "api_key": "sk-test",
                         "model": "agent-model",
-                        "temperature": 0.1,
-                        "max_tokens": 800,
                     }
                 ],
                 "image": [],
