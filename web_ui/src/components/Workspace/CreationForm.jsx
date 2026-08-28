@@ -114,7 +114,11 @@ const CreationFormFields = ({
   });
 
   const updateForm = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'pageCount' && Number(value) === 1) next.includeCoverPage = false;
+      return next;
+    });
     if (field === 'workflowMode') {
       onWorkflowModeChange?.(value);
     }
@@ -167,7 +171,7 @@ const CreationFormFields = ({
       formData.append('style_notes', form.styleNotes);
       formData.append('job_target', form.jobTarget);
       formData.append('workflow_mode', form.workflowMode);
-      formData.append('include_cover_page', String(form.includeCoverPage));
+      formData.append('include_cover_page', String(form.pageCount > 1 && form.includeCoverPage));
       formData.append('page_richness_default', form.pageRichnessDefault);
       formData.append('reference_style_adherence', form.referenceStyleAdherence);
       formData.append('theme_color', form.themeColor);
@@ -379,7 +383,8 @@ const CreationFormFields = ({
             <label className={uiClassName("checkbox-row checkbox-row--framed field--full")}>
               <input
               type="checkbox"
-              checked={form.includeCoverPage}
+              checked={form.pageCount > 1 && form.includeCoverPage}
+              disabled={form.pageCount === 1}
               onChange={(event) => updateForm('includeCoverPage', event.target.checked)} />
             
               <span>包含首页生成，第 1 页作为封面视觉基调。</span>

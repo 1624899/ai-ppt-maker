@@ -95,6 +95,30 @@ class CoverPageOptionTests(unittest.TestCase):
 
         self.assertTrue(options["include_cover_page"])
 
+    def test_single_page_forces_cover_page_off(self) -> None:
+        options = resolve_generation_options(
+            {"page_count": 1, "include_cover_page": "1"},
+            config={"default_include_cover_page": True},
+        )
+
+        self.assertFalse(options["include_cover_page"])
+
+    def test_single_page_normalization_forces_body_page(self) -> None:
+        plan = normalize_content_plan(
+            {"pages": [{"title": "项目概览", "layout_family": "hero_with_supporting_cards"}]},
+            content="项目概览与核心进展。",
+            page_count=1,
+            image_width=2048,
+            image_height=1152,
+            style_notes="蓝白科技汇报",
+            style_guide=self.style_guide,
+            has_reference_images=True,
+            generation_options={"include_cover_page": True},
+        )
+
+        self.assertFalse(plan["generation_options"]["include_cover_page"])
+        self.assertEqual(plan["pages"][0]["difference_from_previous"], "正文开篇，直接进入核心内容")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,7 @@ from ppt_system.web.services.job_state_transitions import (
     update_stage,
 )
 from ppt_system.web.services.plan_version_store import get_active_plan_version, save_plan_version
+from ppt_system.web.services.planning_state import build_planned_runtime_pages
 from ppt_system.web.services.workflow_policy import (
     AWAITING_PLAN_CONFIRMATION_STATUS,
     AWAITING_REFERENCE_CONFIRMATION_STATUS,
@@ -169,31 +170,7 @@ def run_job_pipeline(
 
             def planning_done(current_state: dict[str, Any]) -> None:
                 current_state["plan"] = plan
-                current_state["pages"] = [
-                    {
-                        "page_no": int(page["page_no"]),
-                        "title": page["title"],
-                        "summary": page.get("summary", ""),
-                        "bullets": page.get("bullets", []),
-                        "layout_intent": page.get("layout_intent", ""),
-                        "layout_family": page.get("layout_family", ""),
-                        "page_richness": page.get("page_richness", ""),
-                        "element_plan": page.get("element_plan", {}),
-                        "reference_mode": page.get("reference_mode", "generation"),
-                        "prompt_profile": page.get("prompt_profile", "compressed"),
-                        "evaluation": page.get("evaluation", {}),
-                        "status": "planned",
-                        "reference_image": "",
-                        "element_image": "",
-                        "reference_prompt": page.get("image_prompt", ""),
-                        "elements_prompt": "",
-                        "layout_slots": page.get("layout_slots", []),
-                        "texts": page.get("texts", []),
-                    }
-                    for page in pages
-                ]
-                for page_item in current_state["pages"]:
-                    page_item["elements_prompt"] = build_elements_prompt()
+                current_state["pages"] = build_planned_runtime_pages(pages)
 
             mutate_job_state(job_dir, job_id, planning_done)
 
@@ -210,7 +187,7 @@ def run_job_pipeline(
 
                     retry_limit = int(config.get("page_evaluation_retry_count", 1))
                     for _retry_idx in range(retry_limit):
-                        if evaluation_result.get("overall_score", 1.0) >= 0.7:
+                        if evaluation_result.get("passed", False):
                             break
                         append_stage_log(job_dir, job_id, "planning", f"评估未通过，自动重试规划（第 {_retry_idx + 1} 次）")
                         plan = build_content_plan(
@@ -223,6 +200,8 @@ def run_job_pipeline(
                             style_image_count=len(style_reference_paths),
                             style_reference_paths=style_reference_paths,
                             generation_options=generation_options,
+                            previous_plan=plan,
+                            evaluation_feedback=evaluation_result,
                         )
                         pages = plan["pages"]
                         plan["image_preset"] = image_preset
@@ -243,6 +222,8 @@ def run_job_pipeline(
                         )
                 except Exception as eval_exc:
                     append_stage_log(job_dir, job_id, "planning", f"评估异常：{eval_exc}")
+            if evaluation_result and not evaluation_result.get("passed", False):
+                raise ValueError(f"规划评估未通过：{evaluation_result.get('summary', '存在关键规划问题')}")
 
             update_stage(
                 job_dir,

@@ -45,9 +45,14 @@ def infer_layout_intent(title: str, summary: str, bullets: Sequence[str], *, pag
     comparison = found(("对比", "比较", "差异", "优劣", "vs", "对照"), "对比对象")
     image_focus = found(("产品", "人物", "案例", "场景", "品牌", "主视觉"), "主视觉对象")
     platform_structure = any(word in text for word in ("平台", "核心功能", "功能模块", "能力体系"))
+    primary_text = f"{title} {summary}".lower()
+    explicit_process = (
+        any(word in text for word in ("→", "->", "=>", "输入到输出"))
+        or any(word in primary_text for word in ("流程", "步骤", "环节"))
+    )
     if include_cover_page and page_index == 0: intent, role = "cover", "opening"
     elif comparison: intent, role = "comparison", "evidence"
-    elif process and not platform_structure: intent, role = "process", "method"
+    elif process and (explicit_process or not platform_structure): intent, role = "process", "method"
     elif timeline: intent, role = "timeline", "context"
     elif relation: intent, role = "relationship", "framework"
     elif metrics: intent, role = "data_analysis", "evidence"

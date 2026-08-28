@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from typing import Any
@@ -16,12 +16,6 @@ except ImportError:
 
     def validate_layout_family(name: str) -> bool:
         return name in ALLOWED_LAYOUT_FAMILIES
-
-
-_ABSTRACT_FAMILY_PATTERN = re.compile(
-    r"^(grid_\w+|timeline_\w+|hub_and_spoke|split_\w+|compare_\w+|process_\w+|hero_\w+)$",
-    re.IGNORECASE,
-)
 
 
 def _check_layout_repeat(page: dict, previous_pages: list[dict], max_repeat: int) -> list[str]:
@@ -96,8 +90,8 @@ def _check_family_naming(page: dict) -> list[str]:
     family = page.get("layout_family", "")
     if not family:
         return issues
-    if not _ABSTRACT_FAMILY_PATTERN.match(family):
-        issues.append(f"layout_family '{family}' 不符合抽象命名模式")
+    if not validate_layout_family(family):
+        issues.append(f"layout_family '{family}' 不在允许的版式枚举中")
     return issues
 
 
@@ -185,35 +179,69 @@ def _normalize_visual_text(value: Any) -> str:
 
 
 def evaluate_page(page: dict, style_guide: dict, previous_pages: list[dict]) -> dict:
-    issues: list[str] = []
+    """使用可解释的确定性证据评估页面，启发式信号不得直接触发破坏性修订。"""
     max_repeat = 1
     variation_policy = style_guide.get("variation_policy", {})
     if isinstance(variation_policy, dict):
         max_repeat = variation_policy.get("same_layout_max_repeat", 1)
 
-    issues.extend(_check_layout_repeat(page, previous_pages, max_repeat))
-    issues.extend(_check_primitive_coverage(page, style_guide))
-    issues.extend(_check_background_tone(page, style_guide))
-    issues.extend(_check_negative_rules(page, style_guide))
-    issues.extend(_check_family_naming(page))
-    issues.extend(_check_prompt_compression(page, style_guide))
+    check_results = [
+        ("layout_repeat", "warning", True, "deterministic_rule", _check_layout_repeat(page, previous_pages, max_repeat)),
+        ("visual_plan_coverage", "warning", False, "heuristic", _check_primitive_coverage(page, style_guide)),
+        ("background_tone", "warning", False, "heuristic", _check_background_tone(page, style_guide)),
+        ("negative_rule_expression", "warning", False, "heuristic", _check_negative_rules(page, style_guide)),
+        ("invalid_layout_family", "error", True, "deterministic_rule", _check_family_naming(page)),
+        ("style_anchor_coverage", "warning", False, "heuristic", _check_prompt_compression(page, style_guide)),
+    ]
+    findings: list[dict[str, Any]] = []
+    page_no = int(page.get("page_no", 0) or 0)
+    for code, severity, actionable, evidence_source, messages in check_results:
+        findings.extend(
+            {
+                "code": code,
+                "severity": severity,
+                "actionable": actionable,
+                "page_no": page_no,
+                "message": message,
+                "evidence": {"source": evidence_source, "page_no": page_no},
+            }
+            for message in messages
+        )
 
-    penalty = min(len(issues) * 0.12, 0.6)
+    issues = [finding["message"] for finding in findings]
+    critical_issues = [
+        finding["message"] for finding in findings if finding["severity"] == "error"
+    ]
+    warning_count = sum(1 for finding in findings if finding["severity"] == "warning")
+    error_count = len(critical_issues)
+    penalty = min(error_count * 0.4 + warning_count * 0.06, 0.6)
     score = round(max(1.0 - penalty, 0.0), 2)
 
     return {
         "score": score,
         "issues": issues,
-        "passed": score >= 0.7,
+        "passed": error_count == 0,
+        "critical_issues": critical_issues,
+        "findings": findings,
     }
 
 
 def evaluate_plan(plan: dict, style_guide: dict) -> dict:
     pages = plan.get("pages", [])
     if not pages:
+        finding = {
+            "code": "missing_pages",
+            "severity": "error",
+            "actionable": True,
+            "page_no": 0,
+            "message": "规划中无页面数据",
+            "evidence": {"source": "deterministic_rule", "actual_page_count": 0},
+        }
         return {
             "overall_score": 0.0,
+            "passed": False,
             "page_scores": [],
+            "findings": [finding],
             "summary": "规划中无页面数据",
         }
 
@@ -228,6 +256,8 @@ def evaluate_plan(plan: dict, style_guide: dict) -> dict:
             "score": result["score"],
             "issues": result["issues"],
             "passed": result["passed"],
+            "critical_issues": result["critical_issues"],
+            "findings": result["findings"],
         }
         page_scores.append(page_entry)
         total_score += result["score"]
@@ -243,6 +273,12 @@ def evaluate_plan(plan: dict, style_guide: dict) -> dict:
 
     return {
         "overall_score": overall_score,
+        "passed": failed_count == 0,
         "page_scores": page_scores,
+        "findings": [
+            finding
+            for page_score in page_scores
+            for finding in page_score.get("findings", [])
+        ],
         "summary": summary,
     }

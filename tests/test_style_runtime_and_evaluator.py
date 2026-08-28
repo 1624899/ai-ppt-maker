@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import unittest
 
@@ -74,6 +74,36 @@ class StyleRuntimeAndEvaluatorTests(unittest.TestCase):
             any("视觉元素计划覆盖不足" in issue for issue in result["issues"]),
             result["issues"],
         )
+
+    def test_missing_style_anchor_is_warning_without_destructive_retry(self) -> None:
+        page = {
+            "page_no": 1,
+            "layout_family": "summary_detail",
+            "image_prompt": "白色背景的项目总结页。",
+        }
+
+        result = evaluate_page(page, self.light_style_guide, previous_pages=[])
+
+        self.assertTrue(result["passed"])
+        finding = next(item for item in result["findings"] if item["code"] == "style_anchor_coverage")
+        self.assertEqual(finding["severity"], "warning")
+        self.assertFalse(finding["actionable"])
+        self.assertEqual(finding["evidence"]["source"], "heuristic")
+
+    def test_invalid_layout_family_has_actionable_evidence(self) -> None:
+        page = {
+            "page_no": 2,
+            "layout_family": "invented_layout",
+            "image_prompt": "白色背景的项目总结页。",
+        }
+
+        result = evaluate_page(page, self.light_style_guide, previous_pages=[])
+
+        self.assertFalse(result["passed"])
+        finding = next(item for item in result["findings"] if item["code"] == "invalid_layout_family")
+        self.assertEqual(finding["severity"], "error")
+        self.assertTrue(finding["actionable"])
+        self.assertEqual(finding["page_no"], 2)
 
     def test_normalize_content_plan_recolors_light_theme_texts(self) -> None:
         result = {

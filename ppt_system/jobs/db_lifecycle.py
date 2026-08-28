@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ def collect_db_stats(db_path: Path) -> dict[str, Any]:
     }
     if not exists:
         return stats
-    with sqlite3.connect(normalized) as conn:
+    with closing(sqlite3.connect(normalized)) as conn:
         row = conn.execute(
             """
             SELECT
@@ -58,7 +59,7 @@ def list_cleanup_candidates(
     include_pinned: bool = False,
 ) -> list[dict[str, Any]]:
     normalized_keep_latest = max(0, int(keep_latest))
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
@@ -87,11 +88,11 @@ def delete_jobs_by_ids(db_path: Path, job_ids: list[str]) -> int:
     if not normalized_job_ids:
         return 0
     placeholders = ",".join("?" for _ in normalized_job_ids)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         cursor = conn.execute(f"DELETE FROM jobs WHERE job_id IN ({placeholders})", normalized_job_ids)
         return int(cursor.rowcount or 0)
 
 
 def vacuum_db(db_path: Path) -> None:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("VACUUM")

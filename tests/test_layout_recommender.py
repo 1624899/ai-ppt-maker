@@ -53,6 +53,17 @@ class LayoutRecommenderTests(unittest.TestCase):
 
         self.assertEqual(family, "line_chart")
 
+    def test_explicit_process_overrides_generic_platform_signal(self) -> None:
+        family = recommend_layout_family(
+            "智能体平台流程",
+            "整体流程已经明确",
+            ["需求解析 → 数据中枢 → 执行智能体 → 分析看板 → 验收决策"],
+            page_richness="high",
+            include_cover_page=False,
+        )
+
+        self.assertIn(family, {"process_horizontal", "process_vertical", "swimlane"})
+
     def test_reasonable_ai_suggestion_is_preserved(self) -> None:
         family = choose_layout_family(
             "process_horizontal",

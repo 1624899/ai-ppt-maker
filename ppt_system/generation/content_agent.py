@@ -1,5 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ from ppt_system.generation.design_grammar import (
     normalize_layout_family_name,
     validate_layout_family,
 )
-from ppt_system.generation.generation_options import default_generation_options
+from ppt_system.generation.generation_options import apply_page_count_constraints, default_generation_options
 from ppt_system.generation.generation_prompts import build_reference_prompt_by_mode
 from ppt_system.generation.generation_prompts import select_prompt_bullets
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
@@ -54,12 +56,15 @@ def build_content_plan(
     style_image_count: int,
     style_reference_paths: list[Path] | None = None,
     generation_options: dict[str, Any] | None = None,
+    previous_plan: dict[str, Any] | None = None,
+    evaluation_feedback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     style_reference_paths = style_reference_paths or []
     generation_options = {
         **default_generation_options(),
         **(generation_options or {}),
     }
+    generation_options = apply_page_count_constraints(generation_options, page_count)
     page_richness_map = resolve_page_richness_map(
         page_count=page_count,
         default_level=str(generation_options.get("page_richness_default", DEFAULT_PAGE_RICHNESS)),
@@ -68,10 +73,29 @@ def build_content_plan(
     generation_options["page_richness_map"] = page_richness_map
     reference_style_adherence = str(generation_options.get("reference_style_adherence", "balanced"))
     theme_color = str(generation_options.get("theme_color", "auto") or "auto").strip()
-    style_guide = build_reference_style_guide(provider, style_reference_paths, style_notes)
+    prior_style_guide = previous_plan.get("style_guide") if isinstance(previous_plan, dict) else None
+    style_guide = (
+        copy.deepcopy(prior_style_guide)
+        if isinstance(prior_style_guide, dict) and prior_style_guide
+        else build_reference_style_guide(provider, style_reference_paths, style_notes)
+    )
     if theme_color and theme_color != "auto":
         style_guide.setdefault("style_core", {})["user_theme_color"] = theme_color
     source_anchors = build_source_content_anchors(content, page_count)
+    planning_prompt = build_planning_prompt(
+        content=content,
+        page_count=page_count,
+        image_width=image_width,
+        image_height=image_height,
+        style_notes=style_notes,
+        style_image_count=style_image_count,
+        style_guide=style_guide,
+        source_anchors=source_anchors,
+        generation_options=generation_options,
+        page_richness_map=page_richness_map,
+    )
+    if isinstance(previous_plan, dict) and isinstance(evaluation_feedback, dict):
+        planning_prompt = build_planning_revision_prompt(planning_prompt, previous_plan, evaluation_feedback)
     messages = [
         {
             "role": "system",
@@ -86,22 +110,11 @@ def build_content_plan(
         },
         {
             "role": "user",
-            "content": build_planning_prompt(
-                content=content,
-                page_count=page_count,
-                image_width=image_width,
-                image_height=image_height,
-                style_notes=style_notes,
-                style_image_count=style_image_count,
-                style_guide=style_guide,
-                source_anchors=source_anchors,
-                generation_options=generation_options,
-                page_richness_map=page_richness_map,
-            ),
+            "content": planning_prompt,
         },
     ]
     result = provider.complete_json(messages, purpose="内容规划")
-    return normalize_content_plan(
+    normalized_plan = normalize_content_plan(
         result,
         content=content,
         page_count=page_count,
@@ -111,6 +124,96 @@ def build_content_plan(
         style_guide=style_guide,
         has_reference_images=bool(style_reference_paths),
         generation_options=generation_options,
+    )
+    if isinstance(previous_plan, dict) and isinstance(evaluation_feedback, dict):
+        return apply_planning_revision_guard(normalized_plan, previous_plan, evaluation_feedback)
+    return normalized_plan
+
+
+_PLANNING_REVISION_FIELDS_BY_CODE: dict[str, frozenset[str]] = {
+    "invalid_layout_family": frozenset({
+        "layout_family",
+        "layout_reason",
+        "layout_intent",
+        "layout_slots",
+        "layout_recommendation",
+        "layout_candidates",
+        "difference_from_previous",
+    }),
+    "layout_repeat": frozenset({
+        "layout_family",
+        "layout_reason",
+        "layout_intent",
+        "layout_slots",
+        "layout_recommendation",
+        "layout_candidates",
+        "difference_from_previous",
+    }),
+}
+
+
+def apply_planning_revision_guard(
+    revised_plan: dict[str, Any],
+    previous_plan: dict[str, Any],
+    evaluation_feedback: dict[str, Any],
+) -> dict[str, Any]:
+    """按问题代码白名单合并修订，禁止模型借修订机会改写事实或无关字段。"""
+    allowed_fields_by_page: dict[int, set[str]] = {}
+    for finding in evaluation_feedback.get("findings", []):
+        if not isinstance(finding, dict) or not finding.get("actionable", False):
+            continue
+        allowed_fields = _PLANNING_REVISION_FIELDS_BY_CODE.get(str(finding.get("code") or ""), frozenset())
+        page_no = int(finding.get("page_no", 0) or 0)
+        if page_no > 0 and allowed_fields:
+            allowed_fields_by_page.setdefault(page_no, set()).update(allowed_fields)
+
+    revised_pages = {
+        int(page.get("page_no", 0) or 0): page
+        for page in revised_plan.get("pages", [])
+        if isinstance(page, dict)
+    }
+    guarded_plan = copy.deepcopy(previous_plan)
+    guarded_pages: list[dict[str, Any]] = []
+    for previous_page in previous_plan.get("pages", []):
+        if not isinstance(previous_page, dict):
+            continue
+        page_no = int(previous_page.get("page_no", 0) or 0)
+        guarded_page = copy.deepcopy(previous_page)
+        revised_page = revised_pages.get(page_no)
+        for field in allowed_fields_by_page.get(page_no, set()):
+            if isinstance(revised_page, dict) and field in revised_page:
+                guarded_page[field] = copy.deepcopy(revised_page[field])
+        guarded_pages.append(guarded_page)
+
+    guarded_plan["pages"] = guarded_pages
+    return guarded_plan
+
+
+def build_planning_revision_prompt(
+    planning_prompt: str,
+    previous_plan: dict[str, Any],
+    evaluation_feedback: dict[str, Any],
+) -> str:
+    """构建带证据反馈的规划修订提示词，避免无反馈地整套重抽。"""
+    actionable_findings = [
+        finding
+        for finding in evaluation_feedback.get("findings", [])
+        if isinstance(finding, dict) and finding.get("actionable", False)
+    ]
+    feedback_payload = {
+        "summary": evaluation_feedback.get("summary", ""),
+        "findings": actionable_findings,
+    }
+    return (
+        f"{planning_prompt}\n\n"
+        "这是上一轮规划的质量修订，不是从零重新规划。必须以 previous_plan 为基础：\n"
+        "- 只处理 evaluation_feedback.findings 中 actionable=true 的问题；未出现在反馈中的 warning 不得驱动任何修改。\n"
+        "- 已通过且没有 actionable 问题的页面必须保持 title、summary、bullets、source_anchor_ids 和事实数字不变。\n"
+        "- 修订版式或视觉提示词时，不得删除、扩写或改写用户事实；如需解决相邻版式重复，只调整相关页面的版式字段。\n"
+        "- 每项修订必须能对应具体 finding 的 code、page_no 和 evidence；不得根据模糊评分自行重写。\n"
+        "- 仍然返回完整且严格符合上述 JSON 契约的规划。\n\n"
+        f"previous_plan：\n{json.dumps(previous_plan, ensure_ascii=False, indent=2)}\n\n"
+        f"evaluation_feedback：\n{json.dumps(feedback_payload, ensure_ascii=False, indent=2)}"
     )
 
 
@@ -216,6 +319,11 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
                 "不要从信息图突然变成写实海报",
                 "不要复用原稿图的具体构图",
             ],
+            "constraint_sources": {
+                "user": style_notes,
+                "reference": "来自原稿图的视觉一致性约束",
+                "system": "可读性与事实一致性基础规则",
+            },
             "prompt_anchor": "优先延续原稿图的版式与视觉语言，保持背景明度、主色、卡片样式、图标与信息图结构的一致性。允许根据当前页内容调整局部编排，但整体气质不要跳出同一套风格。",
             "prompt_compression": "compressed",
         }
@@ -227,7 +335,12 @@ def fallback_style_guide(style_notes: str, has_reference_images: bool) -> dict[s
         "layout_families": list(DEFAULT_LAYOUT_FAMILIES),
         "element_primitives": list(DEFAULT_ELEMENT_PRIMITIVES),
         "variation_policy": dict(DEFAULT_VARIATION_POLICY),
-        "negative_rules": list(DEFAULT_NEGATIVE_RULES),
+        "negative_rules": [],
+        "constraint_sources": {
+            "user": style_notes,
+            "reference": "",
+            "system": "可读性与事实一致性基础规则",
+        },
         "prompt_anchor": anchor,
         "prompt_compression": "compressed",
     }
@@ -312,6 +425,11 @@ def normalize_style_guide(result: dict[str, Any], fallback: dict[str, Any]) -> d
         "element_primitives": element_primitives,
         "variation_policy": variation_policy,
         "negative_rules": negative_rules,
+        "constraint_sources": {
+            "user": str(fallback.get("constraint_sources", {}).get("user", "")),
+            "reference": "来自原稿图分析的视觉偏移约束" if source == "vision" else "",
+            "system": "可读性与事实一致性基础规则",
+        },
         "prompt_anchor": prompt_anchor,
         "prompt_compression": prompt_compression,
     }
@@ -333,6 +451,7 @@ def build_planning_prompt(
         **default_generation_options(),
         **(generation_options or {}),
     }
+    generation_options = apply_page_count_constraints(generation_options, page_count)
     include_cover_page = bool(generation_options.get("include_cover_page", True))
     page_richness_map = page_richness_map or resolve_page_richness_map(
         page_count=page_count,
@@ -453,6 +572,7 @@ def normalize_content_plan(
         **default_generation_options(),
         **(generation_options or {}),
     }
+    generation_options = apply_page_count_constraints(generation_options, page_count)
     include_cover_page = bool(generation_options.get("include_cover_page", True))
     page_richness_map = resolve_page_richness_map(
         page_count=page_count,
@@ -511,7 +631,9 @@ def normalize_content_plan(
         layout_intent = raw_intent if isinstance(raw_intent, dict) else inferred_intent
         layout_reason = str(raw.get("layout_reason") or "").strip()
         requested_family = normalize_layout_family_name(str(raw.get("layout_family", "")).strip())
-        if validate_layout_family(requested_family):
+        requested_is_recommended = any(item["value"] == requested_family for item in layout_candidates)
+        requested_is_confirmed = bool(raw.get("layout_locked") or raw.get("layout_user_confirmed") or raw.get("layout_source") == "user")
+        if validate_layout_family(requested_family) and (requested_is_recommended or requested_is_confirmed):
             layout_family = requested_family
         else:
             layout_family = choose_layout_family(
@@ -577,7 +699,7 @@ def normalize_content_plan(
                     f"{format_layout_family_for_prompt(layout_family)}，重新生成具体构图"
                 )
 
-        style_constraints = str(raw.get("style_constraints", "")).strip()
+        style_constraints = str(raw.get("style_constraints", "")).strip() if has_reference_images else ""
         reference_mode = "edit_with_refs" if has_reference_images else "generation"
         prompt_profile = str(raw.get("prompt_profile", "compressed")).strip()
 
@@ -596,6 +718,7 @@ def normalize_content_plan(
         texts = _sync_text_boxes_with_page_content(texts, title, body)
         texts = apply_text_theme(texts, style_guide)
 
+        planner_image_prompt = str(raw.get("image_prompt", "")).strip()
         page = {
             "page_no": index + 1,
             "title": title,
@@ -617,13 +740,13 @@ def normalize_content_plan(
             "difference_from_previous": difference_from_previous,
             "page_richness": page_richness,
             "style_constraints": style_constraints,
+            "visual_suggestion": str(raw.get("visual_suggestion", "")).strip(),
             "reference_mode": reference_mode,
             "prompt_profile": prompt_profile,
             "reference_style_adherence": reference_style_adherence,
             "source_anchor_ids": _normalize_source_anchor_ids(raw.get("source_anchor_ids"), source_anchors),
             "texts": texts,
         }
-        planner_image_prompt = str(raw.get("image_prompt", "")).strip()
         page["planner_image_prompt"] = planner_image_prompt
         if planner_image_prompt:
             page["image_prompt"] = planner_image_prompt

@@ -35,6 +35,7 @@ def extract_page_plan(page: Mapping[str, Any]) -> dict[str, Any]:
         "title": str(page.get("title") or "").strip(),
         "summary": str(page.get("summary") or "").strip(),
         "bullets": normalize_string_list(page.get("bullets")),
+        "source_anchor_ids": normalize_string_list(page.get("source_anchor_ids")),
         "layout_intent": str(page.get("layout_intent") or "").strip(),
         "layout_family": normalize_layout_family_name(str(page.get("layout_family") or "").strip()),
         "layout_reason": str(page.get("layout_reason") or "").strip(),

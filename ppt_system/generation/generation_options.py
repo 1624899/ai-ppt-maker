@@ -65,8 +65,9 @@ def resolve_generation_options(
             if suffix == "default" or not suffix:
                 continue
             raw_richness_map[suffix] = value
+    page_count = int(payload.get("page_count") or 0)
     return {
-        "include_cover_page": parse_bool_option(
+        "include_cover_page": False if page_count == 1 else parse_bool_option(
             payload.get("include_cover_page"),
             bool(defaults["include_cover_page"]),
         ),
@@ -76,7 +77,7 @@ def resolve_generation_options(
         ),
         "page_richness_map": normalize_page_richness_map(
             raw_richness_map,
-            page_count=int(payload.get("page_count") or 0),
+            page_count=page_count,
             default_level=str(defaults["page_richness_default"]),
         ),
         "reference_style_adherence": normalize_reference_style_adherence(
@@ -85,3 +86,11 @@ def resolve_generation_options(
         ),
         "theme_color": str(payload.get("theme_color") or defaults["theme_color"]).strip().lower() or "auto",
     }
+
+
+def apply_page_count_constraints(options: Mapping[str, Any], page_count: int) -> dict[str, Any]:
+    """应用由页数决定的生成约束，单页任务始终按正文页处理。"""
+    normalized = dict(options)
+    if int(page_count) == 1:
+        normalized["include_cover_page"] = False
+    return normalized

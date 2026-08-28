@@ -4,6 +4,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from ppt_system.jobs.job_store import create_job, get_job, init_db, update_job
@@ -36,7 +37,7 @@ class JobStoreTests(unittest.TestCase):
         )
 
     def test_job_directory_is_persisted_as_portable_reference(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             stored_job_dir = conn.execute(
                 "SELECT job_dir FROM jobs WHERE job_id = ?",
                 ("job-store-demo",),
@@ -77,7 +78,7 @@ class JobStoreTests(unittest.TestCase):
         current_job_dir.mkdir(parents=True)
         init_db(db_path)
         create_job(db_path, self._job_payload("legacy-job", current_job_dir))
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             conn.execute(
                 "UPDATE jobs SET job_dir = ? WHERE job_id = ?",
                 ("C:/Users/old-user/AppData/Roaming/AI PPT Maker/output/legacy-job", "legacy-job"),
@@ -85,7 +86,7 @@ class JobStoreTests(unittest.TestCase):
 
         init_db(db_path)
 
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             stored_job_dir = conn.execute(
                 "SELECT job_dir FROM jobs WHERE job_id = ?",
                 ("legacy-job",),
