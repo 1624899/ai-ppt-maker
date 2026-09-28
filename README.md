@@ -47,7 +47,7 @@ npx --yes skills add https://github.com/1624899/ai-ppt-maker/tree/main/skills/ai
 安装后可说“用 `$ai-ppt-maker` 根据这份材料制作 8 页可编辑 PPT”。Skill 的 Python 依赖见其 [requirements.txt](skills/ai-ppt-maker/requirements.txt)；双轮真实回看需要本机 Windows PowerPoint。随包源码保留原项目的非商业使用许可证。
 
 ## ⚠️ 注意
-本人用的模型为 **gpt-5.6/6 sol+ gpt-image-2/2.5**且只推荐该组合，使用其他模型的效果请自行探索。如若你用的是**中转站api**，如果图片无法正常生成请**把代理关闭**
+本人用的模型为 **gpt-5.6/6 sol+ gpt-image-2/2.5**且只推荐该组合，使用其他模型的效果请自行探索。如若你用的是**中转站api**，如果图片无法正常生成请尝试**关闭代理**
 
 ## 🖥️ 系统界面
 
