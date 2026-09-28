@@ -26,7 +26,7 @@ AI PPT Maker 是一个端到端的 AI 驱动 PPT 自动制作系统。你可以�
 系统采用 **Flask 后端 + React/Vite 前端** 架构，内置完整的 Web 创作工作区，支持任务管理、实时进度追踪、Agent 辅助编辑、图片标注和多图上传预览等交互功能。
 
 ## ⚠️ 注意
-本人用的模型为 **gpt-5.5 + gpt-image-2**，没尝试过其他模型的效果，使用其他模型的效果暂时请自己探索。如若你用的是**中转站api**，请**务必把代理关闭**，不然图片可能无法正常生成
+本人用的模型为 **gpt-5.6 sol+ gpt-image-2/2.5**，没尝试过其他模型的效果，使用其他模型的效果暂时请自己探索。如若你用的是**中转站api**，如果图片无法正常生成请**把代理关闭**
 
 ## 🖥️ 系统界面
 
@@ -173,6 +173,20 @@ python main.py
 ```
 
 访问 **http://127.0.0.1:7860** 即可开始使用。
+
+### 作为 Codex Skill 使用
+
+仓库内提供可独立发布的 [AI PPT Maker Skill](skills/ai-ppt-maker/SKILL.md)。Skill 已包含内容锚点、画布适配、元素切分、PowerPoint 回看和 PPTX 导出所需的本地代码；Codex 负责规划内容并使用内置生图工具生成原稿图、元素图。它不依赖本仓库的 Web 服务或模型 API。
+
+将整个 Skill 目录复制到 Codex 的 `skills` 目录即可使用。Windows PowerShell 示例：
+
+```powershell
+$skillDirectory = if ($env:CODEX_HOME) { Join-Path $env:CODEX_HOME 'skills' } else { Join-Path $HOME '.codex/skills' }
+New-Item -ItemType Directory -Force -Path $skillDirectory | Out-Null
+Copy-Item -Path './skills/ai-ppt-maker' -Destination $skillDirectory -Recurse
+```
+
+安装后可说“用 `$ai-ppt-maker` 根据这份材料制作 8 页可编辑 PPT”。Skill 的 Python 依赖见其 `requirements.txt`；双轮真实回看需要本机 Windows PowerPoint。随包源码保留原项目的非商业使用许可证。
 
 ### 创建任务方式
 

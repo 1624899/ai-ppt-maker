@@ -2,6 +2,7 @@
 config.local.json
 config.local.json.*
 output/
+/release/*.zip
 *__pycache__
 *node_modules
 web_ui/node_modules.locked-*/
