@@ -62,6 +62,20 @@ npx --yes skills add https://github.com/1624899/ai-ppt-maker/tree/main/skills/ai
 - [图片 PPT 演示](图片ppt演示.pptx)：展示系统生成的图片版 PPT 效果。
 - [可编辑效果演示（手动调整）](可编辑效果演示（手动调整）.pptx)：展示导出后可继续编辑和人工微调的分层 PPTX 效果。
 
+以下是「图片 PPT 演示」中的实际页面预览；完整效果和可编辑分层结构可下载上面的 PPTX 查看。
+
+**项目概览**
+
+![AI PPT Maker 项目概览演示页](docs/readme-assets/demo-overview.webp)
+
+**核心能力**
+
+![AI PPT Maker 核心能力矩阵演示页](docs/readme-assets/demo-capabilities.webp)
+
+**生成流程**
+
+![AI PPT Maker 生成流水线演示页](docs/readme-assets/demo-workflow.webp)
+
 ## 🚀 核心特性
 
 ### 🧠 智能内容规划
