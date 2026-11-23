@@ -17,6 +17,7 @@ def render_pptx_first_slide_to_png(
     *,
     image_width: int,
     image_height: int,
+    slide_number: int = 1,
     stop_checker: StopChecker | None = None,
 ) -> Path | None:
     # 优先使用本机 PowerPoint 真渲染导出，避免 PIL 与 Office 字体度量不一致。
@@ -25,6 +26,7 @@ def render_pptx_first_slide_to_png(
         output_path,
         image_width=image_width,
         image_height=image_height,
+        slide_number=slide_number,
         stop_checker=stop_checker,
     )
     if exported is not None and exported.exists():
@@ -38,6 +40,7 @@ def _render_with_powershell_com(
     *,
     image_width: int,
     image_height: int,
+    slide_number: int,
     stop_checker: StopChecker | None = None,
 ) -> Path | None:
     powershell = shutil.which("powershell") or shutil.which("pwsh")
@@ -56,7 +59,7 @@ def _render_with_powershell_com(
             "try {",
             "  $ppt = New-Object -ComObject PowerPoint.Application",
             f"  $presentation = $ppt.Presentations.Open('{_ps_path(pptx_path)}', $false, $false, $false)",
-            f"  $presentation.Slides.Item(1).Export('{_ps_path(exported_candidate)}', 'PNG', {int(image_width)}, {int(image_height)})",
+            f"  $presentation.Slides.Item({int(slide_number)}).Export('{_ps_path(exported_candidate)}', 'PNG', {int(image_width)}, {int(image_height)})",
             "}",
             "finally {",
             "  if ($presentation -ne $null) { $presentation.Close() }",

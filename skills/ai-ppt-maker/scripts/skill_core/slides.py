@@ -84,7 +84,7 @@ def build_presentation(
     work_dir: Path,
     output_path: Path,
     *,
-    mode: str = "separate_slides",
+    mode: str = "overlay",
     page_numbers: list[int] | None = None,
 ) -> dict[str, Any]:
     if mode not in DELIVERY_MODES:
@@ -144,6 +144,7 @@ def render_page_previews(
     work_dir: Path,
     output_dir: Path,
     *,
+    mode: str = "overlay",
     page_numbers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     if os.name != "nt":
@@ -155,12 +156,13 @@ def render_page_previews(
         page_no = int(page["page_no"])
         preview_pptx = output_dir / f"page_{page_no:02d}.pptx"
         preview_png = output_dir / f"page_{page_no:02d}.png"
-        build_presentation(project, work_dir, preview_pptx, mode="overlay", page_numbers=[page_no])
+        build_presentation(project, work_dir, preview_pptx, mode=mode, page_numbers=[page_no])
         rendered = render_pptx_first_slide_to_png(
             preview_pptx,
             preview_png,
             image_width=width,
             image_height=height,
+            slide_number=2 if mode == "separate_slides" else 1,
         )
         if rendered is None:
             raise RuntimeError("本机 PowerPoint 真实渲染失败；请确认 Windows PowerPoint 可用。预览 PPTX 已保留。")

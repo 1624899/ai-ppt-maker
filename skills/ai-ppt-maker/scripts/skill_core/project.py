@@ -102,6 +102,8 @@ def validate_project(
     assigned_anchors: set[str] = set()
     anchors = collect_anchors(source, len(pages))
     anchor_ids = {str(item["id"]) for item in anchors}
+    anchors_by_id = {str(item["id"]): item for item in anchors}
+    check_page_anchor_facts = project.get("source_mode", "text") == "text" and bool(source.strip())
     for index, page in enumerate(pages, start=1):
         if not isinstance(page, dict):
             errors.append(f"第 {index} 页必须是 JSON 对象。")
@@ -116,7 +118,7 @@ def validate_project(
         if family not in ALLOWED_LAYOUT_FAMILIES:
             errors.append(f"第 {index} 页的 layout_family 未知：{family}")
         families.append(family)
-        if index > 1 and family == families[-2]:
+        if project.get("source_mode", "text") != "external_reference" and index > 1 and family == families[-2]:
             errors.append(f"第 {index - 1} 页与第 {index} 页的版式家族相同。")
 
         raw_ids = page.get("source_anchor_ids", [])
@@ -129,16 +131,38 @@ def validate_project(
                 errors.append(f"第 {index} 页引用了不存在的事实锚点 {anchor_id}。")
             assigned_anchors.add(anchor_id)
 
+        page_source = ""
+        if check_page_anchor_facts and raw_ids:
+            page_source = "\n".join(
+                str(anchors_by_id[str(raw_id)].get("source_text", ""))
+                for raw_id in raw_ids
+                if str(raw_id) in anchors_by_id
+            )
+            missing_page_numbers = _numeric_facts(page_source) - _numeric_facts(page_text(page, rendered=False))
+            if missing_page_numbers:
+                errors.append(
+                    f"第 {index} 页规划缺少所引用事实锚点中的数字或日期："
+                    + "、".join(sorted(missing_page_numbers))
+                )
+
         if require_text_boxes and index in selected_text_pages:
             boxes = page.get("text_boxes")
             if not isinstance(boxes, list) or not boxes:
                 errors.append(f"第 {index} 页缺少可编辑 text_boxes。")
             else:
                 errors.extend(_validate_text_boxes(index, boxes, width, height))
+                if check_page_anchor_facts and page_source:
+                    missing_rendered_numbers = _numeric_facts(page_source) - _numeric_facts(page_text(page, rendered=True))
+                    if missing_rendered_numbers:
+                        errors.append(
+                            f"第 {index} 页可编辑文字层缺少所引用事实锚点中的数字或日期："
+                            + "、".join(sorted(missing_rendered_numbers))
+                        )
 
-    distinct_required = min(3, len(pages))
-    if len(set(families)) < distinct_required:
-        errors.append(f"当前页数需要至少 {distinct_required} 种版式家族。")
+    if project.get("source_mode", "text") != "external_reference":
+        distinct_required = min(3, len(pages))
+        if len(set(families)) < distinct_required:
+            errors.append(f"当前页数需要至少 {distinct_required} 种版式家族。")
     missing_anchors = anchor_ids - assigned_anchors
     if missing_anchors:
         errors.append("未分配的事实锚点：" + "、".join(sorted(missing_anchors)))

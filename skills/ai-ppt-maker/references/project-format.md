@@ -68,13 +68,13 @@ python scripts/deck_cli.py normalize --project project.json --work-dir work
 python scripts/deck_cli.py prepare --project project.json --work-dir work --workers 2
 python scripts/deck_cli.py validate --project project.json --require-text-boxes
 python scripts/deck_cli.py validate --project project.json --require-text-boxes --pages 2
-python scripts/deck_cli.py preview --project project.json --work-dir work --output-dir previews
+python scripts/deck_cli.py preview --project project.json --work-dir work --output-dir previews --mode overlay
 python scripts/deck_cli.py export --project project.json --work-dir work --output result.pptx
 python scripts/deck_cli.py export --project project.json --work-dir work --output one-page.pptx --mode overlay --pages 2
 ```
 
 `normalize` 将原稿图保存到 `work/page_XX/reference.png`，第二阶段生图以此为编辑目标。`prepare` 会生成 `elements.png`、`elements.transparent.png`、`text_placeholders.json`、`assets/assets.json` 和元素 PNG。检查 `asset_count`、透明图和实际元素图片；全白背景、渐变背景或原稿中的浅色元素可能需要重新生成透明元素图。
 
-`preview` 会保留逐页的 `.pptx` 与 PowerPoint 导出 `.png`。若本机没有 PowerPoint，命令会明确报错；图片版导出不需要此步骤，可编辑版的“双轮真实回看”则需要它。`export` 的默认模式 `separate_slides` 会产生两倍于逻辑页数的实际幻灯片。输出文件与工作目录应放在 Skill 目录之外，方便更新和发布 Skill。
+`preview` 会保留逐页的 `.pptx` 与 PowerPoint 导出 `.png`，并按 `--mode` 回看实际交付结构。若本机没有 PowerPoint，命令会明确报错；图片版导出不需要此步骤，可编辑版的“双轮真实回看”则需要它。`export` 的默认模式为 `overlay`，每个逻辑页对应一张同时包含元素和可编辑文字的幻灯片。`separate_slides` 会产生两倍于逻辑页数的实际幻灯片。输出文件与工作目录应放在 Skill 目录之外，方便更新和发布 Skill。
 
 单页校验、预览或导出时加 `--pages`；规划与事实锚点仍按整套检查，可编辑文字层只检查选中的页。

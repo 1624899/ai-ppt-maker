@@ -78,13 +78,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_project(preview)
     preview.add_argument("--work-dir", required=True, type=Path)
     preview.add_argument("--output-dir", required=True, type=Path)
+    preview.add_argument("--mode", choices=sorted(DELIVERY_MODES), default="overlay")
     _add_pages(preview)
 
     export = commands.add_parser("export", help="导出图片版或可编辑分层 PPTX。")
     _add_project(export)
     export.add_argument("--work-dir", required=True, type=Path)
     export.add_argument("--output", required=True, type=Path)
-    export.add_argument("--mode", choices=sorted(DELIVERY_MODES), default="separate_slides")
+    export.add_argument("--mode", choices=sorted(DELIVERY_MODES), default="overlay")
     _add_pages(export)
     return parser
 
@@ -108,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         _write_result({"ok": not errors, "errors": errors})
         return 0 if not errors else 1
-    require_boxes = args.command == "preview" or (args.command == "export" and args.mode != "image_only")
+    require_boxes = (args.command == "preview" and args.mode != "image_only") or (args.command == "export" and args.mode != "image_only")
     errors = validate_project(project, source=source, require_text_boxes=require_boxes, text_page_numbers=getattr(args, "pages", None))
     if errors:
         raise ValueError("项目校验失败：\n- " + "\n- ".join(errors))
@@ -131,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
     elif args.command == "preview":
-        _write_result({"pages": render_page_previews(project, args.work_dir, args.output_dir, page_numbers=args.pages)})
+        _write_result({"pages": render_page_previews(project, args.work_dir, args.output_dir, mode=args.mode, page_numbers=args.pages)})
     elif args.command == "export":
         _write_result(build_presentation(project, args.work_dir, args.output, mode=args.mode, page_numbers=args.pages))
     return 0

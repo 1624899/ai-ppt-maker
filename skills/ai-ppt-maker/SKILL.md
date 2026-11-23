@@ -11,11 +11,12 @@ description: 用 Codex 内置生图工具和随包本地脚本，把长文或整
 
 ## 工作流程
 
-1. **规划内容。** 将用户长文保存为 UTF-8 `brief.txt`；只有主题时先起草可核查的演示内容。运行 `python scripts/deck_cli.py anchors --source brief.txt --pages <页数>`，再由 Codex 编写 `project.json` 的 `style_guide` 与逐页规划。为每页分配 `source_anchor_ids`，保留编号、日期、数字与业务原词。页数不少于 3 时使用至少 3 种版式家族，相邻页不重复。用 `validate` 校验，不让脚本机械截断原文。
-2. **生成原稿图。** 用 `prompts` 命令取得压缩过的风格提示与每页原稿图提示。通过 Codex 内置 `image_gen` 逐页生成带文字的完整视觉稿，传入用户提供的风格参考图，并将选定图片保存到工作目录。用户提供已有整页原稿图时跳过此步，按原图顺序填入页面路径；支持 `stretch`、`contain`、`cover` 三种适配。
-3. **生成元素图。** 运行 `normalize` 得到统一画幅的原稿图。将每页规范化原稿图作为内置 `image_gen` 的编辑目标，只去掉文字，保留布局和视觉元素；保存去文字元素图。跨页可按 `parallel_pages` 配置并行，同一页始终先有原稿图再做元素图。内置生图工具的文件应复制到工作目录，不能只留在 Codex 默认生成目录。
-4. **首轮文字与元素处理。** 运行 `prepare`：脚本会检测原稿与元素图的文字差异、增强元素图、透明化并按连通域切分。Codex 对照两张图、`text_placeholders.json` 与原文，把准确文字写入 `project.json` 的 `text_boxes`。坐标采用画布像素，字号采用 PowerPoint pt。运行 `validate --require-text-boxes`，确保事实和数字最终出现在可编辑文字层。
-5. **第二轮真实回看。** 运行 `preview`，脚本将逐页叠加元素与文字并由本机 PowerPoint 导出 PNG。Codex 对照原稿图与真实导出图，修正文本框的位置、尺寸、字体、颜色和换行，再次预览确认。原稿图里若有生图造成的错字，以核实后的原文与规划为准。
-6. **交付。** 运行 `export`。默认 `separate_slides`，每个逻辑页生成相邻的元素资源页和可编辑文字页；`overlay` 生成元素与文字同页；`image_only` 导出原稿图。用 `--pages` 可只导出指定页，否则导出整套。打开 PPTX 核对页数和可编辑文字，返回文件路径。
+0. **确定交付模式。** 默认使用 `overlay`，每个逻辑页是一张同时包含元素和可编辑文字的幻灯片。需要元素资源页与文字页分开的文件时显式使用 `separate_slides`；只需要整页图片时使用 `image_only`。预览和导出使用同一个 `--mode`。
+1. **规划内容。** 将用户长文保存为 UTF-8 `brief.txt`；只有主题时先起草可核查的演示内容。运行 `python scripts/deck_cli.py anchors --source brief.txt --pages <页数>`，再由 Codex 编写 `project.json` 的 `style_guide` 与逐页规划。为每页分配 `source_anchor_ids`，保留编号、日期、数字与业务原词。文本生成时，页数不少于 3 时使用至少 3 种版式家族，相邻页不重复。已有原稿图的 `external_reference` 项目可以复用相同版式。用 `validate` 校验，不让脚本机械截断原文。
+2. **生成或导入原稿图。** 用 `prompts` 命令取得压缩过的风格提示与每页原稿图提示。通过 Codex 内置 `image_gen` 逐页生成带文字的完整视觉稿，传入用户提供的风格参考图，并将选定图片保存到工作目录。用户提供已有整页原稿图时跳过生图，按原图顺序填入页面路径；支持 `stretch`、`contain`、`cover` 三种适配。
+3. **图片版分支。** 交付模式为 `image_only` 时，运行 `normalize` 后直接运行 `export --mode image_only`，检查页序、画幅和图片内容即可。图片版不需要去字、元素切分、文字框或 PowerPoint 真实回看。
+4. **可编辑版首轮处理。** 交付模式为 `overlay` 或 `separate_slides` 时运行 `normalize` 和 `prepare`。脚本会检测原稿与元素图的文字差异、增强元素图、透明化并按连通域切分。Codex 对照两张图、`text_placeholders.json` 与原文，把准确文字写入 `project.json` 的 `text_boxes`。坐标采用画布像素，字号采用 PowerPoint pt。运行 `validate --require-text-boxes`，确保每页引用事实锚点中的数字和日期都出现在对应页面的可编辑文字层。
+5. **第二轮真实回看。** 运行与交付模式一致的 `preview`，脚本将实际交付结构逐页由本机 PowerPoint 导出 PNG。`separate_slides` 会回看每页的文字叠加页。Codex 对照原稿图与真实导出图，修正文本框的位置、尺寸、字体、颜色和换行，再次预览确认。原稿图里若有生图造成的错字，以核实后的原文与规划为准。
+6. **交付。** 运行与预览相同模式的 `export`。用 `--pages` 可只导出指定页，否则导出整套。打开 PPTX 核对页数和可编辑文字，返回文件路径。
 
 完整 JSON 格式、命令与文件目录见 [项目格式与命令](references/project-format.md)。处理图像时检查透明图和 `assets.json`；若背景或元素被误删，针对原稿/元素图重新生成或调整输入，不把有缺失的页面直接交付。
