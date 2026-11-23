@@ -65,6 +65,7 @@ def prepare_images(
     height = int(project["canvas"]["height"])
     pages = selected_pages(project, page_numbers)
     normalize_references(project, project_path, work_dir, [int(page["page_no"]) for page in pages])
+    pages_with_elements = [page for page in pages if page.get("elements_image") or not page.get("charts")]
 
     def prepare_page(page: dict[str, Any]) -> dict[str, Any]:
         page_no = int(page["page_no"])
@@ -104,5 +105,5 @@ def prepare_images(
         }
 
     with ThreadPoolExecutor(max_workers=max(1, int(workers))) as executor:
-        results = list(executor.map(prepare_page, pages))
+        results = list(executor.map(prepare_page, pages_with_elements))
     return sorted(results, key=lambda item: item["page_no"])

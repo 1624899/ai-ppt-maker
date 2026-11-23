@@ -11,10 +11,11 @@ from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Inches, Pt
 
 from asset_assembly import add_assets_to_slide
+from ppt_system.export.editable_charts import add_editable_chart
 from ppt_system.export.export_artifact_policy import save_final_presentation_atomically
+from ppt_system.export.ppt_calibration_renderer import render_pptx_slides_to_png
 from ppt_system.export.reference_preview_export import export_reference_images_to_pptx
 from ppt_system.export.text_style_runtime import apply_run_font_family, should_wrap_text
-from ppt_system.export.ppt_calibration_renderer import render_pptx_first_slide_to_png
 
 from skill_core.images import selected_pages
 
@@ -120,13 +121,23 @@ def build_presentation(
         page_no = int(page["page_no"])
         manifest_path = work_dir / f"page_{page_no:02d}" / "assets" / "assets.json"
         background = str(page.get("background_color") or project.get("background_color") or "#FFFFFF")
-        if mode == "separate_slides":
-            asset_slide = _new_slide(presentation, background)
+        asset_slide = _new_slide(presentation, background)
+        charts = page.get("charts", [])
+        if page.get("elements_image") or not charts:
             _add_assets(asset_slide, manifest_path, slide_width, slide_height)
+        if mode == "separate_slides":
             text_slide = _new_slide(presentation, background)
         else:
-            text_slide = _new_slide(presentation, background)
-            _add_assets(text_slide, manifest_path, slide_width, slide_height)
+            text_slide = asset_slide
+        for chart in charts:
+            add_editable_chart(
+                text_slide,
+                chart,
+                Inches(chart["left"] / canvas_width * slide_width),
+                Inches(chart["top"] / canvas_height * slide_height),
+                Inches(chart["width"] / canvas_width * slide_width),
+                Inches(chart["height"] / canvas_height * slide_height),
+            )
         for box in page.get("text_boxes", []):
             _add_text_box(text_slide, box, canvas_width, canvas_height, slide_width, slide_height)
 
@@ -139,32 +150,26 @@ def build_presentation(
     }
 
 
-def render_page_previews(
-    project: dict[str, Any],
-    work_dir: Path,
+def render_delivery_previews(
+    pptx_path: Path,
     output_dir: Path,
     *,
-    mode: str = "overlay",
-    page_numbers: list[int] | None = None,
-) -> list[dict[str, Any]]:
+    slide_numbers: list[int] | None = None,
+) -> dict[str, Any]:
     if os.name != "nt":
         raise RuntimeError("PowerPoint 真实渲染需要 Windows 与本机 PowerPoint。")
-    width = int(project["canvas"]["width"])
-    height = int(project["canvas"]["height"])
-    previews: list[dict[str, Any]] = []
-    for page in selected_pages(project, page_numbers):
-        page_no = int(page["page_no"])
-        preview_pptx = output_dir / f"page_{page_no:02d}.pptx"
-        preview_png = output_dir / f"page_{page_no:02d}.png"
-        build_presentation(project, work_dir, preview_pptx, mode=mode, page_numbers=[page_no])
-        rendered = render_pptx_first_slide_to_png(
-            preview_pptx,
-            preview_png,
-            image_width=width,
-            image_height=height,
-            slide_number=2 if mode == "separate_slides" else 1,
-        )
-        if rendered is None:
-            raise RuntimeError("本机 PowerPoint 真实渲染失败；请确认 Windows PowerPoint 可用。预览 PPTX 已保留。")
-        previews.append({"page_no": page_no, "preview_pptx": str(preview_pptx.resolve()), "preview_png": str(rendered.resolve())})
-    return previews
+    if not pptx_path.is_file():
+        raise FileNotFoundError(f"交付文件不存在：{pptx_path}")
+    slide_count = len(Presentation(pptx_path).slides)
+    numbers = sorted(set(slide_numbers)) if slide_numbers is not None else list(range(1, slide_count + 1))
+    if not numbers or numbers[0] < 1 or numbers[-1] > slide_count:
+        raise ValueError(f"预览页码必须在交付文件的实际页码范围内（共 {slide_count} 页）。")
+    previews = render_pptx_slides_to_png(pptx_path, output_dir, numbers)
+    return {
+        "input_pptx": str(pptx_path.resolve()),
+        "slide_count": slide_count,
+        "pages": [
+            {"slide_no": number, "preview_png": str(path.resolve())}
+            for number, path in zip(numbers, previews)
+        ],
+    }

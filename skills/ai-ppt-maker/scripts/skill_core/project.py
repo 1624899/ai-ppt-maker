@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
+from ppt_system.export.editable_charts import normalize_chart_data
 from ppt_system.generation.design_grammar import (
     ALLOWED_LAYOUT_FAMILIES,
     compress_style_for_prompt,
@@ -81,9 +83,11 @@ def validate_project(
     style_guide = project.get("style_guide")
     if not isinstance(style_guide, dict) or not style_guide.get("style_name") or not isinstance(style_guide.get("style_core"), dict):
         errors.append("style_guide 需要 style_name 和 style_core。")
-    if project.get("source_mode", "text") not in {"text", "external_reference"}:
+    source_mode = project.get("source_mode", "text")
+    if source_mode not in {"text", "external_reference"}:
         errors.append("source_mode 只能是 text 或 external_reference。")
-    if project.get("source_mode", "text") == "text" and not source.strip():
+    from_text = source_mode == "text"
+    if from_text and not source.strip():
         errors.append("文本生成需要 source_file 或 --source 指向原始长文。")
     required_terms = project.get("required_terms", [])
     if not isinstance(required_terms, list):
@@ -103,7 +107,7 @@ def validate_project(
     anchors = collect_anchors(source, len(pages))
     anchor_ids = {str(item["id"]) for item in anchors}
     anchors_by_id = {str(item["id"]): item for item in anchors}
-    check_page_anchor_facts = project.get("source_mode", "text") == "text" and bool(source.strip())
+    check_page_anchor_facts = from_text and bool(source.strip())
     for index, page in enumerate(pages, start=1):
         if not isinstance(page, dict):
             errors.append(f"第 {index} 页必须是 JSON 对象。")
@@ -115,11 +119,19 @@ def validate_project(
         if not isinstance(page.get("bullets", []), list):
             errors.append(f"第 {index} 页的 bullets 必须是数组。")
         family = str(page.get("layout_family", "")).strip()
-        if family not in ALLOWED_LAYOUT_FAMILIES:
+        if (from_text or family) and family not in ALLOWED_LAYOUT_FAMILIES:
             errors.append(f"第 {index} 页的 layout_family 未知：{family}")
-        families.append(family)
-        if project.get("source_mode", "text") != "external_reference" and index > 1 and family == families[-2]:
+        if from_text and families and family == families[-1]:
             errors.append(f"第 {index - 1} 页与第 {index} 页的版式家族相同。")
+        families.append(family)
+
+        charts = page.get("charts", [])
+        if not isinstance(charts, list):
+            errors.append(f"第 {index} 页的 charts 必须是数组。")
+        elif charts and source_mode != "external_reference":
+            errors.append(f"第 {index} 页的 charts 用于 external_reference 截图还原。")
+        else:
+            errors.extend(_validate_charts(index, charts, width, height))
 
         raw_ids = page.get("source_anchor_ids", [])
         if not isinstance(raw_ids, list):
@@ -146,8 +158,8 @@ def validate_project(
                 )
 
         if require_text_boxes and index in selected_text_pages:
-            boxes = page.get("text_boxes")
-            if not isinstance(boxes, list) or not boxes:
+            boxes = page.get("text_boxes", [])
+            if not isinstance(boxes, list) or (not boxes and not charts):
                 errors.append(f"第 {index} 页缺少可编辑 text_boxes。")
             else:
                 errors.extend(_validate_text_boxes(index, boxes, width, height))
@@ -159,7 +171,7 @@ def validate_project(
                             + "、".join(sorted(missing_rendered_numbers))
                         )
 
-    if project.get("source_mode", "text") != "external_reference":
+    if from_text:
         distinct_required = min(3, len(pages))
         if len(set(families)) < distinct_required:
             errors.append(f"当前页数需要至少 {distinct_required} 种版式家族。")
@@ -194,6 +206,25 @@ def validate_project(
         for term in checked_terms:
             if _normalize_for_compare(str(term)) not in normalized_combined:
                 errors.append(f"{target}缺少业务原词：{term}")
+    return errors
+
+
+def _validate_charts(page_no: int, charts: list[Any], width: int, height: int) -> list[str]:
+    errors: list[str] = []
+    for number, chart in enumerate(charts, start=1):
+        prefix = f"第 {page_no} 页第 {number} 个图表"
+        try:
+            normalize_chart_data(chart)
+        except ValueError as exc:
+            errors.append(f"{prefix}：{exc}")
+            continue
+        bounds = [chart.get(key) for key in ("left", "top", "width", "height")]
+        if any(type(value) not in (int, float) or not isfinite(value) for value in bounds):
+            errors.append(f"{prefix}需要有限的坐标和尺寸。")
+            continue
+        left, top, chart_width, chart_height = bounds
+        if not (0 <= left < left + chart_width <= width and 0 <= top < top + chart_height <= height):
+            errors.append(f"{prefix}必须具有正尺寸且位于画布内。")
     return errors
 
 
@@ -234,7 +265,7 @@ def build_prompts(project: dict[str, Any]) -> list[dict[str, Any]]:
             style,
             mode=compression,
             max_chars=max_chars,
-            layout_family_override=str(page["layout_family"]),
+            layout_family_override=str(page.get("layout_family", "")),
             difference_override=str(page.get("difference_from_previous", "")),
         )
         reference_prompt = "\n".join(

@@ -15,7 +15,7 @@ from skill_core.project import (
     resolve_project_path,
     validate_project,
 )
-from skill_core.slides import DELIVERY_MODES, build_presentation, render_page_previews
+from skill_core.slides import DELIVERY_MODES, build_presentation, render_delivery_previews
 
 
 def _write_result(payload: Any, output_path: Path | None = None) -> None:
@@ -74,12 +74,10 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--min-asset-area", type=int, default=8)
     _add_pages(prepare)
 
-    preview = commands.add_parser("preview", help="用本机 PowerPoint 真实渲染逐页预览。")
-    _add_project(preview)
-    preview.add_argument("--work-dir", required=True, type=Path)
+    preview = commands.add_parser("preview", help="用本机 PowerPoint 渲染已导出的 PPTX。")
+    preview.add_argument("--pptx", required=True, type=Path, help="最终交付的 PPTX 文件。")
     preview.add_argument("--output-dir", required=True, type=Path)
-    preview.add_argument("--mode", choices=sorted(DELIVERY_MODES), default="overlay")
-    _add_pages(preview)
+    preview.add_argument("--pages", nargs="+", type=int, help="按 PPTX 中的实际幻灯片编号选页。")
 
     export = commands.add_parser("export", help="导出图片版或可编辑分层 PPTX。")
     _add_project(export)
@@ -99,6 +97,10 @@ def main(argv: list[str] | None = None) -> int:
         _write_result({"anchors": collect_anchors(source, args.pages)}, args.output)
         return 0
 
+    if args.command == "preview":
+        _write_result(render_delivery_previews(args.pptx, args.output_dir, slide_numbers=args.pages))
+        return 0
+
     project, source = _load(args)
     if args.command == "validate":
         errors = validate_project(
@@ -109,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         _write_result({"ok": not errors, "errors": errors})
         return 0 if not errors else 1
-    require_boxes = (args.command == "preview" and args.mode != "image_only") or (args.command == "export" and args.mode != "image_only")
+    require_boxes = args.command == "export" and args.mode != "image_only"
     errors = validate_project(project, source=source, require_text_boxes=require_boxes, text_page_numbers=getattr(args, "pages", None))
     if errors:
         raise ValueError("项目校验失败：\n- " + "\n- ".join(errors))
@@ -131,8 +133,6 @@ def main(argv: list[str] | None = None) -> int:
                 )
             }
         )
-    elif args.command == "preview":
-        _write_result({"pages": render_page_previews(project, args.work_dir, args.output_dir, mode=args.mode, page_numbers=args.pages)})
     elif args.command == "export":
         _write_result(build_presentation(project, args.work_dir, args.output, mode=args.mode, page_numbers=args.pages))
     return 0
