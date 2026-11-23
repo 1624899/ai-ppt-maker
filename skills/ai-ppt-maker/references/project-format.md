@@ -71,6 +71,8 @@
 
 支持 `bar`（横向条形）、`column`、`line`、`pie`、`doughnut` 和 `area`。原生数据标签默认开启。饼图和环图可用 `show_percentage: true` 显示随数据更新的占比。条形图若原始值本身就是比率，录入小数（如 `0.25`），使用 `number_format: "0%"`。需要独立排版时，显式设置 `show_data_labels: false`，再录入独立文本框并在交付时告知用户。只有原生图表且没有图像素材的页面可省略 `elements_image`，`prepare` 会跳过其素材处理。纯图表页可省略 `text_boxes`。
 
+`charts` 是随包 Python 导出器的输入。需要柱线组合、次坐标轴，或交付由 `@oai/artifact-tool` 构建的图表时，使用[复杂图表与可编辑数据](advanced-charts.md)中的独立制作流程。
+
 ## 命令
 
 以下命令在 Skill 根目录执行；若使用 PowerShell 读取中文内容，先运行 `chcp 65001` 并将控制台输出编码设为 UTF-8。
