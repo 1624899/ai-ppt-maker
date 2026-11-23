@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import unicodedata
+
 from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 
 
 DEFAULT_FONT_NAME = "Microsoft YaHei"
@@ -11,10 +14,12 @@ def apply_run_font_family(run, font_name: str) -> None:
     resolved = str(font_name or "").strip() or DEFAULT_FONT_NAME
     run.font.name = resolved
     r_pr = run._r.get_or_add_rPr()
-    r_pr.set(qn("a:ea"), resolved)
-    r_pr.set(qn("a:cs"), resolved)
-    latin = r_pr.get_or_add_latin()
-    latin.typeface = resolved
+    for tag in ("a:ea", "a:cs"):
+        font = r_pr.find(qn(tag))
+        if font is None:
+            font = OxmlElement(tag)
+            r_pr.insert_element_before(font, "a:cs", "a:sym", "a:hlinkClick", "a:hlinkMouseOver", "a:rtl", "a:extLst")
+        font.set("typeface", resolved)
 
 
 def scale_font_size_pt(font_size_pt: float, *, scale: float) -> float:
@@ -29,8 +34,9 @@ def estimate_text_width_units(text: str) -> float:
         if char.isspace():
             units += 0.35
             continue
-        codepoint = ord(char)
-        if 0x4E00 <= codepoint <= 0x9FFF:
+        if unicodedata.combining(char):
+            continue
+        if unicodedata.east_asian_width(char) in {"W", "F"}:
             units += 1.0
             continue
         if char.isdigit():
@@ -43,23 +49,12 @@ def estimate_text_width_units(text: str) -> float:
     return units
 
 
-def estimate_text_width_px(text: str, font_size_pt: float) -> float:
-    return estimate_text_width_units(text) * float(font_size_pt)
+def estimate_text_width_pt(text: str, font_size_pt: float) -> float:
+    return estimate_text_width_units(text) * font_size_pt
 
 
-def should_wrap_text(text: str, width: float, height: float, font_size_pt: float) -> bool:
-    """统一控制单行标签与正文的换行策略。"""
-    resolved_text = str(text or "")
-    if "\n" in resolved_text:
+def should_wrap_text(text: str, width_pt: float, height_pt: float, font_size_pt: float) -> bool:
+    """统一按磅判断是否对正文启用自动换行。"""
+    if "\n" in text:
         return True
-    try:
-        resolved_width = max(1.0, float(width))
-        resolved_height = max(1.0, float(height))
-        resolved_size = max(1.0, float(font_size_pt))
-    except (TypeError, ValueError):
-        return True
-
-    # 高度明显只容纳一行时，优先保持单行并交给自动缩放处理。
-    if resolved_height <= resolved_size * 2.4:
-        return False
-    return estimate_text_width_px(resolved_text, resolved_size) > resolved_width * 1.05
+    return height_pt >= font_size_pt * 2.2 and estimate_text_width_pt(text, font_size_pt) > width_pt * 1.05

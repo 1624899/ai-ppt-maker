@@ -18,6 +18,9 @@ from ppt_system.generation.source_content_anchors import build_source_content_an
 
 NUMERIC_PATTERN = re.compile(r"(?<![0-9A-Za-z])\d+(?:[.,]\d+)*(?:[%％])?")
 DATE_PATTERN = re.compile(r"\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?")
+HEX_COLOR_PATTERN = re.compile(r"#?([0-9a-fA-F]{6})")
+DEFAULT_SLIDE_WIDTH_INCH = 13.333333
+DEFAULT_TEXT_COLOR = "#222222"
 
 
 def read_project(path: Path) -> dict[str, Any]:
@@ -35,11 +38,35 @@ def collect_anchors(source: str, page_count: int) -> list[dict[str, Any]]:
     return build_source_content_anchors(source, page_count) if source.strip() else []
 
 
+def normalize_hex_color(value: Any) -> str:
+    match = HEX_COLOR_PATTERN.fullmatch(str(value).strip())
+    if not match:
+        raise ValueError(f"颜色必须是六位十六进制值：{value}")
+    return "#" + match[1].upper()
+
+
+def page_background(project: dict[str, Any], page: dict[str, Any]) -> str:
+    return normalize_hex_color(page.get("background_color") or project.get("background_color") or "#FFFFFF")
+
+
+def selected_pages(project: dict[str, Any], page_numbers: list[int] | None) -> list[dict[str, Any]]:
+    pages = project["pages"]
+    if page_numbers is None:
+        return pages
+    requested = set(page_numbers)
+    selected = [page for page in pages if int(page["page_no"]) in requested]
+    missing = requested - {int(page["page_no"]) for page in selected}
+    if missing:
+        raise ValueError("项目中没有这些页码：" + "、".join(map(str, sorted(missing))))
+    return selected
+
+
 def page_text(page: dict[str, Any], *, rendered: bool) -> str:
     if rendered:
+        boxes = page.get("text_boxes", [])
         return "\n".join(
             str(box.get("text", ""))
-            for box in page.get("text_boxes", [])
+            for box in (boxes if isinstance(boxes, list) else [])
             if isinstance(box, dict)
         )
     return "\n".join(
@@ -79,6 +106,12 @@ def validate_project(
         return ["canvas.width 与 canvas.height 必须是正整数。"]
     if width <= 0 or height <= 0:
         errors.append("canvas.width 与 canvas.height 必须大于 0。")
+    try:
+        slide_width = float(project.get("slide_width_inch", DEFAULT_SLIDE_WIDTH_INCH))
+        if not isfinite(slide_width) or slide_width <= 0:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError):
+        errors.append("slide_width_inch 必须是有限的正数。")
 
     style_guide = project.get("style_guide")
     if not isinstance(style_guide, dict) or not style_guide.get("style_name") or not isinstance(style_guide.get("style_core"), dict):
@@ -125,6 +158,13 @@ def validate_project(
             errors.append(f"第 {index - 1} 页与第 {index} 页的版式家族相同。")
         families.append(family)
 
+        if page.get("cutout_mode", "split") not in ("split", "background_only"):
+            errors.append(f"第 {index} 页的 cutout_mode 只能是 split 或 background_only。")
+        try:
+            page_background(project, page)
+        except ValueError as exc:
+            errors.append(f"第 {index} 页背景色无效。{exc}")
+
         charts = page.get("charts", [])
         if not isinstance(charts, list):
             errors.append(f"第 {index} 页的 charts 必须是数组。")
@@ -132,6 +172,15 @@ def validate_project(
             errors.append(f"第 {index} 页的 charts 用于 external_reference 截图还原。")
         else:
             errors.extend(_validate_charts(index, charts, width, height))
+
+        exclusions = page.get("text_exclusion_regions", [])
+        if not isinstance(exclusions, list):
+            errors.append(f"第 {index} 页的 text_exclusion_regions 必须是数组。")
+        else:
+            for number, region in enumerate(exclusions, start=1):
+                error = _check_region_bounds(region, width, height)
+                if error:
+                    errors.append(f"第 {index} 页第 {number} 个文字检测排除区域{error}")
 
         raw_ids = page.get("source_anchor_ids", [])
         if not isinstance(raw_ids, list):
@@ -218,21 +267,29 @@ def _validate_charts(page_no: int, charts: list[Any], width: int, height: int) -
         except ValueError as exc:
             errors.append(f"{prefix}：{exc}")
             continue
-        bounds = [chart.get(key) for key in ("left", "top", "width", "height")]
-        if any(type(value) not in (int, float) or not isfinite(value) for value in bounds):
-            errors.append(f"{prefix}需要有限的坐标和尺寸。")
-            continue
-        left, top, chart_width, chart_height = bounds
-        if not (0 <= left < left + chart_width <= width and 0 <= top < top + chart_height <= height):
-            errors.append(f"{prefix}必须具有正尺寸且位于画布内。")
+        error = _check_region_bounds(chart, width, height)
+        if error:
+            errors.append(f"{prefix}{error}")
     return errors
+
+
+def _check_region_bounds(region: Any, width: int, height: int) -> str | None:
+    if not isinstance(region, dict):
+        return "必须是 JSON 对象。"
+    bounds = [region.get(key) for key in ("left", "top", "width", "height")]
+    if any(type(value) not in (int, float) or (type(value) is float and not isfinite(value)) for value in bounds):
+        return "需要有限的坐标和尺寸。"
+    left, top, region_width, region_height = bounds
+    if not (0 <= left < width and 0 <= top < height and 0 < region_width <= width - left and 0 < region_height <= height - top):
+        return "必须具有正尺寸且位于画布内。"
+    return None
 
 
 def _validate_text_boxes(page_no: int, boxes: list[Any], width: int, height: int) -> list[str]:
     errors: list[str] = []
     for index, box in enumerate(boxes, start=1):
         prefix = f"第 {page_no} 页第 {index} 个文本框"
-        if not isinstance(box, dict) or not str(box.get("text", "")).strip():
+        if not isinstance(box, dict) or not isinstance(box.get("text"), str) or not box["text"].strip():
             errors.append(f"{prefix}缺少 text。")
             continue
         try:
@@ -241,13 +298,20 @@ def _validate_text_boxes(page_no: int, boxes: list[Any], width: int, height: int
             box_width = float(box["width"])
             box_height = float(box["height"])
             font_size = float(box["font_size"])
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             errors.append(f"{prefix}的坐标、尺寸或字号无效。")
+            continue
+        if not all(isfinite(value) for value in (left, top, box_width, box_height, font_size)):
+            errors.append(f"{prefix}的坐标、尺寸和字号必须是有限数值。")
             continue
         if min(left, top) < 0 or box_width <= 0 or box_height <= 0 or font_size <= 0:
             errors.append(f"{prefix}必须位于画布内且具有正尺寸和字号。")
         if left + box_width > width or top + box_height > height:
             errors.append(f"{prefix}超出了画布。")
+        try:
+            normalize_hex_color(box.get("color") or DEFAULT_TEXT_COLOR)
+        except ValueError as exc:
+            errors.append(f"{prefix}文字颜色无效。{exc}")
     return errors
 
 

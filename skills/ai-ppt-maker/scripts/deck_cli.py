@@ -6,16 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from skill_core.images import normalize_references, prepare_images
-from skill_core.project import (
-    build_prompts,
-    collect_anchors,
-    read_project,
-    read_source,
-    resolve_project_path,
-    validate_project,
-)
-from skill_core.slides import DELIVERY_MODES, build_presentation, render_delivery_previews
+from skill_core import DELIVERY_MODES, EDITABLE_DELIVERY_MODES
 
 
 def _write_result(payload: Any, output_path: Path | None = None) -> None:
@@ -36,6 +27,8 @@ def _add_pages(parser: argparse.ArgumentParser) -> None:
 
 
 def _load(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
+    from skill_core.project import read_project, read_source, resolve_project_path
+
     project = read_project(args.project)
     source_path = args.source
     if source_path is None and project.get("source_file"):
@@ -48,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Codex AI PPT Skill 的本地执行入口；不调用项目服务或模型 API。")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    commands.add_parser("doctor", help="检查 Python 依赖、PowerPoint 渲染和本机字体。")
+
     anchors = commands.add_parser("anchors", help="从原文提取事实锚点。")
     anchors.add_argument("--source", required=True, type=Path)
     anchors.add_argument("--pages", required=True, type=int)
@@ -56,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate", help="校验规划、事实与文字层。")
     _add_project(validate)
     validate.add_argument("--require-text-boxes", action="store_true")
+    validate.add_argument("--work-dir", type=Path, help="读取 prepare 的回拼图以检查文字对比度。")
+    validate.add_argument("--mode", choices=EDITABLE_DELIVERY_MODES, default="overlay", help="按对应交付模式检查底色。")
     _add_pages(validate)
 
     prompts = commands.add_parser("prompts", help="输出压缩后的两阶段生图提示。")
@@ -67,11 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     normalize.add_argument("--work-dir", required=True, type=Path)
     _add_pages(normalize)
 
-    prepare = commands.add_parser("prepare", help="检测文字区域并对元素图增强、透明化、切分。")
+    prepare = commands.add_parser("prepare", help="生成文字框草案、准备元素并检查回拼差异。")
     _add_project(prepare)
     prepare.add_argument("--work-dir", required=True, type=Path)
     prepare.add_argument("--workers", type=int, default=1)
     prepare.add_argument("--min-asset-area", type=int, default=8)
+    prepare.add_argument("--font-name", help="为文字框草案指定本机字体族。")
     _add_pages(prepare)
 
     preview = commands.add_parser("preview", help="用本机 PowerPoint 渲染已导出的 PPTX。")
@@ -90,6 +88,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "doctor":
+        from skill_core.doctor import diagnose_environment
+
+        result = diagnose_environment()
+        _write_result(result)
+        return 0 if result["ok"] else 1
+
+    from skill_core.project import build_prompts, collect_anchors, read_source, validate_project
+
     if args.command == "anchors":
         source = read_source(args.source)
         if not source.strip() or args.pages < 1:
@@ -98,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "preview":
+        from skill_core.slides import render_delivery_previews
+
         _write_result(render_delivery_previews(args.pptx, args.output_dir, slide_numbers=args.pages))
         return 0
 
@@ -109,7 +118,12 @@ def main(argv: list[str] | None = None) -> int:
             require_text_boxes=args.require_text_boxes,
             text_page_numbers=args.pages,
         )
-        _write_result({"ok": not errors, "errors": errors})
+        warnings = []
+        if args.require_text_boxes and not errors:
+            from skill_core.text_quality import check_text_quality
+
+            warnings = check_text_quality(project, work_dir=args.work_dir, mode=args.mode, page_numbers=args.pages)
+        _write_result({"ok": not errors, "errors": errors, "warnings": warnings})
         return 0 if not errors else 1
     require_boxes = args.command == "export" and args.mode != "image_only"
     errors = validate_project(project, source=source, require_text_boxes=require_boxes, text_page_numbers=getattr(args, "pages", None))
@@ -119,8 +133,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "prompts":
         _write_result({"prompts": build_prompts(project)}, args.output)
     elif args.command == "normalize":
+        from skill_core.images import normalize_references
+
         _write_result({"pages": normalize_references(project, args.project, args.work_dir, args.pages)})
     elif args.command == "prepare":
+        from skill_core.images import prepare_images
+
         _write_result(
             {
                 "pages": prepare_images(
@@ -130,15 +148,20 @@ def main(argv: list[str] | None = None) -> int:
                     page_numbers=args.pages,
                     workers=args.workers,
                     min_asset_area=args.min_asset_area,
+                    font_name=args.font_name,
                 )
             }
         )
     elif args.command == "export":
+        from skill_core.slides import build_presentation
+
         _write_result(build_presentation(project, args.work_dir, args.output, mode=args.mode, page_numbers=args.pages))
     return 0
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     try:
         raise SystemExit(main())
     except (FileNotFoundError, ValueError, RuntimeError) as exc:

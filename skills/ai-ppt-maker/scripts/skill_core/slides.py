@@ -15,25 +15,16 @@ from ppt_system.export.editable_charts import add_editable_chart
 from ppt_system.export.export_artifact_policy import save_final_presentation_atomically
 from ppt_system.export.ppt_calibration_renderer import render_pptx_slides_to_png
 from ppt_system.export.reference_preview_export import export_reference_images_to_pptx
-from ppt_system.export.text_style_runtime import apply_run_font_family, should_wrap_text
+from ppt_system.export.text_style_runtime import DEFAULT_FONT_NAME, apply_run_font_family, should_wrap_text
 
-from skill_core.images import selected_pages
-
-
-DELIVERY_MODES = {"image_only", "overlay", "separate_slides"}
-
-
-def _color(value: Any, default: str = "FFFFFF") -> RGBColor:
-    raw = str(value or default).strip().lstrip("#").upper()
-    if len(raw) != 6 or any(char not in "0123456789ABCDEF" for char in raw):
-        raise ValueError(f"颜色必须是六位十六进制值：{value}")
-    return RGBColor.from_string(raw)
+from skill_core import DELIVERY_MODES
+from skill_core.project import DEFAULT_SLIDE_WIDTH_INCH, DEFAULT_TEXT_COLOR, normalize_hex_color, page_background, selected_pages
 
 
 def _new_slide(presentation: Presentation, background_color: str):
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
     slide.background.fill.solid()
-    slide.background.fill.fore_color.rgb = _color(background_color)
+    slide.background.fill.fore_color.rgb = RGBColor.from_string(background_color[1:])
     return slide
 
 
@@ -63,7 +54,9 @@ def _add_text_box(slide, box: dict[str, Any], canvas_width: int, canvas_height: 
     frame.margin_top = Pt(0)
     frame.margin_bottom = Pt(0)
     frame.vertical_anchor = getattr(MSO_ANCHOR, str(box.get("valign", "TOP")).upper(), MSO_ANCHOR.TOP)
-    frame.word_wrap = should_wrap_text(str(box["text"]), float(box["width"]), float(box["height"]), float(box["font_size"]))
+    font_size = float(box["font_size"])
+    frame.word_wrap = should_wrap_text(box["text"], width.pt, height.pt, font_size)
+    text_color = normalize_hex_color(box.get("color") or DEFAULT_TEXT_COLOR)
 
     for line_index, line in enumerate(str(box["text"]).split("\n")):
         paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
@@ -73,11 +66,11 @@ def _add_text_box(slide, box: dict[str, Any], canvas_width: int, canvas_height: 
         paragraph.line_spacing = 1.0
         run = paragraph.add_run()
         run.text = line
-        run.font.size = Pt(float(box["font_size"]))
+        run.font.size = Pt(font_size)
         run.font.bold = bool(box.get("bold", False))
         run.font.italic = bool(box.get("italic", False))
-        run.font.color.rgb = _color(box.get("color"), "222222")
-        apply_run_font_family(run, str(box.get("font_name", "Microsoft YaHei")))
+        run.font.color.rgb = RGBColor.from_string(text_color[1:])
+        apply_run_font_family(run, str(box.get("font_name", DEFAULT_FONT_NAME)))
 
 
 def build_presentation(
@@ -93,7 +86,7 @@ def build_presentation(
     pages = selected_pages(project, page_numbers)
     canvas_width = int(project["canvas"]["width"])
     canvas_height = int(project["canvas"]["height"])
-    slide_width = float(project.get("slide_width_inch", 13.333333))
+    slide_width = float(project.get("slide_width_inch", DEFAULT_SLIDE_WIDTH_INCH))
     slide_height = slide_width * canvas_height / canvas_width
 
     if mode == "image_only":
@@ -120,7 +113,7 @@ def build_presentation(
     for page in pages:
         page_no = int(page["page_no"])
         manifest_path = work_dir / f"page_{page_no:02d}" / "assets" / "assets.json"
-        background = str(page.get("background_color") or project.get("background_color") or "#FFFFFF")
+        background = page_background(project, page)
         asset_slide = _new_slide(presentation, background)
         charts = page.get("charts", [])
         if page.get("elements_image") or not charts:
