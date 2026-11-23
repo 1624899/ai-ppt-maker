@@ -57,7 +57,7 @@
 
 导入已有整页原稿图时，设 `source_mode` 为 `external_reference`，按用户给定顺序设置各页 `reference_image`。此模式下 `source_file` 和 `layout_family` 可省略，相邻页面也可以使用同一版式。`resize_mode` 可选拉伸填满（`stretch`）、等比留白（`contain`）或等比裁切（`cover`）。`elements_image` 可使用原图裁出的素材，或由内置生图工具去字。将用原生图表重建的区域应从素材图中去除，避免重复叠加。
 
-每页的 `cutout_mode` 默认是 `split`，对元素图执行透明化和切分。照片满版、深色渐变或半透明卡片需要保留整体视觉时，可设为 `background_only`，将规范化后的 `elements_image` 作为一张铺满资源页的图片。文字和图表仍按所选交付模式导出。更改 `cutout_mode` 或素材后，对该页重新运行 `prepare`。
+每页的 `cutout_mode` 默认是 `split`，对元素图执行透明化和切分。只有用户明确要求不切分时，才可设为 `background_only`，将规范化后的 `elements_image` 作为一张铺满资源页的图片。文字和图表仍按所选交付模式导出。更改 `cutout_mode` 或素材后，对该页重新运行 `prepare`。
 
 页级 `text_exclusion_regions` 可标记整块保留为素材的区域，例如照片、地图或带文字的插画。填写画布像素矩形数组，例如 `[{"left": 1000, "top": 160, "width": 480, "height": 320}]`。`prepare` 自动跳过这些区域及已登记的 `charts` 区域。该字段只影响文字候选检测，已有 `text_boxes` 和素材保留方式由各自字段控制。若需要为图表补录单独的可编辑文字，可直接填写对应的 `text_boxes`。
 
@@ -102,7 +102,7 @@ python scripts/deck_cli.py preview --pptx result.pptx --output-dir previews --pa
 `normalize` 将原稿图保存到 `work/page_XX/reference.png`，第二阶段生图以此为目标。`prepare` 在同一目录生成 `elements.png`、`text_placeholders.json`、`text_boxes.draft.json`、`assets/assets.json` 和 `assets.recomposed.png`。`split` 还会生成 `elements.transparent.png` 和拆分的元素图片。
 
 - 草案按候选行给出 `text_boxes`。补入准确原文，并根据语义决定要归并的段落。字号按项目的 `slide_width_inch` 换算，字重、颜色和对齐从差异像素估计。占位文件另有采样到的背景色。草案使用 `--font-name` 指定的字体族，省略时使用 `Microsoft YaHei`。`prepare` 只写工作目录，已有文本框可保留在 `project.json` 中。
-- `cutout_visual_difference` 告警包含页码和主要差异块的像素范围。`canvas_difference_ratio` 是差异像素占全画布的比例，计算时排除锐化等既有图像增强能够解释的色差。`lost_foreground_ratio` 是原先明显区别于声明底色、回拼后变成透明空洞的像素占原可见前景的比例。对照 `elements.png` 和 `assets.recomposed.png` 核实后，调整素材或改用整页底图。
+- `cutout_visual_difference` 告警包含页码和主要差异块的像素范围。`canvas_difference_ratio` 是差异像素占全画布的比例，计算时排除锐化等既有图像增强能够解释的色差。`lost_foreground_ratio` 是原先明显区别于声明底色、回拼后变成透明空洞的像素占原可见前景的比例。对照 `elements.png` 和 `assets.recomposed.png` 核实后，调整素材并重新切分。只有用户明确要求不切分时才改用整页底图。
 - `validate --require-text-boxes` 会阻断无效字段和实际越界。显著重叠、距画布边缘不足 2%、估算溢出和低对比度列在 `warnings`。默认按 `overlay` 检查，传入 `--work-dir` 后从回拼图采样文字框覆盖区域。`separate_slides` 的文字页按声明底色检查。对比度阈值参考 WCAG，普通文字为 4.5:1，大号文字为 3:1。真实字体的换行和原生图表标签需要在最终 PPTX 中检查。
 
 `preview` 用本机 PowerPoint 打开 `--pptx` 指定的文件，按实际页序输出 `slide_01.png` 等图片。追加、合并或手动修正后，把实际交付文件作为输入。缺少 PowerPoint 时，命令会明确报错。`export` 默认使用 `overlay`，每个逻辑页对应一张幻灯片。`separate_slides` 为每个逻辑页生成一张资源页和一张可编辑内容页。输出文件与工作目录应放在 Skill 目录之外。

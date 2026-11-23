@@ -43,6 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("doctor", help="检查 Python 依赖、PowerPoint 渲染和本机字体。")
 
+    icons = commands.add_parser("icons", help="离线检索随包 Lucide 图标，或导出改色 SVG。")
+    icon_selection = icons.add_mutually_exclusive_group()
+    icon_selection.add_argument("--query", default="", help="中英文关键词，多个词以空格分隔。")
+    icon_selection.add_argument("--name", help="要导出的图标名称。")
+    icons.add_argument("--limit", type=int, default=8, help="最多返回的检索结果数，范围 1 到 50。")
+    icons.add_argument("--output", type=Path, help="导出的 SVG 路径，配合 --name 使用。")
+    icons.add_argument("--color", default="#111111", help="导出图标颜色，格式为 #RRGGBB。")
+    icons.add_argument("--size", type=int, default=256, help="导出 SVG 的宽高像素。")
+
     anchors = commands.add_parser("anchors", help="从原文提取事实锚点。")
     anchors.add_argument("--source", required=True, type=Path)
     anchors.add_argument("--pages", required=True, type=int)
@@ -88,6 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "icons":
+        from skill_core.icons import export_icon, search_icons
+
+        if bool(args.name) != (args.output is not None):
+            raise ValueError("导出图标需要同时提供 --name 与 --output。")
+        if args.name:
+            _write_result(export_icon(args.name, args.output, args.color, args.size))
+        else:
+            _write_result(search_icons(args.query, args.limit))
+        return 0
     if args.command == "doctor":
         from skill_core.doctor import diagnose_environment
 
