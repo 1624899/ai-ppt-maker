@@ -10,6 +10,16 @@ from ppt_system.generation.page_richness import (
 from ppt_system.generation.reference_style_adherence import normalize_reference_style_adherence
 
 
+ICON_SOURCES = ("generated", "library")
+
+
+def normalize_icon_source(value: Any) -> str:
+    source = str(value or "generated").strip().lower()
+    if source not in ICON_SOURCES:
+        raise ValueError("图标来源只能选择 generated 或 library。")
+    return source
+
+
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off", ""}
 
@@ -43,6 +53,7 @@ def default_generation_options(config: Mapping[str, Any] | None = None) -> dict[
             "balanced",
         ),
         "theme_color": str(config.get("default_theme_color") or "auto").strip().lower() or "auto",
+        "icon_source": normalize_icon_source(config.get("default_icon_source")),
         "page_richness_map": {},
     }
 
@@ -84,6 +95,7 @@ def resolve_generation_options(
             payload.get("reference_style_adherence"),
             str(defaults["reference_style_adherence"]),
         ),
+        "icon_source": normalize_icon_source(payload.get("icon_source", defaults["icon_source"])),
         "theme_color": str(payload.get("theme_color") or defaults["theme_color"]).strip().lower() or "auto",
     }
 

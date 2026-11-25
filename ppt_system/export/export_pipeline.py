@@ -17,6 +17,7 @@ from ppt_system.export.editable_delivery_bundle import (
 )
 from ppt_system.export.export_layer_mode import SEPARATE_LAYER_MODE, count_output_slides
 from ppt_system.integrations.openai_chat_provider import OpenAIChatProvider
+from ppt_system.generation.generation_options import normalize_icon_source
 from ppt_system.generation.style_runtime import apply_text_theme, resolve_text_palette
 from ppt_system.generation.page_richness import normalize_page_richness_level
 from ppt_system.generation.text_layout import (
@@ -118,6 +119,8 @@ def build_project_from_web_job(
     plan = job.get("plan", {})
     style_guide = plan.get("style_guide", {}) if isinstance(plan, dict) else {}
     text_palette = resolve_text_palette(style_guide)
+    options = job.get("job_meta", {}).get("generation_options", {})
+    icon_source = normalize_icon_source(options.get("icon_source"))
 
     element_map = {
         int(item["page_no"]): item
@@ -159,6 +162,7 @@ def build_project_from_web_job(
                 "summary": str(raw_page.get("summary", "")),
                 "bullets": list(raw_page.get("bullets", [])) if isinstance(raw_page.get("bullets"), list) else [],
                 "visual_image": str(visual_path),
+                "icon_source": icon_source,
                 "reference_image": str(reference_path),
                 "texts": rebuilt_texts,
                 "layout_family": layout_family,

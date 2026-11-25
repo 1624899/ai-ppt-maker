@@ -280,6 +280,7 @@ def create_external_reference_job(
     resize_mode: str = "stretch",
     background: str = "#FFFFFF",
     create_only: bool = False,
+    icon_source: str | None = None,
 ) -> dict[str, Any]:
     """创建“已有原稿图导入”任务，必要时停在原稿图完成态。"""
     normalized_sources = [Path(path).resolve() for path in source_images]
@@ -297,7 +298,10 @@ def create_external_reference_job(
     if resolved_quality not in {"low", "medium", "high", "auto"}:
         raise ValueError("图像质量只能选择 low、medium、high 或 auto。")
     active_config = build_active_config(config, image_preset, resolved_quality)
-    generation_options = resolve_generation_options({"page_count": page_count}, config=config)
+    generation_payload = {"page_count": page_count}
+    if icon_source is not None:
+        generation_payload["icon_source"] = icon_source
+    generation_options = resolve_generation_options(generation_payload, config=config)
 
     resolved_job_id = str(job_id or uuid.uuid4().hex[:12]).strip()
     if not resolved_job_id:
@@ -316,7 +320,7 @@ def create_external_reference_job(
     image_width = int(active_config["image_width"])
     image_height = int(active_config["image_height"])
     reference_prompt = DEFAULT_REFERENCE_PROMPT
-    elements_prompt = build_elements_prompt()
+    elements_prompt = build_elements_prompt(generation_options["icon_source"])
     pages: list[dict[str, Any]] = []
     reference_items: list[dict[str, Any]] = []
     reference_paths: list[Path] = []

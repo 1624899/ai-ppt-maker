@@ -170,7 +170,7 @@ def run_job_pipeline(
 
             def planning_done(current_state: dict[str, Any]) -> None:
                 current_state["plan"] = plan
-                current_state["pages"] = build_planned_runtime_pages(pages)
+                current_state["pages"] = build_planned_runtime_pages(pages, icon_source=generation_options.get("icon_source", "generated"))
 
             mutate_job_state(job_dir, job_id, planning_done)
 
@@ -324,7 +324,14 @@ def run_job_pipeline(
         page_prompt_map: dict[int, str] = {}
         for sp in state.get("pages", []):
             page_prompt_map[int(sp["page_no"])] = str(sp.get("elements_prompt", ""))
-        fallback_elements_prompt = build_elements_prompt()
+        icon_source = generation_options.get("icon_source", "generated")
+        fallback_elements_prompt = build_elements_prompt(icon_source)
+        if icon_source == "library":
+            # 即使用户手写或编辑过提示词，也必须保留本地图标模式的去图标约束。
+            page_prompt_map = {
+                page_no: build_elements_prompt(icon_source, base_prompt=prompt)
+                for page_no, prompt in page_prompt_map.items()
+            }
         element_results: list[dict[str, Any]] = list(existing_elements)
         pending_element_pages: list[int] = []
         for ref in references:

@@ -35,6 +35,11 @@ def api_config():
         {
             "max_pages": config["max_pages"],
             "default_pages": config["default_pages"],
+            "default_icon_source": defaults["icon_source"],
+            "icon_source_options": [
+                {"value": "generated", "label": "保留生成图标"},
+                {"value": "library", "label": "使用内置 Lucide 图标"},
+            ],
             "default_image_preset": config["default_image_preset"],
             "image_presets": config["image_presets"],
             "image_width": config["image_width"],

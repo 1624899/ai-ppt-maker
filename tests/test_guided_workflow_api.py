@@ -77,6 +77,17 @@ class GuidedWorkflowApiTests(unittest.TestCase):
 
         self.client = app.test_client()
 
+    def test_generated_job_saves_library_icon_source_and_rejects_invalid_value(self) -> None:
+        payload = {"content": "年度营收与下一步计划", "page_count": "2", "icon_source": "library"}
+        response = self.client.post("/api/jobs", data=payload)
+        self.assertEqual(response.status_code, 202)
+        state = response.get_json()
+        self.assertEqual(state["job_meta"]["generation_options"]["icon_source"], "library")
+        record = get_job_record(self.jobs_db_path, state["job_id"])
+        self.assertEqual(record["request"]["generation_options"]["icon_source"], "library")
+        response = self.client.post("/api/jobs", data={**payload, "icon_source": "unknown"})
+        self.assertEqual(response.status_code, 400)
+
     def _create_job(self, workflow_mode: str = "auto") -> tuple[str, Path, dict[str, object]]:
         response = self.client.post(
             "/api/jobs",

@@ -61,7 +61,10 @@ def api_create_job():
             generation_payload["page_richness_map"] = json.loads(raw_page_richness_map)
         except json.JSONDecodeError:
             return api_error("逐页内容丰富度参数格式错误。")
-    generation_options = resolve_generation_options(generation_payload, config=config)
+    try:
+        generation_options = resolve_generation_options(generation_payload, config=config)
+    except ValueError as exc:
+        return api_error(exc)
 
     if not content:
         return api_error("请输入内容。")
@@ -209,6 +212,7 @@ def _api_create_external_reference_job(config: dict[str, Any]):
             resize_mode=request.form.get("external_reference_resize_mode", "stretch"),
             background=request.form.get("external_reference_background", "#FFFFFF"),
             create_only=create_only,
+            icon_source=request.form.get("icon_source"),
         )
     except ValueError as exc:
         if not get_job_record(runtime_context.JOBS_DB_PATH, job_id) and job_dir.exists():

@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import jsonify, request
 
+from ppt_system.generation.generation_prompts import build_elements_prompt
 from ppt_system.integrations.model_config import get_active_model_config
 from ppt_system.integrations.openai_image_provider import OpenAIImageProvider
 from ppt_system.jobs.job_delivery_state import attach_delivery_actions
@@ -124,6 +125,9 @@ def create_image_edit_candidate(job_id: str, payload: dict[str, Any]) -> dict[st
         image_width=int(active_config.get("image_width", 2048)),
         image_height=int(active_config.get("image_height", 1152)),
     )
+    options = state.get("job_meta", {}).get("generation_options", {})
+    if preview_type == "element" and options.get("icon_source") == "library":
+        prompt = build_elements_prompt("library", base_prompt=prompt)
     prompt_path.write_text(prompt, encoding="utf-8")
     request_meta = _build_image_edit_request_metadata(
         candidate_id=candidate_id,
@@ -276,7 +280,9 @@ def build_image_edit_prompt(
     summary = _normalize_instruction(page.get("summary"))
     lines = [
         f"请基于上传的{slot_label}进行图片编辑，输出一张 {image_width}x{image_height}、16:9 的中文 PPT 单页图。",
-        "只修改用户明确要求调整的内容，其他版式、比例、视觉语言和可读文字尽量保持稳定。",
+        "以上传的当前图片为依据，只修改本轮明确的问题，并遵守指令中的保留项与修改项。",
+        "逐字保留已核实的事实、数字、日期、单位和业务原词；仅在用户明确要求时改写对应文字。",
+        "保留本轮未涉及的已认可视觉属性；当修改目标包含构图或配色时，允许调整对应属性。",
         f"页面标题：{title}",
     ]
     if summary:

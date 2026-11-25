@@ -49,6 +49,7 @@ def build_export_page_signature(
             {
                 "texts": page.get("texts", []),
                 "layout_family": str(page.get("layout_family", "")),
+                "icon_source": str(page.get("icon_source") or "generated"),
             }
         ),
     }

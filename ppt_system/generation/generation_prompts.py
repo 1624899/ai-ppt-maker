@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ppt_system.generation.generation_options import normalize_icon_source
+
 from ppt_system.generation.design_grammar import (
     build_prompt_anchor,
     compress_style_for_prompt,
@@ -385,9 +387,17 @@ def merge_prompt_with_style_lock(
 ELEMENTS_EDIT_PROMPT = "删除图片中的所有文字"
 
 
-def build_elements_prompt() -> str:
-    """构建去文字元素图的编辑提示词。"""
-    return ELEMENTS_EDIT_PROMPT
+def build_elements_prompt(icon_source: str = "generated", *, base_prompt: str = "") -> str:
+    """按图标来源生成元素图，内置资源模式同时移除通用图标。"""
+    if normalize_icon_source(icon_source) == "library":
+        requirement = (
+            "删除图片中的所有文字和独立通用 icon 图标，按原背景自然填补，不留占位符。"
+            "保留照片、品牌标志、复杂插画、数据图表、流程连接线、卡片容器及其他布局。"
+        )
+        if requirement in base_prompt:
+            return base_prompt
+        return "\n".join(part for part in (base_prompt, requirement) if part)
+    return base_prompt or ELEMENTS_EDIT_PROMPT
 
 
 def normalize_list(items: Any) -> list[str]:
@@ -455,7 +465,8 @@ def collect_page_slots(page: dict[str, Any]) -> list[str]:
 
 
 def collect_visual_suggestion(page: dict[str, Any]) -> str:
-    return str(page.get("visual_suggestion") or page.get("style_constraints") or "").strip()
+    suggestions = [str(page.get(field) or "").strip() for field in ("visual_suggestion", "style_constraints")]
+    return "；".join(dict.fromkeys(value for value in suggestions if value))
 
 
 def build_style_anchor(style_guide: dict[str, Any] | None = None, *, style_notes: str = "") -> str:

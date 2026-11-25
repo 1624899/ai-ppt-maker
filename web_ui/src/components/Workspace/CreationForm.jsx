@@ -87,6 +87,7 @@ const createInitialValues = (config, currentJob, workflowMode) => {
     referenceStyleAdherence: String(
       generationOptions.reference_style_adherence || config.default_reference_style_adherence || 'balanced'
     ),
+    iconSource: String(generationOptions.icon_source || config.default_icon_source || 'generated'),
     themeColor: String(generationOptions.theme_color || config.default_theme_color || 'auto'),
     pageRichnessList: Array.from({ length: pageCount }, (_, index) => String(richnessMap[String(index + 1)] || '')),
     externalReferenceResizeMode: 'stretch',
@@ -149,6 +150,7 @@ const CreationFormFields = ({
     formData.append('source_mode', form.sourceMode);
     formData.append('image_preset', form.imagePreset);
     formData.append('image_quality', form.imageQuality);
+    formData.append('icon_source', form.iconSource);
     if (form.sourceMode === SOURCE_MODES.EXTERNAL_REFERENCE) {
       if (referenceFiles.length === 0) {
         setError('请先上传至少一张原稿图。');
@@ -351,6 +353,15 @@ const CreationFormFields = ({
           </div>
           <small className={uiClassName("field__hint")}>不选择时，AI 会根据内容和参考图自动确定配色。</small>
         </div>}
+
+        <label className={uiClassName("field field--full")}>
+          <span>图标来源</span>
+          <select value={form.iconSource} onChange={(event) => updateForm('iconSource', event.target.value)} disabled={submitting}>
+            <option value="generated">保留生成图标</option>
+            <option value="library">使用内置 Lucide 图标</option>
+          </select>
+          <small className={uiClassName("field__hint")}>内置模式会移除元素图中的通用图标，并在可编辑 PPT 中按原位置放入匹配资源。照片、品牌标志与复杂插画保留。</small>
+        </label>
 
         {isExternalReferenceMode ?
         <>

@@ -86,6 +86,28 @@ class ExternalReferenceJobApiTests(unittest.TestCase):
 
         self.client = app.test_client()
 
+    def test_library_icon_source_is_saved_for_external_reference_resume(self) -> None:
+        response = self.client.post("/api/jobs", data={
+            "source_mode": "external_reference", "icon_source": "library",
+            "reference_images": [_image_file("reference.png")],
+        }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 202)
+        state = response.get_json()
+        self.assertEqual(state["job_meta"]["generation_options"]["icon_source"], "library")
+        self.assertIn("icon", state["pages"][0]["elements_prompt"])
+        record = get_job_record(self.jobs_db_path, state["job_id"])
+        self.assertEqual(record["request"]["generation_options"]["icon_source"], "library")
+        submitted_args = self.executor.calls[-1][0]
+        self.assertEqual(submitted_args[9]["icon_source"], "library")
+
+    def test_external_reference_rejects_invalid_icon_source(self) -> None:
+        response = self.client.post("/api/jobs", data={
+            "source_mode": "external_reference", "icon_source": "unknown",
+            "reference_images": [_image_file("reference.png")],
+        }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(self.executor.calls)
+
     def test_create_external_reference_job_registers_images_and_submits_resume_pipeline(self) -> None:
         response = self.client.post(
             "/api/jobs",

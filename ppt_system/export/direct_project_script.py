@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ppt_system.export.library_icons import identify_library_icons, append_library_icon_assets
+from ppt_system.generation.generation_options import normalize_icon_source
 from ppt_system.image.asset_alignment_runtime import analyze_text_asset_overlaps
 from ppt_system.jobs.concurrent_stage import drain_fail_safe_futures
 from ppt_system.export.direct_page_script import (
@@ -414,6 +416,7 @@ def prepare_direct_project_assets(
     project: dict[str, Any],
     work_dir: Path,
     *,
+    provider: OpenAIChatProvider | None = None,
     alpha_threshold: int = 8,
     min_area: int = 8,
     min_width: int = 0,
@@ -501,11 +504,23 @@ def prepare_direct_project_assets(
             )
             continue
 
+        icons = []
+        if normalize_icon_source(page.get("icon_source")) == "library":
+            if provider is None:
+                raise ValueError("使用内置图标需要提供对话模型进行原稿图标定位。")
+            _log_page(page_logger, page_no, "开始定位原稿图标并检索内置资源")
+            icons = identify_library_icons(
+                provider, reference_image=reference_image, elements_image=visual_image,
+                page_dir=page_dir, page_no=page_no, width=image_width, height=image_height,
+                stop_checker=stop_checker,
+            )
+        exclusions = tuple((icon["left"], icon["top"], icon["width"], icon["height"]) for icon in icons)
         text_placeholders = save_text_placeholders(
             reference_image,
             visual_image,
             text_placeholders_path,
             slide_width_inch=slide_width_inch,
+            exclude_regions=exclusions,
         )
         asset_signature = build_export_asset_prepare_signature(
             page_no=page_no,
@@ -515,7 +530,8 @@ def prepare_direct_project_assets(
             image_height=image_height,
             slide_width_inch=slide_width_inch,
             text_placeholders=text_placeholders,
-            asset_options=asset_option_signature_payload,
+            asset_options={**asset_option_signature_payload, "library_icons": icons,
+                           "icon_source": normalize_icon_source(page.get("icon_source"))},
         )
         cached_asset = load_export_asset_prepare_checkpoint(page_dir, expected_signature=asset_signature)
         cached_prepared_assets = (
@@ -555,8 +571,12 @@ def prepare_direct_project_assets(
             skip_enhance=skip_enhance,
             skip_transparent=skip_transparent,
             stop_checker=stop_checker,
+            allow_empty=bool(icons),
         )
         manifest = dict(asset_result.manifest)
+        if icons:
+            append_library_icon_assets(Path(asset_result.manifest_path), manifest, icons)
+            _log_page(page_logger, page_no, f"已加入 {len(icons)} 个内置图标")
         prepared_record = PreparedProjectPageAssets(
             page_no=page_no,
             assets_manifest=str(asset_result.manifest_path),
@@ -817,6 +837,7 @@ def generate_direct_project_text_script(
     assets_summary = prepare_direct_project_assets(
         project,
         work_dir,
+        provider=provider,
         alpha_threshold=alpha_threshold,
         min_area=min_area,
         min_width=min_width,

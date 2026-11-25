@@ -7,12 +7,12 @@ from typing import Any
 from ppt_system.generation.generation_prompts import build_elements_prompt
 
 
-def build_planned_runtime_pages(pages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def build_planned_runtime_pages(pages: Sequence[Mapping[str, Any]], *, icon_source: str = "generated") -> list[dict[str, Any]]:
     """把内容规划页面转换为运行态页面，并完整保留版式推荐信息。"""
-    return [_build_planned_runtime_page(page) for page in pages]
+    return [_build_planned_runtime_page(page, icon_source) for page in pages]
 
 
-def _build_planned_runtime_page(page: Mapping[str, Any]) -> dict[str, Any]:
+def _build_planned_runtime_page(page: Mapping[str, Any], icon_source: str) -> dict[str, Any]:
     return {
         "page_no": int(page["page_no"]),
         "title": page["title"],
@@ -39,7 +39,7 @@ def _build_planned_runtime_page(page: Mapping[str, Any]) -> dict[str, Any]:
         "reference_image": "",
         "element_image": "",
         "reference_prompt": page.get("image_prompt", ""),
-        "elements_prompt": build_elements_prompt(),
+        "elements_prompt": build_elements_prompt(icon_source),
         "layout_slots": copy.deepcopy(page.get("layout_slots", [])),
         "texts": copy.deepcopy(page.get("texts", [])),
     }

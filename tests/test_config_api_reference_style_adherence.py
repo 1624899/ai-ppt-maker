@@ -55,6 +55,8 @@ class ConfigApiReferenceStyleAdherenceTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIsNotNone(payload)
         self.assertFalse(payload["default_include_cover_page"])
+        self.assertEqual(payload["default_icon_source"], "generated")
+        self.assertEqual([item["value"] for item in payload["icon_source_options"]], ["generated", "library"])
         self.assertEqual(payload["default_reference_style_adherence"], "strict")
         self.assertEqual(
             payload["reference_style_adherence_options"],

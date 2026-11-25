@@ -89,7 +89,8 @@ try {
     $addData = @(
       "config.json${separator}.",
       "web_ui\dist${separator}web_ui\dist",
-      "docs\readme-assets${separator}docs\readme-assets"
+      "docs\readme-assets${separator}docs\readme-assets",
+      "ppt_system\assets${separator}ppt_system\assets"
     )
     $textScriptRuntimeModules = @(
       & $BuildPython -c "from ppt_system.export.text_script_runtime_modules import TEXT_SCRIPT_RUNTIME_MODULES; print('\n'.join(TEXT_SCRIPT_RUNTIME_MODULES))"
@@ -103,7 +104,8 @@ try {
       "--workpath", $BuildRoot,
       "--collect-all", "pptx",
       "--collect-all", "cv2",
-      "--collect-all", "certifi"
+      "--collect-all", "certifi",
+      "--collect-all", "resvg_py"
     )
     foreach ($item in $addData) {
       $args += @("--add-data", $item)

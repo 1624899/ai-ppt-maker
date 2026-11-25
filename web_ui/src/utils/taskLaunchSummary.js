@@ -30,6 +30,7 @@ export function buildTaskLaunchSummary(job, { compact = false } = {}) {
   pushUnique(items, imagePresetLabel);
   pushUnique(items, imageQuality ? `质量 ${getGenerationParameterLabel('imageQuality', imageQuality)}` : '');
   if (meta.include_cover_page || job.include_cover_page) pushUnique(items, '含封面');
+  if (generationOptions.icon_source === 'library') pushUnique(items, '内置 Lucide 图标');
   if (styleReferenceCount > 0) pushUnique(items, `${styleReferenceCount} 张风格图`);
   pushUnique(
     items,

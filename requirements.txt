@@ -3,3 +3,4 @@ flask
 python-pptx
 opencv-python-headless
 Pillow
+resvg-py==0.5.0

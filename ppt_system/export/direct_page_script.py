@@ -227,6 +227,7 @@ def prepare_direct_page_assets(
     skip_transparent: bool = False,
     preserve_existing_transparency: bool = True,
     preserve_tiny_components: bool | None = None,
+    allow_empty: bool = False,
     cleanup_intermediate_images: bool = True,
     stop_checker: StopChecker | None = None,
 ) -> PreparedDirectPageAssets:
@@ -267,7 +268,7 @@ def prepare_direct_page_assets(
         padding=int(padding),
         merge_distance=int(merge_distance),
     )
-    if int(manifest.get("count", 0)) <= 0:
+    if int(manifest.get("count", 0)) <= 0 and not allow_empty:
         raise RuntimeError(f"第 {page_no} 页元素分割结果为空，无法继续导出。")
     _ensure_not_stopped(stop_checker)
     removed_intermediate_images: list[str] = []

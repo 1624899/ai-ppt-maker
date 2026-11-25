@@ -66,6 +66,7 @@ class EditContext:
     style_guide: dict[str, Any]
     has_reference_images: bool
     reference_style_adherence: str
+    icon_source: str = "generated"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ def build_edit_context(state: dict[str, Any]) -> EditContext:
         style_guide=copy.deepcopy(plan.get("style_guide", {}) if isinstance(plan.get("style_guide"), dict) else {}),
         has_reference_images=bool(job_meta.get("style_reference_images")),
         reference_style_adherence=str(generation_options.get("reference_style_adherence") or "balanced"),
+        icon_source=str(generation_options.get("icon_source") or "generated"),
     )
 
 
@@ -196,6 +198,7 @@ def apply_page_layout_edit(
     page["page_richness"] = infer_page_richness(instruction, page.get("page_richness"))
     page["layout_slots"] = semantic_slots_for_family(layout_family)
     page["layout_intent"] = _merge_instruction(str(page.get("layout_intent") or ""), instruction)
+    page["style_constraints"] = _merge_instruction(str(page.get("style_constraints") or ""), instruction)
     page["texts"] = rebuild_page_texts(page, context)
     rebuild_page_prompts(page, context)
     append_applied_edit(page, "layout", instruction)
@@ -223,6 +226,7 @@ def apply_job_style_edit(state: dict[str, Any], instruction: str, context: EditC
                 style_guide=copy.deepcopy(style_guide),
                 has_reference_images=context.has_reference_images,
                 reference_style_adherence=context.reference_style_adherence,
+                icon_source=context.icon_source,
             )
 
     edited_pages: list[int] = []
@@ -260,7 +264,7 @@ def rebuild_page_prompts(page: dict[str, Any], context: EditContext) -> None:
         has_reference_images=context.has_reference_images,
         reference_style_adherence=context.reference_style_adherence,
     )
-    page["elements_prompt"] = build_elements_prompt()
+    page["elements_prompt"] = build_elements_prompt(context.icon_source)
 
 
 def infer_layout_family(instruction: str, explicit_value: Any, fallback: str) -> str:

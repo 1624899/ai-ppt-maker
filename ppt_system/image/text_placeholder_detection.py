@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from math import ceil, floor
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ def detect_text_placeholders(
     elements_image: Path,
     *,
     slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
+    exclude_regions: tuple[tuple[float, float, float, float], ...] = (),
     options: TextPlaceholderDetectionOptions | None = None,
 ) -> dict[str, Any]:
     """从“完整原稿图 - 去文字元素图”的差异中估计文字占位框。"""
@@ -41,6 +43,10 @@ def detect_text_placeholders(
     height, width = reference_rgba.shape[:2]
 
     diff_mask = build_text_difference_mask(reference_rgba, elements_rgba, options=resolved_options)
+    # 在连通域与行合并之前去掉被抹除的图标，避免把图标识别为文字。
+    for left, top, box_width, box_height in exclude_regions:
+        diff_mask[max(0, floor(top)):min(height, ceil(top + box_height)),
+                  max(0, floor(left)):min(width, ceil(left + box_width))] = False
     line_boxes = _find_line_boxes(diff_mask, options=resolved_options)
     placeholder_boxes = _merge_line_boxes(line_boxes, width=width, height=height, options=resolved_options)
 
@@ -94,6 +100,7 @@ def save_text_placeholders(
     output_path: Path,
     *,
     slide_width_inch: float = DEFAULT_SLIDE_WIDTH_INCH,
+    exclude_regions: tuple[tuple[float, float, float, float], ...] = (),
     options: TextPlaceholderDetectionOptions | None = None,
 ) -> dict[str, Any]:
     """检测并保存 text_placeholders.json，供模型只填文字内容。"""
@@ -101,6 +108,7 @@ def save_text_placeholders(
         reference_image,
         elements_image,
         slide_width_inch=slide_width_inch,
+        exclude_regions=exclude_regions,
         options=options,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
